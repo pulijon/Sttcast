@@ -1,10 +1,10 @@
-# Rationale for ttscast.py
+# Rationale for sttcast.py
 
 STT (Speech To Text) technology is becoming increasily popular. Virtual assistants as Alexa, Siri, Cortana or Google are able to understand voice commands and operate accordingly.
 
 Every big cloud provider has APIs to transcribe voice to text. Results are usually good. However if you want (as I do) to convert collections of podcasts to text (hundreds of hours), you must consider time and cost of the operation.
 
-There are open source projects as Vosk-Kaldi that may be of help in this task. **ttscast.py** makes use of its Python API to offline transcribe podcasts, downloaded as mp3 files.
+There are open source projects as Vosk-Kaldi that may be of help in this task. **sttcast.py** makes use of its Python API to offline transcribe podcasts, downloaded as mp3 files.
 
 
 # Requirements

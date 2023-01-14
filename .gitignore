@@ -1,2 +1,4 @@
 /__pycache__
 /sttcast.log
+/transcribe.bash
+/batch_transcribe.bash

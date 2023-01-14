@@ -1,10 +1,12 @@
 # Rationale for sttcast.py
 
-STT (Speech To Text) technology is becoming increasily popular. Virtual assistants as Alexa, Siri, Cortana or Google are able to understand voice commands and operate accordingly.
+STT (Speech To Text) technology is becoming increasyngly popular. Virtual assistants as Alexa, Siri, Cortana or Google are able to understand voice commands and operate accordingly.
 
-Every big cloud provider has APIs to transcribe voice to text. Results are usually good. However if you want (as I do) to convert collections of podcasts to text (hundreds of hours), you must consider time and cost of the operation.
+Every big cloud provider has its APIs to transcribe voice to text. Results are usually good. However if you want (as I do) to convert collections of podcasts to text (hundreds of hours), you must consider time and cost of the operation.
 
 There are open source projects as Vosk-Kaldi that may be of help in this task. **sttcast.py** makes use of its Python API to offline transcribe podcasts, downloaded as mp3 files.
+
+It is worth also mentioning OpenAI Whisper. It is a very interesting alternative although it is also more time consuming. In the near future, there would probably be an option to use that API in sttcast.
 
 
 # Requirements
@@ -19,13 +21,11 @@ The requirements for **sttcast.py** are as follows:
 
 # How does sttcast.py work
 
-**sttcast.py** converts the mp3 file to wav in order to use the vosk API.
-
 As transcribing is a CPU intensive operation, **sttcast.py** makes use of multiprocessing in Python (you probably have known about GIL blues for multithreading or coroutines in Python). **sttcast.py** splits the entire work (the transcription of a podcast, perhaps of several hours) in fragments of s seconds (s is an optional paramenter, 600 seconds by default). 
 
-Those fragments are delivered to a pool of **c** processes (**c** is another optional paramenter, equal, by default, to the number of cpus of the system minus 2). In this way, the system may parallel **c** tasks.
+**sttcast.py** converts the mp3 file to wav in order to use the vosk API. The main process pass the wav file as an argument to each one of the worker tasks, each proessing a fragment of audio (only part of the total frames of the wav file). The tasks are delivered to a pool of **c** processes (**c** is another optional paramenter, equal, by default, to the number of cpus of the system minus 2). In this way, the system may parallel **c** tasks.
 
-Each fragment is transcribed in a different HTML file. Transcribed words are marked with different colors to display the level of conficence of the transcription. The vosk-kaldi library delivers with each transcribed word, its confidence in the transcription as a number from 0 to 1. **sttcast** supports 4 configurable levels of confidence:
+Each fragment is transcribed in a different HTML file. Words of the trascribed text are highlighted with different colors to display the level of conficence of the transcription. The vosk-kaldi library delivers with each word, its confidence as a number from 0 to 1. **sttcast** supports 4 configurable levels of confidence:
 
 * Very high confidence (text is shown in black)
 * High confidence (text is shown in green)
@@ -48,7 +48,7 @@ You should consider the location of model files and mp3 files in RAM drives to g
 
 ```bash
 $ python3 sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] fname
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] fname
 
 positional arguments:
   fname                 fichero de audio a transcribir
@@ -66,6 +66,8 @@ options:
                         umbral de confianza media. Por defecto, 0.6
   -l LCONF, --lconf LCONF
                         umbral de confianza baja. Por defecto, 0.4
+  -o OVERLAP, --overlap OVERLAP
+                        tiempo de solapamientro entre fragmentos. Por defecto, 1.5
 
 ```
 

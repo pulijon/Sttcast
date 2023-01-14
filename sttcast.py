@@ -1,3 +1,5 @@
+#! /usr/bin/python3
+
 from util import logcfg
 import logging
 from vosk import Model, KaldiRecognizer
@@ -76,6 +78,8 @@ def get_pars():
                         help=f"umbral de confianza media. Por defecto, {MCONF}")
     parser.add_argument("-l", "--lconf", type=float, default=LCONF,
                         help=f"umbral de confianza baja. Por defecto, {LCONF}")
+    parser.add_argument("-o", "--overlap", type=float, default=OVERLAPTIME,
+                        help=f"tiempo de solapamientro entre fragmentos. Por defecto, {OVERLAPTIME}")
 
     return parser.parse_args()
 
@@ -103,32 +107,39 @@ def get_rate_and_frames(fname_wav):
     with wave.open(fname_wav, "rb") as wf:
         return wf.getframerate(), wf.getnframes()
 
-def task_work(model_str, 
-             fname_wav, 
-             fname_html, 
-             fframe, 
-             nframes,
-             conf):   
+def task_work(cfg):   
     logcfg(__file__)
     stime = datetime.datetime.now()
-    with wave.open(fname_wav, "rb") as wf:
-        model = Model(model_str)
+    with wave.open(cfg["wname"], "rb") as wf:
+        model = Model(cfg["model"])
         frate = wf.getframerate()
         rec = KaldiRecognizer(model, frate)
-        offset = fframe / frate
+
+        # Se calcula el momento de inicio en segundos
+        # del presente fragmento relativo al comienzo del mp3,
+        # en función de la primera trama a procesar y de la velocidad
+        fframe = cfg["fframe"]
+        offset_seconds = fframe / frate
+
         rec.SetWords(True)
         rec.SetPartialWords(True)
+
         # Se hace un cierto solapamiento entre el corte actual
         # y el siguiente para evitar perder audio
-        nframes += OVERLAPTIME*frate
+        overlap_frames = cfg["overlap"] * frate
+        left_frames = cfg["nframes"] + overlap_frames
 
+        # Se coloca el "puntero de lectura" del wav en la trama
+        # correspondiente al presente frragmento
         wf.setpos(fframe)
+
+        fname_html = cfg["hname"]
         if os.path.exists(fname_html):
             os.remove(fname_html)
         with open(fname_html, "w") as html:
-            while nframes > 0:
+            while left_frames > 0:
                 data = wf.readframes(NREADFRAMES)
-                nframes -= NREADFRAMES
+                left_frames -= NREADFRAMES
                 if len(data) == 0:
                     break
                 if rec.AcceptWaveform(data):
@@ -136,19 +147,19 @@ def task_work(model_str,
                     if ("result" not in res) or \
                        (len(res["result"])) == 0:
                         continue
-                    start_time = res["result"][0]["start"] + offset
-                    end_time = res["result"][-1]["end"] + offset
-                    logging.debug(f"{fname_html} - por procesar: {nframes/frate} segundos - text: {res.get('text','')}")
+                    start_time = res["result"][0]["start"] + offset_seconds
+                    end_time = res["result"][-1]["end"] + offset_seconds
+                    logging.debug(f"{fname_html} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
                     html.write("<p>\n")
                     html.write(f"{time_str(start_time, end_time)}")
                     for r in res["result"]:
                         w = r["word"]
                         c = r["conf"]
-                        if c < conf["lconf"]:
+                        if c < cfg["lconf"]:
                             html.write(class_str(w, "low"))
-                        elif c < conf["mconf"]:
+                        elif c < cfg["mconf"]:
                             html.write(class_str(w, "medium"))
-                        elif c < conf["hconf"]:
+                        elif c < cfg["hconf"]:
                             html.write(class_str(w, "high"))
                         else:
                             html.write(w)
@@ -156,7 +167,7 @@ def task_work(model_str,
                     html.write("</p>\n")
     return fname_html, datetime.datetime.now() - stime
 
-def build_html_file(fname_html, fname_meta, hnames):
+def build_html_file(fname_html, fname_meta, hnames, duration):
     if os.path.exists(fname_html):
         os.remove(fname_html)
     with open(fname_html, "w") as html:
@@ -164,6 +175,7 @@ def build_html_file(fname_html, fname_meta, hnames):
         config = configparser.ConfigParser()
         with open (fname_meta, "r") as cf:
             config.read_string("[global]\n" + cf.read())
+        config["global"]["duration"] = str(duration)
         hmsg = ""
         rold = '\\;'
         rnew = '\n</li><li>\n'
@@ -177,7 +189,6 @@ def build_html_file(fname_html, fname_meta, hnames):
 
 def main():
     args = get_pars()
-    model_str = args.model
     fname = args.fname
     cpus = args.cpus
     seconds = int(args.seconds)
@@ -185,27 +196,37 @@ def main():
     fname_meta = fname_root + ".meta"
     fname_wav = fname_root + ".wav"
     fname_html = fname_root + ".html"
-    conf = {
-        "lconf": args.lconf,
-        "mconf": args.mconf,
-        "hconf": args.hconf
-    }
     create_meta_file(fname, fname_meta)
     create_wav_file(fname, fname_wav)
     rate, frames = get_rate_and_frames(fname_wav)
+    total_seconds = frames / rate
+    duration = datetime.timedelta(seconds=total_seconds)
     num_frames = seconds * rate
-    r = range(0, frames, num_frames)
-    wnames = [fname_wav for _ in r]
-    hnames = [f"{fname_root}_{i}.html" for i in range(len(r))]
-    nframes = [num_frames for _ in r]
-    model_strs = [model_str for _ in r]
-    confs = [conf for _ in r]
+    fframes = range(0, frames, num_frames)
+    cfgs = [
+        {
+        "model": args.model,
+        "wname": fname_wav,
+        "hname": f"{fname_root}_{fenum[0]}.html",
+        "nframes": num_frames,
+        "lconf": args.lconf,
+        "mconf": args.mconf,
+        "hconf": args.hconf,
+        "overlap": args.overlap,
+        "fframe": fenum[1],
+        } for fenum in enumerate(range(0, frames, num_frames))
+    ]
     
     with ProcessPoolExecutor(cpus) as executor:
-        for f, t in  executor.map(task_work, model_strs, wnames, hnames, r, nframes, confs):
+        for f, t in  executor.map(task_work, cfgs):
             logging.info(f"{f} ha tardado {t}")
 
-    build_html_file(fname_html, fname_meta, hnames)
+    # En cfgs se utiliza list comprehension
+    # en hnames, generator comprehension, porque no vamos
+    # a necesitar más que una vez los hnames
+    hnames = (cfg["hname"] for cfg in cfgs)
+
+    build_html_file(fname_html, fname_meta, hnames, duration)
     
 
 if __name__ == "__main__":

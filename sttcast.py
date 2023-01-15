@@ -16,7 +16,7 @@ from multiprocessing import Value
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
 WAVFRATE = 16000
-NREADFRAMES = 4000
+RWAVFRAMES = 4000
 SECONDS = 600
 HCONF = 0.9
 MCONF = 0.6
@@ -80,6 +80,8 @@ def get_pars():
                         help=f"umbral de confianza baja. Por defecto, {LCONF}")
     parser.add_argument("-o", "--overlap", type=float, default=OVERLAPTIME,
                         help=f"tiempo de solapamientro entre fragmentos. Por defecto, {OVERLAPTIME}")
+    parser.add_argument("-r", "--rwavframes", type=int, default=RWAVFRAMES,
+                        help=f"número de tramas en cada lectura del wav. Por defecto, {RWAVFRAMES}")
 
     return parser.parse_args()
 
@@ -129,6 +131,9 @@ def task_work(cfg):
         overlap_frames = cfg["overlap"] * frate
         left_frames = cfg["nframes"] + overlap_frames
 
+        # Tramas en cada lectura del wav
+        rwavframes = cfg["rwavframes"]
+
         # Se coloca el "puntero de lectura" del wav en la trama
         # correspondiente al presente frragmento
         wf.setpos(fframe)
@@ -138,8 +143,8 @@ def task_work(cfg):
             os.remove(fname_html)
         with open(fname_html, "w") as html:
             while left_frames > 0:
-                data = wf.readframes(NREADFRAMES)
-                left_frames -= NREADFRAMES
+                data = wf.readframes(rwavframes)
+                left_frames -= rwavframes
                 if len(data) == 0:
                     break
                 if rec.AcceptWaveform(data):
@@ -214,6 +219,7 @@ def main():
         "hconf": args.hconf,
         "overlap": args.overlap,
         "fframe": fenum[1],
+        "rwavframes": args.rwavframes,
         } for fenum in enumerate(range(0, frames, num_frames))
     ]
     
@@ -227,6 +233,7 @@ def main():
     hnames = (cfg["hname"] for cfg in cfgs)
 
     build_html_file(fname_html, fname_meta, hnames, duration)
+    logging.info(f"Terminado de procesar mp3 de duración {duration}")
     
 
 if __name__ == "__main__":
@@ -234,4 +241,4 @@ if __name__ == "__main__":
     stime = datetime.datetime.now()
     main()
     etime = datetime.datetime.now()
-    logging.info(f"Proceso ha durado {etime - stime} segundos")
+    logging.info(f"Ejecución del programa ha tardado {etime - stime}")

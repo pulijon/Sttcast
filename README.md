@@ -18,6 +18,10 @@ The requirements for **sttcast.py** are as follows:
 * Vosk library (pip install vosk)
 * Wave library (pip install wave)
 * A vosk model for the desired language (you may find a lot of them in [alfphacephei](https://alphacephei.com/vosk/models). It has been tested with the Spanish model [vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip))
+* Whisper library 
+```bash
+pip install git+https://github.com/openai/whisper.git
+```
 
 # How does sttcast.py work
 
@@ -38,6 +42,19 @@ Once all fragments have been transcribed, the last step is the integration of al
 
 Metadata from mp3 is included in the title of the html
 
+# Use of OpenAI whisper library
+
+sttapi has an option (--whisper) to use the OpenAI whisper library instead of the vosk-kaldi one.
+
+If you want to make transcription with whisper, you shoud take into account:
+
+* Whisper is able to work with different models. You can see them with the --whmodel option
+* With the --whisper option, you can take advantage of the CUDA acceleration (option --whdevice cuda) or not (--whdevice cpu). Without CUDA, whisper manages multiprocessing, so you will not notice any benefits configuring multiple cpus.
+* Transcriptions are very slow without CUDA acceleration
+* CUDA acceleration requires a good CUDA platform. 
+* CUDA acceleation does benefit from multiple CPUS (option --cpu) 
+
+
 # Use
 
 **sttcast.py** is a python module that runs with the help of a 3.x interpreter. 
@@ -47,8 +64,10 @@ It is has a very simple CLI interface that is autodocumented in the help (option
 You should consider the location of model files and mp3 files in RAM drives to get more speed.
 
 ```bash
-$ python3 sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] fname
+$ ./sttcast.py -h
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] [-r RWAVFRAMES] [-w]
+                  [--whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}] [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE]
+                  fname
 
 positional arguments:
   fname                 fichero de audio a transcribir
@@ -68,6 +87,16 @@ options:
                         umbral de confianza baja. Por defecto, 0.4
   -o OVERLAP, --overlap OVERLAP
                         tiempo de solapamientro entre fragmentos. Por defecto, 1.5
+  -r RWAVFRAMES, --rwavframes RWAVFRAMES
+                        número de tramas en cada lectura del wav. Por defecto, 4000
+  -w, --whisper         utilización de motor whisper
+  --whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}
+                        modelo whisper a utilizar. Por defecto, small
+  --whdevice {cuda,cpu}
+                        aceleración a utilizar. Por defecto, cuda
+  --whlanguage WHLANGUAGE
+                        lenguaje a utilizar. Por defecto, es
+
 
 ```
 

@@ -8,13 +8,18 @@ import json
 import datetime
 import argparse
 import os
+import glob
 import subprocess
 import configparser
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Value
+import whisper
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
+WHMODEL = "small"
+WHDEVICE = "cuda"
+WHLANGUAGE = "es"
 WAVFRATE = 16000
 RWAVFRAMES = 4000
 SECONDS = 600
@@ -22,6 +27,18 @@ HCONF = 0.9
 MCONF = 0.6
 LCONF = 0.4
 OVERLAPTIME = 1.5
+
+# Variables globales reutilizables con distintos motores
+cpus = max(os.cpu_count() - 2, 1)
+seconds = SECONDS
+fname = ""
+fname_root = ""
+fname_extension = ""
+fname_html = ""
+fname_meta = ""
+fname_wav = ""
+duration = 0.0
+
 
 HTMLHEADER = """<html>
 
@@ -82,6 +99,15 @@ def get_pars():
                         help=f"tiempo de solapamientro entre fragmentos. Por defecto, {OVERLAPTIME}")
     parser.add_argument("-r", "--rwavframes", type=int, default=RWAVFRAMES,
                         help=f"número de tramas en cada lectura del wav. Por defecto, {RWAVFRAMES}")
+    parser.add_argument("-w", "--whisper", action='store_true',
+                        help=f"utilización de motor whisper")
+    parser.add_argument("--whmodel", choices=whisper.available_models(), type=str, default=WHMODEL,
+                        help=f"modelo whisper a utilizar. Por defecto, {WHMODEL}")
+    parser.add_argument("--whdevice", choices=['cuda', 'cpu'], default=WHDEVICE,
+                        help=f"aceleración a utilizar. Por defecto, {WHDEVICE}")
+    parser.add_argument("--whlanguage", default=WHLANGUAGE,
+                        help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
+
 
     return parser.parse_args()
 
@@ -109,7 +135,7 @@ def get_rate_and_frames(fname_wav):
     with wave.open(fname_wav, "rb") as wf:
         return wf.getframerate(), wf.getnframes()
 
-def task_work(cfg):   
+def vosk_task_work(cfg):   
     logcfg(__file__)
     stime = datetime.datetime.now()
     with wave.open(cfg["wname"], "rb") as wf:
@@ -138,10 +164,10 @@ def task_work(cfg):
         # correspondiente al presente frragmento
         wf.setpos(fframe)
 
-        fname_html = cfg["hname"]
-        if os.path.exists(fname_html):
-            os.remove(fname_html)
-        with open(fname_html, "w") as html:
+        hname = cfg["hname"]
+        if os.path.exists(hname):
+            os.remove(hname)
+        with open(hname, "w") as html:
             while left_frames > 0:
                 data = wf.readframes(rwavframes)
                 left_frames -= rwavframes
@@ -154,7 +180,7 @@ def task_work(cfg):
                         continue
                     start_time = res["result"][0]["start"] + offset_seconds
                     end_time = res["result"][-1]["end"] + offset_seconds
-                    logging.debug(f"{fname_html} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
+                    logging.debug(f"{hname} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
                     html.write("<p>\n")
                     html.write(f"{time_str(start_time, end_time)}")
                     for r in res["result"]:
@@ -170,17 +196,41 @@ def task_work(cfg):
                             html.write(w)
                         html.write(" ")
                     html.write("</p>\n")
-    return fname_html, datetime.datetime.now() - stime
+    return hname, datetime.datetime.now() - stime
 
-def build_html_file(fname_html, fname_meta, hnames, duration):
+def whisper_task_work(cfg):
+    logcfg(__file__)
+    stime = datetime.datetime.now()
+
+    model = whisper.load_model(cfg['whmodel'], device=cfg['whdevice'])
+    result = model.transcribe(cfg["fname"], language=cfg['whlanguage'])
+    offset_seconds = float(cfg['cut'] * cfg['seconds'])
+    logging.debug(result)
+
+    hname = cfg["hname"]
+    if os.path.exists(hname):
+        os.remove(hname)
+    
+    with open(hname, "w") as html:
+        for s in result['segments']:
+            start_time = float(s['start']) + offset_seconds
+            end_time = float(s['end'])+ offset_seconds
+            html.write("<p>\n")
+            html.write(f"{time_str(start_time, end_time)}")
+            html.write(f"{s['text']}")
+            html.write("</p>\n")
+    return hname, datetime.datetime.now() - stime
+
+
+def build_html_file(fname_html, fname_meta, hnames):
     if os.path.exists(fname_html):
         os.remove(fname_html)
     with open(fname_html, "w") as html:
+                     
         html.write(HTMLHEADER)
         config = configparser.ConfigParser()
         with open (fname_meta, "r") as cf:
             config.read_string("[global]\n" + cf.read())
-        config["global"]["duration"] = str(duration)
         hmsg = ""
         rold = '\\;'
         rnew = '\n</li><li>\n'
@@ -192,20 +242,16 @@ def build_html_file(fname_html, fname_meta, hnames, duration):
                 html.write(hnf.read())
         html.write(HTMLFOOTER)
 
-def main():
-    args = get_pars()
-    fname = args.fname
-    cpus = args.cpus
-    seconds = int(args.seconds)
-    fname_root = os.path.splitext(fname)[0]
-    fname_meta = fname_root + ".meta"
+def launch_vosk_tasks(args):
+    global cpus, seconds, duration
+    global fname, fname_root
+
     fname_wav = fname_root + ".wav"
-    fname_html = fname_root + ".html"
-    create_meta_file(fname, fname_meta)
     create_wav_file(fname, fname_wav)
     rate, frames = get_rate_and_frames(fname_wav)
     total_seconds = frames / rate
     duration = datetime.timedelta(seconds=total_seconds)
+
     num_frames = seconds * rate
     fframes = range(0, frames, num_frames)
     cfgs = [
@@ -224,15 +270,81 @@ def main():
     ]
     
     with ProcessPoolExecutor(cpus) as executor:
-        for f, t in  executor.map(task_work, cfgs):
+        for f, t in  executor.map(vosk_task_work, cfgs):
             logging.info(f"{f} ha tardado {t}")
-
     # En cfgs se utiliza list comprehension
     # en hnames, generator comprehension, porque no vamos
     # a necesitar más que una vez los hnames
-    hnames = (cfg["hname"] for cfg in cfgs)
+    return (cfg["hname"] for cfg in cfgs)
 
-    build_html_file(fname_html, fname_meta, hnames, duration)
+def split_podcast(fname_root, fname_extension, seconds):
+    wildcard_mp3_files = f"{fname_root}_???{fname_extension}"
+    # Se borran ficheros con formatos similares a los que se van a crear
+    files_to_remove = glob.glob(wildcard_mp3_files)
+    for f in files_to_remove:
+        os.remove(f)
+    
+    subprocess.run(["ffmpeg", 
+                        "-i", fname, 
+                        "-f", "segment",
+                        "-segment_time", str(seconds),
+                        "-segment_start_number", str(1),
+                        "-c", "copy", 
+                        f"{fname_root}_%03d{fname_extension}"
+                        ])
+    return glob.glob(wildcard_mp3_files)
+
+def launch_whisper_tasks(args):
+    global cpus, seconds, duration
+    global fname, fname_root
+
+    mp3files = split_podcast(fname_root, fname_extension, seconds)
+
+    cfgs = [
+        {
+        "whmodel": args.whmodel,
+        "whdevice": args.whdevice,
+        "whlanguage": args.whlanguage,
+        "hname": f"{fname_root}_{fenum[0]}.html",
+        "fname": fenum[1],
+        "cut": fenum[0],
+        "seconds": args.seconds,
+        } for fenum in enumerate(mp3files)
+    ]
+
+    with ProcessPoolExecutor(cpus) as executor:
+        for f, t in  executor.map(whisper_task_work, cfgs):
+            logging.info(f"{f} ha tardado {t}")
+
+    return (cfg["hname"] for cfg in cfgs)
+   
+def configure_globals(args):
+    global cpus, seconds
+    global fname, fname_root, fname_extension, fname_meta, fname_html
+
+    cpus = args.cpus
+    seconds = int(args.seconds)
+    fname = args.fname
+    fname_root, fname_extension = os.path.splitext(fname)
+    fname_meta = fname_root + ".meta"
+    fname_html = fname_root + ".html"
+
+
+
+def main():
+    global fname_html, fname_meta, fname
+
+    args = get_pars()
+    configure_globals(args)
+    
+    whisper = args.whisper
+    create_meta_file(fname, fname_meta)
+    if whisper:
+        hnames = launch_whisper_tasks(args)
+    else:
+        hnames = launch_vosk_tasks(args)
+    
+    build_html_file(fname_html, fname_meta, hnames )
     logging.info(f"Terminado de procesar mp3 de duración {duration}")
     
 

@@ -100,6 +100,8 @@ options:
 
 ```
 
-# Screenshot
+# Screenshots
 
 ![](sttcast_example.png)
+
+![comparation vosk - whisper](comparation_vosk_whisper.png)

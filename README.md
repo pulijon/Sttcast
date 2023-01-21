@@ -44,7 +44,7 @@ Metadata from mp3 is included in the title of the html
 
 # Use of OpenAI whisper library
 
-sttapi has an option (--whisper) to use the OpenAI whisper library instead of the vosk-kaldi one.
+**sttcast** has an option (--whisper) to use the OpenAI whisper library instead of the vosk-kaldi one.
 
 If you want to make transcription with whisper, you shoud take into account:
 

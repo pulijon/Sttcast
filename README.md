@@ -36,7 +36,7 @@ Each fragment is transcribed in a different HTML file. Words of the trascribed t
 * Medium confidence (text is shown in orange)
 * Low confidence (text is shown in red)
 
-Fragments of text are also tagged with time stamps to facilitate searching and listening from the mp3 file.
+Fragments of text are also tagged with time stamps to facilitate searching and listening from the mp3 file. If the --audio-tags option is selected, there is also an html5 audio player configured to listen to the file at the beginning of the segment
 
 Once all fragments have been transcribed, the last step is the integration of all of them in an unique html file.
 
@@ -96,7 +96,7 @@ options:
                         aceleración a utilizar. Por defecto, cuda
   --whlanguage WHLANGUAGE
                         lenguaje a utilizar. Por defecto, es
-
+  -a  --audio-tags      inclusión de audio tags    
 
 ```
 
@@ -105,3 +105,5 @@ options:
 ![](sttcast_example.png)
 
 ![comparation vosk - whisper](comparation_vosk_whisper.png)
+
+![exanoke audio tag](example_audio_tag.png)

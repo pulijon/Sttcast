@@ -79,6 +79,12 @@ def time_str(st,end):
     return class_str(f"[{datetime.timedelta(seconds=float(st))} - "
                       f"{datetime.timedelta(seconds=float(end))}]<br>\n", "time")
 
+def audio_tag(mp3file, seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f'<audio controls src="{mp3file}#t={h:02d}:{m:02d}:{s:02d}"></audio>\n'
+
+
 def get_pars():
     parser = argparse.ArgumentParser()
     parser.add_argument("fname", type=str, 
@@ -107,6 +113,8 @@ def get_pars():
                         help=f"aceleración a utilizar. Por defecto, {WHDEVICE}")
     parser.add_argument("--whlanguage", default=WHLANGUAGE,
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
+    parser.add_argument("-a", "--audio-tags", action='store_true',
+                        help=f"inclusión de audio tags")
 
 
     return parser.parse_args()
@@ -183,6 +191,8 @@ def vosk_task_work(cfg):
                     logging.debug(f"{hname} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
                     html.write("<p>\n")
                     html.write(f"{time_str(start_time, end_time)}")
+                    if cfg['audio_tags']:
+                        html.write(audio_tag(cfg['mp3file'], start_time))
                     for r in res["result"]:
                         w = r["word"]
                         c = r["conf"]
@@ -217,6 +227,8 @@ def whisper_task_work(cfg):
             end_time = float(s['end'])+ offset_seconds
             html.write("<p>\n")
             html.write(f"{time_str(start_time, end_time)}")
+            if cfg['audio_tags']:
+                html.write(audio_tag(cfg['mp3file'], start_time))
             html.write(f"{s['text']}")
             html.write("</p>\n")
     return hname, datetime.datetime.now() - stime
@@ -236,7 +248,7 @@ def build_html_file(fname_html, fname_meta, hnames):
         rnew = '\n</li><li>\n'
         for key in config['global']:
             hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold,rnew)}<br></li></ul>\n"
-        html.write(f'<h2 class="title"><br>{hmsg} </h1>\n')
+        html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
         for hn in hnames:
             with open(hn, "r") as hnf:
                 html.write(hnf.read())
@@ -266,6 +278,8 @@ def launch_vosk_tasks(args):
         "overlap": args.overlap,
         "fframe": fenum[1],
         "rwavframes": args.rwavframes,
+        "audio_tags": args.audio_tags,
+        "mp3file": fname,
         } for fenum in enumerate(range(0, frames, num_frames))
     ]
     
@@ -309,6 +323,8 @@ def launch_whisper_tasks(args):
         "fname": fenum[1],
         "cut": fenum[0],
         "seconds": args.seconds,
+        "audio_tags": args.audio_tags,
+        "mp3file": fname,
         } for fenum in enumerate(mp3files)
     ]
 

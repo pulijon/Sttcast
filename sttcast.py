@@ -279,7 +279,7 @@ def launch_vosk_tasks(args):
         "fframe": fenum[1],
         "rwavframes": args.rwavframes,
         "audio_tags": args.audio_tags,
-        "mp3file": fname,
+        "mp3file": os.path.basename(fname),
         } for fenum in enumerate(range(0, frames, num_frames))
     ]
     
@@ -324,7 +324,7 @@ def launch_whisper_tasks(args):
         "cut": fenum[0],
         "seconds": args.seconds,
         "audio_tags": args.audio_tags,
-        "mp3file": fname,
+        "mp3file": os.path.basename(fname),
         } for fenum in enumerate(mp3files)
     ]
 

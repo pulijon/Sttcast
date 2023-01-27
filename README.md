@@ -106,4 +106,4 @@ options:
 
 ![comparation vosk - whisper](comparation_vosk_whisper.png)
 
-![exanoke audio tag](example_audio_tag.png)
+![example audio tag](example_audio_tag.png)

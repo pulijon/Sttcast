@@ -23,6 +23,13 @@ The requirements for **sttcast.py** are as follows:
 pip install git+https://github.com/openai/whisper.git
 ```
 
+The tool **add_audio_tag.py** adds audio controls to a transcribed html without **--add-audio-tags** option. It requires:
+
+* BeautifulSoup
+  ```bash
+  pip install bs4
+  ```
+
 # How does sttcast.py work
 
 As transcribing is a CPU intensive operation, **sttcast.py** makes use of multiprocessing in Python (you probably have known about GIL blues for multithreading or coroutines in Python). **sttcast.py** splits the entire work (the transcription of a podcast, perhaps of several hours) in fragments of s seconds (s is an optional paramenter, 600 seconds by default). 
@@ -36,7 +43,15 @@ Each fragment is transcribed in a different HTML file. Words of the trascribed t
 * Medium confidence (text is shown in orange)
 * Low confidence (text is shown in red)
 
-Fragments of text are also tagged with time stamps to facilitate searching and listening from the mp3 file. If the --audio-tags option is selected, there is also an html5 audio player configured to listen to the file at the beginning of the segment
+Fragments of text are also tagged with time stamps to facilitate searching and listening from the mp3 file. If the --audio-tags option is selected, there is also an html5 audio player configured to listen to the file at the beginning of the segment.
+
+The tool **add_audio_tag.py** adds audio controls to a transcribed html without the **--audio-tags**. It requires:
+
+* BeautifulSoup
+  ```bash
+  pip install bs4
+  ```
+
 
 Once all fragments have been transcribed, the last step is the integration of all of them in an unique html file.
 
@@ -81,7 +96,7 @@ options:
   -c CPUS, --cpus CPUS  CPUs (tamaño del pool de procesos) a utilizar. Por defecto, 10
   -i HCONF, --hconf HCONF
                         umbral de confianza alta. Por defecto, 0.9
-  -n MCONF, --mconf MCONF
+  -n MCONF, --mconf MCONF 
                         umbral de confianza media. Por defecto, 0.6
   -l LCONF, --lconf LCONF
                         umbral de confianza baja. Por defecto, 0.4
@@ -97,6 +112,22 @@ options:
   --whlanguage WHLANGUAGE
                         lenguaje a utilizar. Por defecto, es
   -a  --audio-tags      inclusión de audio tags    
+
+```
+
+**add_audio_tag.py** 
+
+```bash
+$ ./add_audio_tag.py -h
+usage: add_audio_tag.py [-h] [-o OUTPUT] html_file
+
+positional arguments:
+  html_file             Fichero html para añadir audio tags.
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Fichero html resultado.
 
 ```
 

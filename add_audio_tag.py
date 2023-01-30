@@ -25,7 +25,8 @@ def main():
     args = get_pars()
     html_file = args.html_file
     ep = os.path.splitext(html_file)[0]
-    mp3_file = f"{ep}.mp3"
+    ep_base = os.path.basename(ep)
+    mp3_file = f"{ep_base}.mp3"
     if args.output is None:
         html_audio_file = f"{ep}_audio.html"
     else:

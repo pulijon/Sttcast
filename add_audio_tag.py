@@ -9,24 +9,24 @@ import argparse
 from util import logcfg
 import logging
 
-
-def audio_tag(tstr):
-    return f'<audio controls src="{htmlfile}#t={tstr}"></audio>\n'
-
 def get_pars():
     parser = argparse.ArgumentParser()
     parser.add_argument("html_file", type=str, 
                         help=f"Fichero html para añadir audio tags.")
+    parser.add_argument("--mp3-file", type=str, 
+                        help=f"Fichero html para añadir audio tags.")
     parser.add_argument("-o", "--output", type=str, 
-                        help=f"Fichero html al que añadir audio tags.")
+                        help=f"Fichero mp3 al que se refieren los audio tags.")
     return parser.parse_args()
 
 def main():
     args = get_pars()
     html_file = args.html_file
     ep = os.path.splitext(html_file)[0]
-    ep_base = os.path.basename(ep)
-    mp3_file = f"{ep_base}.mp3"
+    mp3_file = args.mp3_file
+    if mp3_file is None:
+        mp3_file = f"{ep}.mp3" 
+    mp3_file_base = os.path.basename(mp3_file)
     if args.output is None:
         html_audio_file = f"{ep}_audio.html"
     else:
@@ -43,7 +43,7 @@ def main():
         tbm = m.group('tbm').zfill(2)
         tbs = m.group('tbs').zfill(2)
         tbstr = f"{tbh}:{tbm}:{tbs}"
-        new_tag = soup.new_tag("audio", controls=None, src=f'{mp3_file}#t={tbstr}')
+        new_tag = soup.new_tag("audio", controls=None, src=f'{mp3_file_base}#t={tbstr}')
         ts.append(new_tag)
     
     with open(html_audio_file,"w") as fp:

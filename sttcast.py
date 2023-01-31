@@ -115,6 +115,8 @@ def get_pars():
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
     parser.add_argument("-a", "--audio-tags", action='store_true',
                         help=f"inclusión de audio tags")
+    parser.add_argument("--html-file", 
+                        help=f"fichero HTML con el resultado. Por defecto el fichero de entrada con extensión html")
 
 
     return parser.parse_args()
@@ -343,7 +345,10 @@ def configure_globals(args):
     fname = args.fname
     fname_root, fname_extension = os.path.splitext(fname)
     fname_meta = fname_root + ".meta"
-    fname_html = fname_root + ".html"
+    if args.html_file is not None:
+        fname_html = args.html_file
+    else:
+        fname_html = fname_root + ".html"
 
 
 

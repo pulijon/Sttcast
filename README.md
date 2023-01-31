@@ -119,15 +119,16 @@ options:
 
 ```bash
 $ ./add_audio_tag.py -h
-usage: add_audio_tag.py [-h] [-o OUTPUT] html_file
+usage: add_audio_tag.py [-h] [--mp3-file MP3_FILE] [-o OUTPUT] html_file
 
 positional arguments:
   html_file             Fichero html para añadir audio tags.
 
 options:
   -h, --help            show this help message and exit
+  --mp3-file MP3_FILE   Fichero html para añadir audio tags.
   -o OUTPUT, --output OUTPUT
-                        Fichero html resultado.
+                        Fichero mp3 al que se refieren los audio tags.
 
 ```
 

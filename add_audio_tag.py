@@ -12,11 +12,11 @@ import logging
 def get_pars():
     parser = argparse.ArgumentParser()
     parser.add_argument("html_file", type=str, 
-                        help=f"Fichero html para añadir audio tags.")
+                        help=f"Fichero html para añadir audio tags")
     parser.add_argument("--mp3-file", type=str, 
-                        help=f"Fichero html para añadir audio tags.")
+                        help=f"Fichero mp3 al que se refieren los audio tags")
     parser.add_argument("-o", "--output", type=str, 
-                        help=f"Fichero mp3 al que se refieren los audio tags.")
+                        help=f"Fichero resultado tras añadir los audio tags")
     return parser.parse_args()
 
 def main():

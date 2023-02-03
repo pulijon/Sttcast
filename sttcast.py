@@ -218,6 +218,7 @@ def whisper_task_work(cfg):
     result = model.transcribe(cfg["fname"], language=cfg['whlanguage'])
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
     logging.debug(result)
+    os.remove(cfg['fname'])
 
     hname = cfg["hname"]
     if os.path.exists(hname):
@@ -254,6 +255,7 @@ def build_html_file(fname_html, fname_meta, hnames):
         for hn in hnames:
             with open(hn, "r") as hnf:
                 html.write(hnf.read())
+            os.remove(hn)
         html.write(HTMLFOOTER)
 
 def launch_vosk_tasks(args):

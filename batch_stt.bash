@@ -15,7 +15,7 @@ prcdir=/mnt/ram
 
 export IFS=$'\n'
 
-for episode in $(find "$srcdir" -maxdepth 1 -name "*.mp3")
+for episode in $(find "$srcdir" -maxdepth 1 -name "*.mp3" | sort -r)
 do
 	mp3=$(basename $episode)
 	ep=${mp3%.mp3}

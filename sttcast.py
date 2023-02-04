@@ -14,6 +14,7 @@ import configparser
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Value
 import whisper
+from timeinterval import TimeInterval, seconds_str
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -27,6 +28,8 @@ HCONF = 0.9
 MCONF = 0.6
 LCONF = 0.4
 OVERLAPTIME = 1.5
+MINOFFSET = 0
+MAXGAP = 0.8
 
 # Variables globales reutilizables con distintos motores
 cpus = max(os.cpu_count() - 2, 1)
@@ -75,14 +78,15 @@ HTMLFOOTER = """
 def class_str(st, cl):
     return f'<span class="{cl}">{st}</span>'
 
-def time_str(st,end):
-    return class_str(f"[{datetime.timedelta(seconds=float(st))} - "
-                      f"{datetime.timedelta(seconds=float(end))}]<br>\n", "time")
+# def time_str(st,end):
+#     return class_str(f"[{datetime.timedelta(seconds=float(st))} - "
+#                       f"{datetime.timedelta(seconds=float(end))}]<br>\n", "time")
 
 def audio_tag(mp3file, seconds):
-    m, s = divmod(int(seconds), 60)
-    h, m = divmod(m, 60)
-    return f'<audio controls src="{mp3file}#t={h:02d}:{m:02d}:{s:02d}"></audio>\n'
+    # m, s = divmod(int(seconds), 60)
+    # h, m = divmod(m, 60)
+    # return f'<audio controls src="{mp3file}#t={h:02d}:{m:02d}:{s:02d}"></audio>\n'
+    return f'<audio controls src="{mp3file}#t={seconds_str(seconds, with_dec=False)}"></audio>\n'
 
 
 def get_pars():
@@ -117,6 +121,12 @@ def get_pars():
                         help=f"inclusión de audio tags")
     parser.add_argument("--html-file", 
                         help=f"fichero HTML con el resultado. Por defecto el fichero de entrada con extensión html")
+    parser.add_argument("--min-offset", type=float, default=MINOFFSET, 
+                        help=f"diferencia mínima entre inicios de marcas de tiempo. Por defecto {MINOFFSET}")
+    parser.add_argument("--max-gap", type=float, default=MAXGAP, 
+                        help=f"diferencia máxima entre el inicio de un segmento y el final del anterior." 
+                             f" Por encima de esta diferencia, se pone una nueva marca de tiempo . Por defecto {MAXGAP}")
+
 
 
     return parser.parse_args()
@@ -145,6 +155,30 @@ def get_rate_and_frames(fname_wav):
     with wave.open(fname_wav, "rb") as wf:
         return wf.getframerate(), wf.getnframes()
 
+def add_result_to_transcription(transcription, result, lconf, mconf, hconf):
+    for r in result:
+        w = r["word"]   
+        c = r["conf"]
+        if c < lconf:
+            transcription += class_str(w, "low")
+        elif c < mconf:
+            transcription += class_str(w, "medium")
+        elif c < hconf:
+            transcription += class_str(w, "high")
+        else:
+            transcription += w
+        transcription += " "
+    return transcription
+
+def write_transcription(html, transcription, ti, audio_tag, mp3file):
+    html.write("\n<p>\n")
+    html.write(f"{class_str(ti, 'time')}<br>\n")
+    if audio_tag:
+        html.write(audio_tag(mp3file, ti.start))
+    html.write(transcription)
+    html.write("\n</p>\n")
+
+
 def vosk_task_work(cfg):   
     logcfg(__file__)
     stime = datetime.datetime.now()
@@ -158,6 +192,8 @@ def vosk_task_work(cfg):
         # en función de la primera trama a procesar y de la velocidad
         fframe = cfg["fframe"]
         offset_seconds = fframe / frate
+        min_offset = cfg["min_offset"]
+        max_gap = cfg["max_gap"]
 
         rec.SetWords(True)
         rec.SetPartialWords(True)
@@ -178,36 +214,77 @@ def vosk_task_work(cfg):
         if os.path.exists(hname):
             os.remove(hname)
         with open(hname, "w") as html:
+            last_ti = None
             while left_frames > 0:
                 data = wf.readframes(rwavframes)
                 left_frames -= rwavframes
                 if len(data) == 0:
                     break
+                last_accepted = True
                 if rec.AcceptWaveform(data):
+                    last_accepted = True
                     res = json.loads(rec.Result())
                     if ("result" not in res) or \
                        (len(res["result"])) == 0:
                         continue
                     start_time = res["result"][0]["start"] + offset_seconds
                     end_time = res["result"][-1]["end"] + offset_seconds
+                    new_ti = TimeInterval(start_time, end_time)
                     logging.debug(f"{hname} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
-                    html.write("<p>\n")
-                    html.write(f"{time_str(start_time, end_time)}")
-                    if cfg['audio_tags']:
-                        html.write(audio_tag(cfg['mp3file'], start_time))
-                    for r in res["result"]:
-                        w = r["word"]
-                        c = r["conf"]
-                        if c < cfg["lconf"]:
-                            html.write(class_str(w, "low"))
-                        elif c < cfg["mconf"]:
-                            html.write(class_str(w, "medium"))
-                        elif c < cfg["hconf"]:
-                            html.write(class_str(w, "high"))
-                        else:
-                            html.write(w)
-                        html.write(" ")
-                    html.write("</p>\n")
+                    gap = new_ti.gap(last_ti)
+                    offset = new_ti.offset(last_ti)
+                    logging.debug(f"gap = {gap} - offset = {offset}")
+ 
+                    if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
+                        last_ti.extend(new_ti)
+                        logging.debug(f"Alargando last_ti: {last_ti}")
+                    else:
+                        if last_ti != None:
+                            write_transcription(html, transcription, last_ti, 
+                                                cfg['audio_tags'], cfg['mp3file'])
+
+                        last_ti = new_ti
+                        logging.debug(f"Nuevo last_ti: {last_ti}")
+                        transcription = ""
+
+                    transcription = add_result_to_transcription(transcription, res['result'],
+                                                                cfg['lconf'], cfg['mconf'], cfg['hconf'])                   
+                    
+                else:
+                    last_accepted = False
+            # Si la última lectura no cerró un párrafo, este párrafo podría perderse
+            # Como mal menor, se acepta el resultado parcial
+            # TBD - Reutilizar el código duplicado con una función process_result(html, result, last_ti) que devuelva un TimeInterval
+            if not last_accepted:
+                res = json.loads(rec.PartialResult())
+                if res["partial"] != "":
+                    start_time = res["partial_result"][0]["start"] + offset_seconds
+                    end_time = res["partial_result"][-1]["end"] + offset_seconds
+                    new_ti = TimeInterval(start_time, end_time)
+                    gap = new_ti.gap(last_ti)
+                    offset = new_ti.offset(last_ti)
+                    logging.debug(f"gap = {gap} - offset = {offset}")
+ 
+                    if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
+                        last_ti.extend(new_ti)
+                        logging.debug(f"Alargando last_ti: {last_ti}")
+                    else:
+                        if last_ti != None:
+                            write_transcription(html, transcription, last_ti, 
+                                                cfg['audio_tags'], cfg['mp3file'])
+                        last_ti = new_ti
+                        logging.debug(f"Nuevo last_ti: {last_ti}")
+                        transcription = ""
+ 
+                    add_result_to_transcription(transcription, res["partial_result"],
+                                                cfg['lconf'], cfg['mconf'], cfg['hconf'])                   
+
+
+            write_transcription(html, transcription, last_ti, 
+                                cfg['audio_tags'], cfg['mp3file'])
+
+
+
     return hname, datetime.datetime.now() - stime
 
 def whisper_task_work(cfg):
@@ -217,6 +294,9 @@ def whisper_task_work(cfg):
     model = whisper.load_model(cfg['whmodel'], device=cfg['whdevice'])
     result = model.transcribe(cfg["fname"], language=cfg['whlanguage'])
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
+    min_offset = cfg["min_offset"]
+    max_gap = cfg["max_gap"]
+
     logging.debug(result)
     os.remove(cfg['fname'])
 
@@ -225,15 +305,33 @@ def whisper_task_work(cfg):
         os.remove(hname)
     
     with open(hname, "w") as html:
+        last_ti = None
         for s in result['segments']:
             start_time = float(s['start']) + offset_seconds
             end_time = float(s['end'])+ offset_seconds
-            html.write("<p>\n")
-            html.write(f"{time_str(start_time, end_time)}")
-            if cfg['audio_tags']:
-                html.write(audio_tag(cfg['mp3file'], start_time))
-            html.write(f"{s['text']}")
-            html.write("</p>\n")
+            new_ti = TimeInterval(start_time, end_time)
+            gap = new_ti.gap(last_ti)
+            offset = new_ti.offset(last_ti)
+            logging.debug(f"gap = {gap} - offset = {offset}")
+            if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
+                last_ti.extend(new_ti)
+                logging.debug(f"Alargando last_ti: {last_ti}")
+            else:
+                if last_ti != None:
+                    write_transcription(html, transcription, last_ti, 
+                                        cfg['audio_tags'], cfg['mp3file'])
+                last_ti = new_ti
+                logging.debug(f"Nuevo last_ti: {last_ti}")
+                transcription = ""
+            transcription += (f"{s['text']}")
+
+            # html.write(f"{class_str(last_ti, 'time')}<br>\n")
+            # if cfg['audio_tags']:
+            #     html.write(audio_tag(cfg['mp3file'], start_time))
+            # transcription += (f"{s['text']}")
+        write_transcription(html, transcription, last_ti, 
+                    cfg['audio_tags'], cfg['mp3file'])
+
     return hname, datetime.datetime.now() - stime
 
 
@@ -284,6 +382,8 @@ def launch_vosk_tasks(args):
         "rwavframes": args.rwavframes,
         "audio_tags": args.audio_tags,
         "mp3file": os.path.basename(fname),
+        "min_offset": args.min_offset,
+        "max_gap": args.max_gap,
         } for fenum in enumerate(range(0, frames, num_frames))
     ]
     
@@ -310,7 +410,7 @@ def split_podcast(fname_root, fname_extension, seconds):
                         "-c", "copy", 
                         f"{fname_root}_%03d{fname_extension}"
                         ])
-    return glob.glob(wildcard_mp3_files)
+    return sorted(glob.glob(wildcard_mp3_files))
 
 def launch_whisper_tasks(args):
     global cpus, seconds, duration
@@ -329,6 +429,8 @@ def launch_whisper_tasks(args):
         "seconds": args.seconds,
         "audio_tags": args.audio_tags,
         "mp3file": os.path.basename(fname),
+        "min_offset": args.min_offset,
+        "max_gap": args.max_gap,
         } for fenum in enumerate(mp3files)
     ]
 

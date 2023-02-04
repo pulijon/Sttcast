@@ -80,8 +80,11 @@ You should consider the location of model files and mp3 files in RAM drives to g
 
 ```bash
 $ ./sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] [-r RWAVFRAMES] [-w]
-                  [--whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}] [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE]
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF]
+                  [-o OVERLAP] [-r RWAVFRAMES] [-w]
+                  [--whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}]
+                  [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE] [-a]
+                  [--html-file HTML_FILE] [--min-offset MIN_OFFSET] [--max-gap MAX_GAP]
                   fname
 
 positional arguments:
@@ -96,7 +99,7 @@ options:
   -c CPUS, --cpus CPUS  CPUs (tamaño del pool de procesos) a utilizar. Por defecto, 10
   -i HCONF, --hconf HCONF
                         umbral de confianza alta. Por defecto, 0.9
-  -n MCONF, --mconf MCONF 
+  -n MCONF, --mconf MCONF
                         umbral de confianza media. Por defecto, 0.6
   -l LCONF, --lconf LCONF
                         umbral de confianza baja. Por defecto, 0.4
@@ -111,7 +114,15 @@ options:
                         aceleración a utilizar. Por defecto, cuda
   --whlanguage WHLANGUAGE
                         lenguaje a utilizar. Por defecto, es
-  -a  --audio-tags      inclusión de audio tags    
+  -a, --audio-tags      inclusión de audio tags
+  --html-file HTML_FILE
+                        fichero HTML con el resultado. Por defecto el fichero de entrada con
+                        extensión html
+  --min-offset MIN_OFFSET
+                        diferencia mínima entre inicios de marcas de tiempo. Por defecto 0
+  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del
+                        anterior. Por encima de esta diferencia, se pone una nueva marca de
+                        tiempo . Por defecto 0.8
 
 ```
 
@@ -136,6 +147,6 @@ options:
 
 ![](sttcast_example.png)
 
-![comparation vosk - whisper](comparation_vosk_whisper.png)
+![comparation vosk - whisper](comparation_vox_whisper.png)
 
 ![example audio tag](example_audio_tag.png)

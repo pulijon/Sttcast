@@ -147,6 +147,6 @@ options:
 
 ![](sttcast_example.png)
 
-![comparation vosk - whisper](comparation_vox_whisper.png)
+![comparation vosk - whisper](comparation_vosk_whisper.png)
 
 ![example audio tag](example_audio_tag.png)

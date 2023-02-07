@@ -214,6 +214,7 @@ def vosk_task_work(cfg):
         if os.path.exists(hname):
             os.remove(hname)
         with open(hname, "w") as html:
+            html.write("<!-- New segment -->\n")
             last_ti = None
             while left_frames > 0:
                 data = wf.readframes(rwavframes)
@@ -279,9 +280,9 @@ def vosk_task_work(cfg):
                     add_result_to_transcription(transcription, res["partial_result"],
                                                 cfg['lconf'], cfg['mconf'], cfg['hconf'])                   
 
-
-            write_transcription(html, transcription, last_ti, 
-                                cfg['audio_tags'], cfg['mp3file'])
+            if last_ti is not None:
+                write_transcription(html, transcription, last_ti, 
+                                    cfg['audio_tags'], cfg['mp3file'])
 
 
 
@@ -305,6 +306,7 @@ def whisper_task_work(cfg):
         os.remove(hname)
     
     with open(hname, "w") as html:
+        html.write("<!-- New segment -->\n")
         last_ti = None
         for s in result['segments']:
             start_time = float(s['start']) + offset_seconds
@@ -325,12 +327,9 @@ def whisper_task_work(cfg):
                 transcription = ""
             transcription += (f"{s['text']}")
 
-            # html.write(f"{class_str(last_ti, 'time')}<br>\n")
-            # if cfg['audio_tags']:
-            #     html.write(audio_tag(cfg['mp3file'], start_time))
-            # transcription += (f"{s['text']}")
-        write_transcription(html, transcription, last_ti, 
-                    cfg['audio_tags'], cfg['mp3file'])
+        if last_ti is not None:
+            write_transcription(html, transcription, last_ti, 
+                                cfg['audio_tags'], cfg['mp3file'])
 
     return hname, datetime.datetime.now() - stime
 

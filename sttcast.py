@@ -2,6 +2,7 @@
 
 from util import logcfg
 import logging
+import whisper
 from vosk import Model, KaldiRecognizer
 import wave
 import json
@@ -13,7 +14,6 @@ import subprocess
 import configparser
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Value
-import whisper
 from timeinterval import TimeInterval, seconds_str
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
@@ -209,10 +209,12 @@ def vosk_task_work(cfg):
         # Se coloca el "puntero de lectura" del wav en la trama
         # correspondiente al presente frragmento
         wf.setpos(fframe)
-
+        
         hname = cfg["hname"]
         if os.path.exists(hname):
             os.remove(hname)
+
+        logging.info(f"Comenzando fragmento con vosk {hname}")
         with open(hname, "w") as html:
             html.write("<!-- New segment -->\n")
             last_ti = None
@@ -283,8 +285,7 @@ def vosk_task_work(cfg):
             if last_ti is not None:
                 write_transcription(html, transcription, last_ti, 
                                     cfg['audio_tags'], cfg['mp3file'])
-
-
+        logging.info(f"Terminado fragmento con vosk {hname}")
 
     return hname, datetime.datetime.now() - stime
 
@@ -304,7 +305,7 @@ def whisper_task_work(cfg):
     hname = cfg["hname"]
     if os.path.exists(hname):
         os.remove(hname)
-    
+    logging.info(f"Comenzando fragmento con whisper {hname}")
     with open(hname, "w") as html:
         html.write("<!-- New segment -->\n")
         last_ti = None
@@ -330,7 +331,7 @@ def whisper_task_work(cfg):
         if last_ti is not None:
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
-
+    logging.info(f"Terminado fragmento con whisper {hname}")
     return hname, datetime.datetime.now() - stime
 
 
@@ -459,6 +460,7 @@ def main():
     global fname_html, fname_meta, fname
 
     args = get_pars()
+    logging.info(f"{args}")
     configure_globals(args)
     
     whisper = args.whisper

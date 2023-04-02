@@ -82,11 +82,11 @@ def class_str(st, cl):
 #     return class_str(f"[{datetime.timedelta(seconds=float(st))} - "
 #                       f"{datetime.timedelta(seconds=float(end))}]<br>\n", "time")
 
-def audio_tag(mp3file, seconds):
+def audio_tag_str(mp3file, seconds):
     # m, s = divmod(int(seconds), 60)
     # h, m = divmod(m, 60)
     # return f'<audio controls src="{mp3file}#t={h:02d}:{m:02d}:{s:02d}"></audio>\n'
-    return f'<audio controls src="{mp3file}#t={seconds_str(seconds, with_dec=False)}"></audio>\n'
+    return f'<audio controls src="{mp3file}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
 
 
 def get_pars():
@@ -174,7 +174,7 @@ def write_transcription(html, transcription, ti, audio_tag, mp3file):
     html.write("\n<p>\n")
     html.write(f"{class_str(ti, 'time')}<br>\n")
     if audio_tag:
-        html.write(audio_tag(mp3file, ti.start))
+        html.write(audio_tag_str(mp3file, ti.start))
     html.write(transcription)
     html.write("\n</p>\n")
 

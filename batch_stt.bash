@@ -34,7 +34,10 @@ do
 	if [ ! -f "$srcdir/$html" ]
 	then
 		echo Processing with vosk "$srcdir/$mp3"
-		./sttcast.py --seconds 1500 --hconf 0.95 --mconf 0.70 --lconf 0.50 --overlap 2 --cpus 8 --min-offset 60 --max-gap 0.8 $prcdir/$mp3
+		cpus=$(cat cpus.txt | tr -d '\n')
+		seconds=$(cat seconds.txt | tr -d '\n')
+		echo Trabajando con $cpus CPUs y $seconds segundos
+		./sttcast.py --seconds $seconds --hconf 0.95 --mconf 0.70 --lconf 0.50 --overlap 2 --cpus $cpus --min-offset 60 --max-gap 0.8 $prcdir/$mp3
 		cp "$prcdir/$html" "$srcdir"
 	 	./add_audio_tag.py --mp3-file "$mp3" -o "$prcdir/$html_audio" "$prcdir/$html"
         cp "$prcdir/$html_audio" "$srcdir"
@@ -45,7 +48,7 @@ do
 	if [ ! -f "$srcdir/$html_whisper" ]
 	then
         echo Processing with whisper "$srcdir/$mp3"
-		./sttcast.py --seconds 1800 --whisper --whmodel small --cpus 1 --html-file $prcdir/$html_whisper --min-offset 60 --max-gap 0.8   $prcdir/$mp3
+		./sttcast.py --seconds 3000 --whisper --whmodel small --cpus 1 --html-file $prcdir/$html_whisper --min-offset 60 --max-gap 0.8   $prcdir/$mp3
 		cp "$prcdir/$html_whisper" "$srcdir"
 	 	./add_audio_tag.py --mp3-file "$mp3" -o "$prcdir/$html_whisper_audio" "$prcdir/$html_whisper"
         cp "$prcdir/$html_whisper_audio" "$srcdir"

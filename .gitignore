@@ -2,3 +2,5 @@
 /sttcast.log
 /transcribe.bash
 /batch_transcribe.bash
+.vagrant/
+Tmp/

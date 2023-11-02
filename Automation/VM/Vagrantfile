@@ -1,0 +1,66 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  # The most common configuration options are documented and commented below.
+  # For a complete reference, please see the online documentation at
+  # https://docs.vagrantup.com.
+
+  # Every Vagrant development environment requires a box. You can search for
+  # boxes at https://vagrantcloud.com/search.
+
+  config.vm.define "sttcast" do |node|
+    node.vm.box = "bento/debian-12"
+    
+    ip_address = "192.168.49.243"
+  
+    # Guest Additions
+    if Vagrant.has_plugin?("vagrant-vbguest") then
+      node.vbguest.auto_update = true
+      node.vbguest.installer_options = { allow_kernel_upgrade: true }
+    end
+  
+    node.vm.hostname = "sttcast"
+    node.vm.network "private_network", ip: "#{ip_address}"
+    # node.vm.network "public_network", ip: "192.168.16.250"
+    
+    node.vm.provider "virtualbox" do |vb|
+      vb.memory = "8192"
+      vb.cpus = 4
+      vb.gui = true
+      vb.customize ["modifyvm", :id, "--vram", "128"]
+      vb.customize ["modifyvm", :id, "--clipboard-mode", "bidirectional"]
+      vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+    end
+
+    # Configuración local y carga de soporte puppet
+    node.vm.provision "shell", inline: <<-SHELL
+      localectl set-locale LANG=es_ES.UTF-8
+      wget -q https://mirrors.edge.kernel.org/pub/linux/utils/kbd/kbd-2.6.0.tar.gz -O /tmp/kbd-2.6.0.tar.gz
+      cd /tmp/ && tar xzf kbd-2.6.0.tar.gz
+      mkdir /usr/share/keymaps && cp -Rp /tmp/kbd-2.6.0/data/keymaps/* /usr/share/keymaps/
+      localectl set-keymap es
+      timedatectl set-timezone Europe/Madrid
+      apt update
+      apt install -y puppet
+      puppet module install puppetlabs-stdlib  
+      puppet module install puppetlabs-vcsrepo
+      puppet module install puppetlabs-apt
+      cp -pR /vagrant/puppet_vagrant /etc/puppet/code/modules
+    SHELL
+
+    # Configuración por puppet
+    node.vm.provision "puppet" do |puppet|
+      current_dir = File.dirname(File.expand_path(__FILE__))
+      # puppet.module_path = "#{current_dir}/puppet-awx"
+      # puppet.module_path = "/etc/puppet/code/modules:/vagrant/puppet-awx"
+      puppet.manifests_path = "#{current_dir}/puppet_vagrant/manifests"
+      puppet.manifest_file = "sttcast.pp"
+    end
+  end
+  
+end

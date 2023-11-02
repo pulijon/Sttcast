@@ -7,5 +7,4 @@ Tmp/
 Payload/
 .terraform/
 .terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.*
+.terraform.tfstate.*

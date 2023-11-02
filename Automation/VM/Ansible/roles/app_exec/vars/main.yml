@@ -1,0 +1,8 @@
+---
+# app_exec - vars - main.yml
+
+# Local dir
+local_payload_dir: "/vagrant/Payload"
+
+# Remote dir
+remote_payload_dir: "{{ app_dir }}/Payload"

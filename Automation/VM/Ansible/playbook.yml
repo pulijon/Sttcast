@@ -1,0 +1,20 @@
+---
+- name: Configure the Sttcast machine
+  hosts: all
+  vars_files:
+    - vars.yml
+  gather_facts: no
+  tasks:
+  - name: Waiting for the host to be available
+    wait_for:
+      host: "{{ inventory_hostname }}"
+      port: 22
+      delay: 10
+      timeout: 300
+      state: started
+
+  roles:
+    - system_config
+    - app_install
+    - app_exec
+

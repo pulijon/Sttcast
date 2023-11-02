@@ -6,7 +6,7 @@
 Tmp/
 Payload/
 .terraform/
-.terraform.lock.hcl
-.terraform.tfstate.*
+.terraform.*
+terraform.tfstate*
 *.log
 inventory

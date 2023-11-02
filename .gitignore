@@ -9,3 +9,4 @@ Payload/
 .terraform.lock.hcl
 .terraform.tfstate.*
 *.log
+inventory

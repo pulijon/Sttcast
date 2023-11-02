@@ -4,3 +4,4 @@
 /batch_transcribe.bash
 .vagrant/
 Tmp/
+Payload/

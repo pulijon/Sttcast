@@ -10,3 +10,4 @@ Payload/
 terraform.tfstate*
 *.log
 inventory
+.vscode/

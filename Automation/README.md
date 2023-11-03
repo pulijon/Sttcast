@@ -1,5 +1,5 @@
 # Caution
-The automation in sttcast uses an expensive machine from AWS, of type **g4dn.xlarge**, which has a usage price of about **$0.60/hour** (VAT included). This price is much less that the cost of the transcription service of AWS (similar, by the way, to that of other prividers as Azure, or Google) but can be very expensive if
+The automation in sttcast uses an expensive machine from AWS, of type **g4dn.xlarge**, which has a usage price of about **$0.60/hour** (VAT included). This price is much less that the cost of the transcription service of AWS (similar, by the way, to that of other prividers as Azure, or Google) but can be very expensive if resources are not destroyed immediately after the job is done.
 
 ![](g4xdn.xlarge_price.png)
 

@@ -19,10 +19,34 @@
       patterns: ["^.*mp3"]
     register: mp3s
 
-  - name: Run Sttcast
+  - name: Obtain whisper file
     shell:
       # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
-      cmd: "python sttcast.py --whisper --whmodel small --whdevice cuda --seconds 1800  --cpus 3 --min-offset 60 --max-gap 0.8 {{ item.path }}"
+      cmd: >
+       python sttcast.py 
+       --whisper 
+       --whmodel {{ whmodel }} 
+       --whdevice cuda 
+       --seconds {{ seconds }}  
+       --cpus {{ cpus }} 
+       --min-offset {{ min_offset }} 
+       --max-gap {{ max_gap }} 
+       --html-file {{ item.path | replace('.mp3', '_whisper.html') }}
+       {{ item.path }}
+      chdir: "{{ app_dir }}"
+    with_items: 
+    - "{{ mp3s.files }}"
+    environment:
+      PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+    
+  - name: Add tags
+    shell:
+      # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
+      cmd: >
+       python add_audio_tag.py 
+       --mp3-file {{ item.path }}
+       -o {{ item.path | replace('.mp3', '_whisper_audio.html') }}
+       {{ item.path | replace('.mp3', '_whisper.html') }}
       chdir: "{{ app_dir }}"
     with_items: 
     - "{{ mp3s.files }}"

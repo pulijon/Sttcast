@@ -20,6 +20,7 @@ $packages = [
     'docker',
     'docker-compose',
     'nmon',
+    'awscli',
     # 'kubernetes-client',
     # 'gnome',
     # 'x11-apps',

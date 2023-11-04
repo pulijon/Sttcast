@@ -142,6 +142,13 @@ options:
                         Fichero resultado tras añadir los audio tags
 
 ```
+# Automation
+
+The whisper engine requires GPUs to avoid taking too much time. If you don't have a machine with GPU acceleration, or if you prefer not to have to install sttcasst in your environment, you can use the automation procedure explained in the ```Automation``` directory.
+
+Automation creates an AWS EC2 machine in the Amazon Cloud, provisions it installing sttcast, upload the payload and download the results. And all withwith just two commands: one to create the resources in the cloud and perform the work, and another to destroy the resources.
+
+Commands are executed in a VM also created with one command.
 
 # Screenshots
 

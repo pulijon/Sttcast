@@ -81,26 +81,6 @@ Bringing machine 'sttcast' up with 'virtualbox' provider...
 ==> sttcast: Notice: Applied catalog in 195.46 seconds
 ```
 
-I often tell my students that Vagrant is like "Las Vegas," or like a football dressing room. What happens in vagrant, stays in Vagrant. That is, although one might think that once the machine is created with Vagrant, you could use the VirtualBox console (the provisioner used for this project, though Vagrant can work with other hypervisors or even with containers) to start or stop the machines, this is not the case. You have to use Vagrant to start, shutdown, or reprovision.
-
-So, to shutdown the machine, you should type:
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant halt
-```
-
-To start the VM at any time (not only the first one)
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant start
-```
-
-To destroy the VM
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant destroy
-```
-
 ## Entering the VM 
 
 The VM is a Linux Debian 12 (stable distribution at the time of writing this document). To enter in it you should type  ```vagrant ssh```
@@ -227,6 +207,45 @@ In order to be sure it has worked, the command **terraform state** should not sh
 vagrant@sttcast:/vagrant/Terraform$ terraform state list
 vagrant@sttcast:/vagrant/Terraform$
 ```
+## Primer on vagrant
+
+I often tell my students that Vagrant is like "Las Vegas," or like a football dressing room. What happens in vagrant, stays in Vagrant. That is, although one might think that once the machine is created with Vagrant, you could use the VirtualBox console (the provisioner used for this project, though Vagrant can work with other hypervisors or even with containers) to start or stop the machines, this is not the case. You have to use Vagrant to start, shutdown, or reprovision.
+
+To start the VM at any time (not only the first one)
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant start
+```
+To enter in a console ssh session in the VM at any time 
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant ssh
+```
+
+To shutdown the machine, you should type:
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant halt
+```
+
+To destroy the VM
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant destroy
+```
+
+To see the status of vagrants machines
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant global-status
+```
+
+The ```status``` of VMs allows us to acces to their ```ids```, with this ids (even with the two or three firs characters, you could execute the previous commands from any directory)
+
+```
+c:\Users\jmrob>vagrant <command> <id>
+```
+
 ## Shutting down the VM
 
 As stated previously, the VM can be shutted down with ```vagrant halt``` executed from the directory of the VM (or, whith the id of the machine obtained throug ```vagrant global-status```, with ```vagrant halt <id>```)

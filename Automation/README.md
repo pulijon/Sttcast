@@ -18,7 +18,7 @@ This is where automation comes into play. The idea is to allow, with a minimum o
 
 Since automation requires specific tools, and these tools are not present on all systems, it is best to provide a virtual machine that has these tools available. This way, all users can work in a consistent environment. Here it is specified in software (IaC) a machine that can be created with a single command. The VM is specified with Vagrant and Puppet and it runs on VirtualBox, as they run most popular platforms (Linux, Windows, Mac).
 
-These scripts make use of Amazon AWS services. It dpesn't seem very difficult, however, to adapt them to other cloud providers.
+These scripts make use of Amazon **AWS** services. It dpesn't seem very difficult, however, to adapt them to other cloud providers.
 
 From the virtual machine, terraform and ansible will be used through a simple command that launches the following tasks:
 
@@ -45,13 +45,13 @@ From the virtual machine, terraform and ansible will be used through a simple co
 * Vagrant
 
 ## AWS
-You must have an account in Amazon AWS with valid credentials (***AWS_ACCESS_KEY_ID** and **AWS_SECRET_ACCESS_KEY**) to boot an EC2 instance with GPU (if your account does not allow you to boot that instance, you shoul open a ticket with Amazon)
+You must have an account in Amazon AWS with valid credentials (```AWS_ACCESS_KEY_ID``` and ```AWS_SECRET_ACCESS_KEY```) to boot an **EC2** instance with **GPU** (if your account does not allow you to boot that instance, you shoul open a ticket with Amazon)
 
 
-# Instructions
+# User guide
 ## Copy the contents of Automation/VM
 
-Copy the contents of Automation/VM to a directory. Vagrant does like short and simple names. The screenshot is taken from a Windows machine in which the branch **Automation/VM** has been installed in **C:\VagBoxes\Sttcast\VM**
+Copy the contents of Automation/VM to a directory. ```Vagrant``` does like short and simple names. The screenshot is taken from a Windows machine in which the branch ```Automation/VM``` has been installed in ```C:\VagBoxes\Sttcast\VM```
 
 ![](vm_dir.png)
 
@@ -81,9 +81,29 @@ Bringing machine 'sttcast' up with 'virtualbox' provider...
 ==> sttcast: Notice: Applied catalog in 195.46 seconds
 ```
 
+I often tell my students that Vagrant is like "Las Vegas," or like a football dressing room. What happens in vagrant, stays in Vagrant. That is, although one might think that once the machine is created with Vagrant, you could use the VirtualBox console (the provisioner used for this project, though Vagrant can work with other hypervisors or even with containers) to start or stop the machines, this is not the case. You have to use Vagrant to start, shutdown, or reprovision.
+
+So, to shutdown the machine, you should type:
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant halt
+```
+
+To start the VM at any time (not only the first one)
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant start
+```
+
+To destroy the VM
+
+```console
+C:\VagBoxes\Sttcast\VM>vagrant destroy
+```
+
 ## Entering the VM 
 
-The VM is a Linux Debian 12 (stable distribution at the time of writing this document). To enter in it you should type **vagrant ssh**
+The VM is a Linux Debian 12 (stable distribution at the time of writing this document). To enter in it you should type  ```vagrant ssh```
 
 ```console
 C:\VagBoxes\Sttcast\VM>vagrant ssh
@@ -100,8 +120,8 @@ Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
 permitted by applicable law.
 vagrant@sttcast:~$
 ```
-
-## Initializing terraform (only the firs time)
+<!-- This is done in the provision of the Virtual Machine
+## Initializing terraform (only the first time)
 
 You must go to the **Terraform** dir and execute **terraform init** . This step is only necessary with a brand new machine created.
 ```bash
@@ -123,9 +143,9 @@ If you ever set or change modules or backend configuration for Terraform,
 rerun this command to reinitialize your working directory. If you forget, other
 commands will detect it and remind you to do so if necessary.
 ```
-
+ -->
 ## Executing the job
-From the directory /vagrant/Terraform, execute **terraform apply -auto--approve**. terraform will ask you for your AWS credentials (the program will not ask for them if you have previously configured the environment vars TF_VAR_AWS_ACCESS_KEY_ID and TF_VAR_AWS_SECRET_ACCESS_KEY)
+From the directory /vagrant/Terraform, execute ```terraform apply -auto--approve```. terraform will ask you for your AWS credentials (the program will not ask for them if you have previously configured the environment vars ```TF_VAR_AWS_ACCESS_KEY_ID``` and ```TF_VAR_AWS_SECRET_ACCESS_KEY```)
 
 ```bash
 vagrant@sttcast:/vagrant/Terraform$ terraform apply -auto-approve
@@ -175,7 +195,7 @@ Filenames ended in whisper_audio.html are transcriptions in HTML format with pla
 
 This is a very important step, as the used machine is very expensive and you pay for it while it's alive. Remember the  **Caution note** at the beginning of this document. 
 
-You have to destroy the resources with **terraform destroy -auto--aprove**
+You have to destroy the resources with ```terraform destroy -auto--aprove```
 
 ```bash
 vagrant@sttcast:/vagrant/Terraform$ terraform destroy -auto-approve
@@ -207,6 +227,40 @@ In order to be sure it has worked, the command **terraform state** should not sh
 vagrant@sttcast:/vagrant/Terraform$ terraform state list
 vagrant@sttcast:/vagrant/Terraform$
 ```
+## Shutting down the VM
+
+As stated previously, the VM can be shutted down with ```vagrant halt``` executed from the directory of the VM (or, whith the id of the machine obtained throug ```vagrant global-status```, with ```vagrant halt <id>```)
+
+```
+C:\VagBoxes\Sttcast\VM>vagrant halt
+==> sttcast: Attempting graceful shutdown of VM...
+```
+
+## Configuration
+
+Each run of ```terraform``` makes use of ```ansible``` and ```ansible``` can be configured with the file ```Ansible/vars.yml``` and the the files ```vars/main.yml``` in subdirectories from ```Automation/VM/Ansible/roles```.
+
+Specifically, the file Ansible ```/roles/app_exec/vars/main.yml``` contains the execution parameters for sttcast:
+
+```yaml
+# Configure sttcast
+whmodel:    "small"
+seconds:    "1800"
+cpus:       "3"
+min_offset: "60"
+max_gap:    "0.8"
+```
+You may want to change this parameters to best fit the behaviour to your needs.
+
+## To Do
+
+Many modifications can be made and will be made in the future.
+
+* To save costs, the most obvious change is to use intermediate S3 storage for the **payload**. A significant portion of the execution time is spent copying the MP3 files to the target machine. The upload time from **S3** is assumed to be much faster (and therefore cheaper) for the machine with **GPU**. One could even consider **EBS**, although I would like to conduct tests.
+
+* In **sttcast**, the number of **CPUs** can be configured (in **Automation**, this is done with the ```app_exec role``` variables). Each file is divided into that number of pieces and assigned to a Python process. It would be much more intelligent to divide the work to be done (several MP3s) into subsets of similar sizes and start a sttcast process with each subset with the number of **CPUs** equal to 1. This way, time would be optimized, and potential boundary issues between pieces could be avoided
+
+
 
 
 

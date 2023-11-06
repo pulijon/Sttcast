@@ -87,4 +87,12 @@ exec {'generate ssh key':
           "/bin"],
 }
 
-
+exec {'Install ansible aws support':
+  command => "/usr/bin/ansible-galaxy collection install community.aws",
+  require => Package["ansible"],
+  user => vagrant,
+  group => vagrant,
+  path =>["/usr/local/bin",
+          "/usr/bin",
+          "/bin"],
+}

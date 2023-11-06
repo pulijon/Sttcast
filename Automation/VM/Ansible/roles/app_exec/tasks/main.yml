@@ -1,73 +1,93 @@
-  - name: Creation of Payload Directory
-    file:
-      path: "{{ remote_payload_dir }}"
-      state: directory
-      owner: ubuntu
-    become: true
+- name: Creation of Payload Directory
+  file:
+    path: "{{ remote_payload_dir }}"
+    state: directory
+    owner: ubuntu
+  become: true
+
+# - name: List files from s3
+#   aws_s3:
+#     bucket: "sttcast-payload"
+#     mode: "list"
+#   become: true
+#   register: s3_contents
+
+# - name: Copy objects from S3 to the local machine
+#   aws_s3:
+#     bucket: "sttcast-payload"
+#     object: "{{ item }}"
+#     dest: "{{ remote_payload_dir }}/{{ item }}"
+#     mode: get
+#   loop: "{{ s3_contents.s3_keys }}"
+#   become: true
+#   when: s3_contents.s3_keys is defined and s3_contents.s3_keys | length > 0
+
+- name: Çopy from S3
+  shell:
+    # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
+    cmd: "aws s3 sync s3://sttcast-payload {{ remote_payload_dir }}"
+  environment:
+    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+
+
+- name: Get mp3 files
+  find:
+    paths: ["{{ remote_payload_dir }}"]
+    file_type: file
+    use_regex: true
+    recurse: true
+    patterns: ["^.*mp3"]
+  register: mp3s
+
+- name: Obtain whisper file
+  shell:
+    # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
+    cmd: >
+      python sttcast.py 
+      --whisper 
+      --whmodel {{ whmodel }} 
+      --whdevice cuda 
+      --seconds {{ seconds }}  
+      --cpus {{ cpus }} 
+      --min-offset {{ min_offset }} 
+      --max-gap {{ max_gap }} 
+      --html-file {{ item.path | replace('.mp3', '_whisper.html') }}
+      {{ item.path }}
+    chdir: "{{ app_dir }}"
+  with_items: 
+  - "{{ mp3s.files }}"
+  environment:
+    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
   
-  - name: Copy payload files
-    copy:
-      src: "{{ local_payload_dir }}"
-      dest: "{{ remote_payload_dir  }}"
-  
-  - name: Get mp3 files
-    find:
-      paths: ["{{ remote_payload_dir }}"]
-      file_type: file
-      use_regex: true
-      recurse: true
-      patterns: ["^.*mp3"]
-    register: mp3s
+- name: Add tags
+  shell:
+    # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
+    cmd: >
+      python add_audio_tag.py 
+      --mp3-file {{ item.path }}
+      -o {{ item.path | replace('.mp3', '_whisper_audio.html') }}
+      {{ item.path | replace('.mp3', '_whisper.html') }}
+    chdir: "{{ app_dir }}"
+  with_items: 
+  - "{{ mp3s.files }}"
+  environment:
+    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 
-  - name: Obtain whisper file
-    shell:
-      # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
-      cmd: >
-       python sttcast.py 
-       --whisper 
-       --whmodel {{ whmodel }} 
-       --whdevice cuda 
-       --seconds {{ seconds }}  
-       --cpus {{ cpus }} 
-       --min-offset {{ min_offset }} 
-       --max-gap {{ max_gap }} 
-       --html-file {{ item.path | replace('.mp3', '_whisper.html') }}
-       {{ item.path }}
-      chdir: "{{ app_dir }}"
-    with_items: 
-    - "{{ mp3s.files }}"
-    environment:
-      PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-    
-  - name: Add tags
-    shell:
-      # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
-      cmd: >
-       python add_audio_tag.py 
-       --mp3-file {{ item.path }}
-       -o {{ item.path | replace('.mp3', '_whisper_audio.html') }}
-       {{ item.path | replace('.mp3', '_whisper.html') }}
-      chdir: "{{ app_dir }}"
-    with_items: 
-    - "{{ mp3s.files }}"
-    environment:
-      PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+- name: Get html and meta files
+  find:
+    paths: ["{{ remote_payload_dir }}"]
+    file_type: file
+    use_regex: true
+    recurse: true
+    patterns: 
+    - "^.*html"
+    - "^.*meta"
+  register: htmls
 
-  - name: Get html and meta files
-    find:
-      paths: ["{{ remote_payload_dir }}"]
-      file_type: file
-      use_regex: true
-      recurse: true
-      patterns: 
-      - "^.*html"
-      - "^.*meta"
-    register: htmls
-
-  - name: Get results
-    fetch:
-      src: "{{ item.path }}"
-      dest: "{{ local_payload_dir }}/"
-      flat: true
-    with_items:
-    - "{{ htmls.files  }}"
+- name: Get results
+  fetch:
+    src: "{{ item.path }}"
+    dest: "{{ local_payload_dir }}/"
+    flat: true
+  with_items:
+  - "{{ htmls.files  }}"

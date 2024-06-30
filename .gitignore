@@ -9,3 +9,6 @@ Automation/OneDrive
 terraform.tfstate*
 .vscode/
 *.zip
+.vagrant/
+.vscode/
+InternalDoc/

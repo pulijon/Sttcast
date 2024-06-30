@@ -1,0 +1,14 @@
+---
+# app_install - vars - main.yml
+
+# Repositories
+app_repo: https://github.com/pulijon/Sttcast.git
+whisper_repo: https://github.com/openai/whisper.git
+
+# Vosk URL and models
+vosk_model_url: "https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip"
+vosk_model_dir: "{{ mount_point }}/vosk-models/es"
+
+# Python configuration
+python_version: "3.10"
+virtual_env_path: "{{ app_dir }}/.venv"

@@ -1,0 +1,57 @@
+---
+# Configure the machine
+- name: Waiting for the host to be available
+  wait_for:
+    host: "{{ inventory_hostname }}"
+    port: 22
+    delay: 10
+    timeout: 300
+    state: started
+  delegate_to: localhost
+
+
+- name: Partitioning of ephemeral storage
+  parted:
+    device: /dev/nvme1n1
+    state: present
+    number: 1
+  become: true
+
+- name: Making filesystem in partition
+  filesystem:
+    fstype: ext4
+    dev: /dev/nvme1n1p1
+  become: true
+
+- name: Creating Mounting point for workdir
+  file:
+    path: "{{ mount_point }}"
+    state: directory
+    owner: ubuntu
+  become: true
+
+- name: Mounting partition on mount point
+  mount:
+    path: "{{ mount_point }}"
+    src: /dev/nvme1n1p1
+    fstype: ext4
+    state: mounted
+  become: true
+
+# We coud also operate on ram
+#
+# - name: Creating Mounting point for RAM filesystem
+#   file:
+#     path: /mnt/ram
+#     state: directory
+#     owner: ubuntu
+#   become: true
+
+# - name: Mount RAM filesystem
+#   mount:
+#     path: "/mnt/ram"
+#     src: tmpfs
+#     fstype: tmpfs
+#     opts: "size=2048m"
+#     state: mounted
+#   become: true

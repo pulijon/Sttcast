@@ -1,0 +1,11 @@
+---
+- name: Configure the Sttcast machine
+  hosts: all
+  vars_files:
+    - vars.yml
+  gather_facts: no
+  roles:
+    - system_config
+    - app_install
+    - app_exec
+

@@ -1,4 +1,11 @@
 /__pycache__
-/sttcast.log
+*.log
 /transcribe.bash
 /batch_transcribe.bash
+Tmp/
+Automation/Payload
+Automation/OneDrive
+.terraform*
+terraform.tfstate*
+.vscode/
+*.zip

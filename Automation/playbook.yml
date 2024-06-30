@@ -1,0 +1,180 @@
+---
+- name: Configure the Sttcast machine
+  hosts: all
+  gather_facts: no
+  vars:
+    ansible_ssh_timeout: 150
+  tasks:
+  - name: Waiting to the availability of host
+    wait_for:
+      host: "{{ inventory_hostname }}"
+      port: 22
+      delay: 10
+      timeout: 300
+      state: started
+    delegate_to: localhost
+
+  - name: Partition ephemeral storage
+    parted:
+      device: /dev/nvme1n1
+      state: present
+      number: 1
+    become: true
+
+  - name: File system in partition
+    filesystem:
+      fstype: ext4
+      dev: /dev/nvme1n1p1
+    become: true
+  
+  - name: Creating Mounting point for workdir
+    file:
+      path: /mnt/vol
+      state: directory
+      owner: ubuntu
+    become: true
+
+  # - name: Creating Mounting point for RAM filesystem
+  #   file:
+  #     path: /mnt/ram
+  #     state: directory
+  #     owner: ubuntu
+  #   become: true
+
+  - name: Mount filesystem for workdir
+    mount:
+      path: "/mnt/vol"
+      src: /dev/nvme1n1p1
+      fstype: ext4
+      state: mounted
+    become: true
+
+  # - name: Mount RAM filesystem
+  #   mount:
+  #     path: "/mnt/ram"
+  #     src: tmpfs
+  #     fstype: tmpfs
+  #     opts: "size=2048m"
+  #     state: mounted
+  #   become: true
+
+  - name: Sttcast directory
+    file:
+      path: /mnt/vol/Sttcast
+      state: directory
+      owner: ubuntu
+    become: true
+
+  - name: Clone Sttcast
+    git:
+      repo: https://github.com/pulijon/Sttcast.git
+      dest: /mnt/vol/Sttcast
+  
+  - name: Directory for Spanish vosk model
+    file:
+      path: /mnt/vol/vosk-models/es
+      state: directory
+      owner: ubuntu
+    become: true
+
+  # - name: Download Spanish voice model for vosk
+  #   unarchive:
+  #     src: https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip
+  #     dest: /mnt/vol/vosk-models/es
+  #     remote_src: yes
+
+  - name: Add deadsnakes repo
+    apt_repository: 
+      repo: ppa:deadsnakes/ppa
+    become: true
+ 
+  - name: Install dependencies
+    apt:
+      name: 
+      - python3.10
+      - python3-boto3
+      - python3-botocore
+      - ffmpeg
+      state: present
+      update_cache: yes
+    become: true
+
+  - name: Install virtualenv
+    pip:
+      name:
+        virtualenv
+      virtualenv_python: /usr/bin/python3.10
+
+  - name: Install packages in virtual environment
+    pip:
+      name:
+      - pyyaml
+      - vosk
+      - wave
+      - bs4
+      - botocore
+      - boto3
+      - git+https://github.com/openai/whisper.git
+      virtualenv: /mnt/vol/Sttcast/.venv
+      virtualenv_python: /usr/bin/python3.10
+
+  - name: Creation of Payload Directory
+    file:
+      path: /mnt/vol/Payload
+      state: directory
+      owner: ubuntu
+    become: true
+  
+  - name: Copy of payload files
+    copy:
+      src: ./Payload/
+      dest: /mnt/vol/Payload
+  
+  - name: Get mp3 files
+    find:
+      paths: ["/mnt/vol/Payload"]
+      file_type: file
+      use_regex: true
+      recurse: true
+      patterns: ["^.*mp3"]
+    register: mp3s
+
+  - name: Run Sttcast
+    shell:
+      # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
+      cmd: "python sttcast.py --whisper --whmodel small --whdevice cuda --seconds 1800  --cpus 3 --min-offset 60 --max-gap 0.8 {{ item.path }}"
+      chdir: /mnt/vol/Sttcast
+    with_items: 
+    - "{{ mp3s.files }}"
+    environment:
+      PATH: "/mnt/vol/Sttcast/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+
+  - name: Get html and meta files
+    find:
+      paths: ["/mnt/vol/Payload"]
+      file_type: file
+      use_regex: true
+      recurse: true
+      patterns: 
+      - "^.*html"
+      - "^.*meta"
+    register: htmls
+
+  - name: Get results
+    fetch:
+      src: "{{ item.path }}"
+      dest: "./Payload/"
+      flat: true
+    with_items:
+    - "{{ htmls.files  }}"
+
+  # - name: Instance shutdown
+  #   ec2_instance:
+  #     region: 'us-east-2'
+  #     instance_ids: "{{ ec2_instance_id }}"
+  #     access_key: "{{ AWS_ACCESS_KEY_ID }}"
+  #     secret_key: "{{ AWS_SECRET_ACCESS_KEY }}"
+  #     state: absent
+  #   environment:
+  #     PATH: "/mnt/vol/Sttcast/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+    

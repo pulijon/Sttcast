@@ -294,7 +294,8 @@ def whisper_task_work(cfg):
     stime = datetime.datetime.now()
 
     model = whisper.load_model(cfg['whmodel'], device=cfg['whdevice'])
-    result = model.transcribe(cfg["fname"], language=cfg['whlanguage'])
+    # Solución a error pytorch - ver https://github.com/openai/whisper/discussions/1068
+    result = model.transcribe(cfg["fname"], language=cfg['whlanguage'], fp16=False)
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
     min_offset = cfg["min_offset"]
     max_gap = cfg["max_gap"]

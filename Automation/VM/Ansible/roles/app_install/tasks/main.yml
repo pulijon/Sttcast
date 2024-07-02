@@ -9,16 +9,26 @@
       owner: ubuntu
     become: true
 
-  - name: Clone Sttcast
+  - name: Copy Sttcast
     git:
       repo: "{{ app_repo }}"
       dest: "{{ app_dir }}"
+      version: HEAD
   
   - name: Directory for Spanish vosk model
     file:
       path: "{{ vosk_model_dir }}"
       state: directory
       owner: ubuntu
+    become: true
+  
+  - name: Install APT dependencies
+    apt:
+      name:
+      - awscli
+      - ffmpeg
+      state: present
+      update_cache: yes
     become: true
 
   # - name: Download Spanish voice model for vosk
@@ -27,28 +37,27 @@
   #     dest: /mnt/vol/vosk-models/es
   #     remote_src: yes
 
-  - name: Add deadsnakes repo
-    apt_repository: 
-      repo: ppa:deadsnakes/ppa
-    become: true
+  # - name: Add deadsnakes repo
+  #   apt_repository: 
+  #     repo: ppa:deadsnakes/ppa
+  #   become: true
  
-  - name: Install dependencies
-    apt:
-      name: 
-      - python{{ python_version }}
-      - python3-boto3
-      - python3-botocore
-      - ffmpeg
-      - awscli
-      state: present
-      update_cache: yes
-    become: true
+  # - name: Install dependencies
+  #   apt:
+  #     name: 
+  #     - python{{ python_version }}
+  #     - python3-boto3
+  #     - python3-botocore
+  #     - ffmpeg
+  #     state: present
+  #     update_cache: yes
+  #   become: true
 
-  - name: Install virtualenv
-    pip:
-      name:
-        virtualenv
-      virtualenv_python: /usr/bin/python{{ python_version }}
+  # - name: Install virtualenv
+  #   pip:
+  #     name:
+  #       virtualenv
+  #     virtualenv_python: /usr/bin/python{{ python_version }}
 
   - name: Install packages in virtual environment
     pip:
@@ -59,6 +68,7 @@
       - bs4
       - botocore
       - boto3
-      - git+{{ whisper_repo }}
-      virtualenv: "{{ app_dir }}/.venv"
-      virtualenv_python: "/usr/bin/python{{ python_version }}"
+      - openai-whisper
+  #     # - git+{{ whisper_repo }}
+  #     virtualenv: "{{ app_dir }}/.venv"
+  #     virtualenv_python: "/usr/bin/python{{ python_version }}"

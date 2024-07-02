@@ -22,7 +22,7 @@
 #   become: true
 #   when: s3_contents.s3_keys is defined and s3_contents.s3_keys | length > 0
 
-- name: Çopy from S3
+- name: Copy from S3
   shell:
     # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
     cmd: "aws s3 sync s3://sttcast-payload {{ remote_payload_dir }}"
@@ -56,8 +56,9 @@
     chdir: "{{ app_dir }}"
   with_items: 
   - "{{ mp3s.files }}"
-  environment:
-    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+#   environment:
+#     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+#    VIRTUAL_ENV: "{{ app_dir }}/.venv"
   
 - name: Add tags
   shell:
@@ -70,8 +71,8 @@
     chdir: "{{ app_dir }}"
   with_items: 
   - "{{ mp3s.files }}"
-  environment:
-    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+  # environment:
+  #   PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 
 - name: Get html and meta files
   find:

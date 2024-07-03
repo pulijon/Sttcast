@@ -22,9 +22,15 @@
       owner: ubuntu
     become: true
   
+  - name: Add deadsnakes repo
+    apt_repository: 
+      repo: ppa:deadsnakes/ppa
+    become: true
+ 
   - name: Install APT dependencies
     apt:
       name:
+      - python{{ python_version }}
       - awscli
       - ffmpeg
       state: present
@@ -37,11 +43,6 @@
   #     dest: /mnt/vol/vosk-models/es
   #     remote_src: yes
 
-  # - name: Add deadsnakes repo
-  #   apt_repository: 
-  #     repo: ppa:deadsnakes/ppa
-  #   become: true
- 
   # - name: Install dependencies
   #   apt:
   #     name: 
@@ -53,13 +54,13 @@
   #     update_cache: yes
   #   become: true
 
-  # - name: Install virtualenv
-  #   pip:
-  #     name:
-  #       virtualenv
-  #     virtualenv_python: /usr/bin/python{{ python_version }}
+  - name: Install virtualenv
+    pip:
+      name:
+        virtualenv
+      virtualenv_python: /usr/bin/python{{ python_version }}
 
-  - name: Install packages in virtual environment
+  - name: Install Python modules
     pip:
       name:
       - pyyaml
@@ -70,5 +71,5 @@
       - boto3
       - openai-whisper
   #     # - git+{{ whisper_repo }}
-  #     virtualenv: "{{ app_dir }}/.venv"
-  #     virtualenv_python: "/usr/bin/python{{ python_version }}"
+      virtualenv: "{{ app_dir }}/.venv"
+      virtualenv_python: "/usr/bin/python{{ python_version }}"

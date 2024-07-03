@@ -56,9 +56,9 @@
     chdir: "{{ app_dir }}"
   with_items: 
   - "{{ mp3s.files }}"
-#   environment:
-#     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-#    VIRTUAL_ENV: "{{ app_dir }}/.venv"
+  environment:
+    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+    VIRTUAL_ENV: "{{ app_dir }}/.venv"
   
 - name: Add tags
   shell:
@@ -71,9 +71,10 @@
     chdir: "{{ app_dir }}"
   with_items: 
   - "{{ mp3s.files }}"
-  # environment:
-  #   PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
-
+  environment:
+    PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+    VIRTUAL_ENV: "{{ app_dir }}/.venv"
+  
 - name: Get html and meta files
   find:
     paths: ["{{ remote_payload_dir }}"]

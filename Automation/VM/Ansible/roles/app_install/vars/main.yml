@@ -10,5 +10,5 @@ vosk_model_url: "https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip"
 vosk_model_dir: "{{ mount_point }}/vosk-models/es"
 
 # Python configuration
-python_version: "3.11"
+python_version: "3.12"
 virtual_env_path: "{{ app_dir }}/.venv"

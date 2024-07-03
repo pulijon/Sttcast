@@ -26,8 +26,14 @@ variable "AWS_ACCESS_KEY_ID" {
 variable "sttcast_ami" {
   description = "AMI for sttcast"
   type        = string
-  default     = "ami-0e0d36dffd7ce3f68"
+  # Instance CUDA TensorFlow
+  # default     = "ami-0e0d36dffd7ce3f68"
+  # Instance Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.3.0 (Ubuntu 20.04) 20240611
+  # default = "ami-0c540ca1e5211e422"
+  # Instance Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20240624
+  default     = "ami-0fa7c50f46a48ae63"
 }
+
 
 variable "ec2_user" {
   description = "AWS EC2 user"

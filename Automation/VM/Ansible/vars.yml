@@ -2,5 +2,6 @@
 # vars.yml
 
 # Repositorio y ubicación
-mount_point: "/mnt/vol"
+# mount_point: "/mnt/vol"
+mount_point: "/opt/dlami/nvme"
 app_dir: "{{ mount_point }}/Sttcast"

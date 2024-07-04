@@ -2,7 +2,6 @@
 *.log
 /transcribe.bash
 /batch_transcribe.bash
-Tmp/
 Payload/
 Automation/OneDrive
 .terraform*
@@ -11,8 +10,6 @@ terraform.tfstate*
 *.zip
 .vagrant/
 .vscode/
-InternalDoc/
-Old/
+NoGit/
 /Automation/VM/Ansible/inventory
-/Sttcast.mm
 

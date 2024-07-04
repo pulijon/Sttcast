@@ -13,4 +13,6 @@ terraform.tfstate*
 .vscode/
 InternalDoc/
 Old/
-Automation/VM/Ansible/inventory
+/Automation/VM/Ansible/inventory
+/Sttcast.mm
+

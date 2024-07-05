@@ -395,9 +395,11 @@ def launch_vosk_tasks(args):
             )
         )
     with ProcessPoolExecutor(cpus) as executor:
+        tasks = []
         for result in results:
-            for f, t in  executor.map(vosk_task_work, result[1]):
-                logging.info(f"{f} ha tardado {t}")
+            tasks.extend(result[1])
+        for f, t in  executor.map(vosk_task_work, tasks):
+           logging.info(f"{f} ha tardado {t}")
 
     return results
 
@@ -433,7 +435,7 @@ def launch_whisper_tasks(args):
         create_meta_file(fname, fname_meta)
         mp3files =split_podcast(pf, seconds)
 
-        results.extend(
+        results.append(
             (
                 pf,
                 [
@@ -455,9 +457,11 @@ def launch_whisper_tasks(args):
         )
 
     with ProcessPoolExecutor(cpus) as executor:
+        tasks = []
         for result in results:
-            for f, t in  executor.map(whisper_task_work, result[1]):
-                logging.info(f"{f} ha tardado {t}")
+            tasks.extend(result[1])
+        for f, t in  executor.map(whisper_task_work, tasks):
+            logging.info(f"{f} ha tardado {t}")
 
     return results
    

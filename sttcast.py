@@ -34,12 +34,6 @@ MAXGAP = 0.8
 # Variables globales reutilizables con distintos motores
 cpus = max(os.cpu_count() - 2, 1)
 seconds = SECONDS
-fname = ""
-fname_root = ""
-fname_extension = ""
-fname_html = ""
-fname_meta = ""
-fname_wav = ""
 duration = 0.0
 
 
@@ -91,8 +85,8 @@ def audio_tag_str(mp3file, seconds):
 
 def get_pars():
     parser = argparse.ArgumentParser()
-    parser.add_argument("fname", type=str, 
-                        help=f"fichero de audio a transcribir")
+    parser.add_argument("fnames", type=str, nargs='+',
+                        help=f"archivos de audio o directorios a transcribir")
     parser.add_argument("-m", "--model", type=str, default=MODEL,
                         help=f"modelo a utilizar. Por defecto, {MODEL}")
     parser.add_argument("-s", "--seconds", type=int, default=SECONDS,
@@ -119,16 +113,13 @@ def get_pars():
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
     parser.add_argument("-a", "--audio-tags", action='store_true',
                         help=f"inclusión de audio tags")
-    parser.add_argument("--html-file", 
-                        help=f"fichero HTML con el resultado. Por defecto el fichero de entrada con extensión html")
+    parser.add_argument("--html-suffix", type=str, default="",
+                        help=f"sufijo para el fichero HTML con el resultado. Por defecto '_result'")
     parser.add_argument("--min-offset", type=float, default=MINOFFSET, 
                         help=f"diferencia mínima entre inicios de marcas de tiempo. Por defecto {MINOFFSET}")
     parser.add_argument("--max-gap", type=float, default=MAXGAP, 
                         help=f"diferencia máxima entre el inicio de un segmento y el final del anterior." 
                              f" Por encima de esta diferencia, se pone una nueva marca de tiempo . Por defecto {MAXGAP}")
-
-
-
     return parser.parse_args()
 
 def create_meta_file(fname, fname_meta):
@@ -336,11 +327,16 @@ def whisper_task_work(cfg):
     return hname, datetime.datetime.now() - stime
 
 
-def build_html_file(fname_html, fname_meta, hnames):
+def build_html_file(fdata):
+    pf = fdata[0]
+    chunks = fdata[1]
+    fname_html = pf["html"]
+    fname_meta = pf["meta"]
+    hnames = [chunk["hname"] for chunk in chunks]
     if os.path.exists(fname_html):
         os.remove(fname_html)
-    with open(fname_html, "w") as html:
-                     
+        
+    with open(fname_html, "w") as html:             
         html.write(HTMLHEADER)
         config = configparser.ConfigParser()
         with open (fname_meta, "r") as cf:
@@ -359,44 +355,56 @@ def build_html_file(fname_html, fname_meta, hnames):
 
 def launch_vosk_tasks(args):
     global cpus, seconds, duration
-    global fname, fname_root
-
-    fname_wav = fname_root + ".wav"
-    create_wav_file(fname, fname_wav)
-    rate, frames = get_rate_and_frames(fname_wav)
-    total_seconds = frames / rate
-    duration = datetime.timedelta(seconds=total_seconds)
-
-    num_frames = seconds * rate
-    fframes = range(0, frames, num_frames)
-    cfgs = [
-        {
-        "model": args.model,
-        "wname": fname_wav,
-        "hname": f"{fname_root}_{fenum[0]}.html",
-        "nframes": num_frames,
-        "lconf": args.lconf,
-        "mconf": args.mconf,
-        "hconf": args.hconf,
-        "overlap": args.overlap,
-        "fframe": fenum[1],
-        "rwavframes": args.rwavframes,
-        "audio_tags": args.audio_tags,
-        "mp3file": os.path.basename(fname),
-        "min_offset": args.min_offset,
-        "max_gap": args.max_gap,
-        } for fenum in enumerate(range(0, frames, num_frames))
-    ]
+    global procfnames
     
-    with ProcessPoolExecutor(cpus) as executor:
-        for f, t in  executor.map(vosk_task_work, cfgs):
-            logging.info(f"{f} ha tardado {t}")
-    # En cfgs se utiliza list comprehension
-    # en hnames, generator comprehension, porque no vamos
-    # a necesitar más que una vez los hnames
-    return (cfg["hname"] for cfg in cfgs)
+    results = []
+    
+    for pf in procfnames:
+        fname = pf["name"]
+        fname_root = pf["root"]
+        fname_wav = fname_root + ".wav"
+        fname_meta = pf["meta"]
+        create_meta_file(fname, fname_meta)
+        create_wav_file(fname, fname_wav)
+        rate, frames = get_rate_and_frames(fname_wav)
+        total_seconds = frames / rate
+        duration = datetime.timedelta(seconds=total_seconds)
 
-def split_podcast(fname_root, fname_extension, seconds):
+        num_frames = seconds * rate
+        results.append(
+            (
+                pf,
+                [
+                    {
+                    "model": args.model,
+                    "wname": fname_wav,
+                    "hname": f"{fname_root}_{fenum[0]}.html",
+                    "nframes": num_frames,
+                    "lconf": args.lconf,
+                    "mconf": args.mconf,
+                    "hconf": args.hconf,
+                    "overlap": args.overlap,
+                    "fframe": fenum[1],
+                    "rwavframes": args.rwavframes,
+                    "audio_tags": args.audio_tags,
+                    "mp3file": os.path.basename(fname),
+                    "min_offset": args.min_offset,
+                    "max_gap": args.max_gap
+                    } for fenum in enumerate(range(0, frames, num_frames))
+                ]
+            )
+        )
+    with ProcessPoolExecutor(cpus) as executor:
+        for result in results:
+            for f, t in  executor.map(vosk_task_work, result[1]):
+                logging.info(f"{f} ha tardado {t}")
+
+    return results
+
+def split_podcast(pf, seconds):
+    fname_root = pf["root"]
+    fname_extension = pf["extension"]
+    fname = pf["name"]
     wildcard_mp3_files = f"{fname_root}_???{fname_extension}"
     # Se borran ficheros con formatos similares a los que se van a crear
     files_to_remove = glob.glob(wildcard_mp3_files)
@@ -415,63 +423,92 @@ def split_podcast(fname_root, fname_extension, seconds):
 
 def launch_whisper_tasks(args):
     global cpus, seconds, duration
-    global fname, fname_root
+    global procfnames
+    
+    results = []
+    for pf in procfnames:
+        fname_root = pf["root"]
+        fname = pf["name"]
+        fname_meta = pf["meta"]
+        create_meta_file(fname, fname_meta)
+        mp3files =split_podcast(pf, seconds)
 
-    mp3files = split_podcast(fname_root, fname_extension, seconds)
-
-    cfgs = [
-        {
-        "whmodel": args.whmodel,
-        "whdevice": args.whdevice,
-        "whlanguage": args.whlanguage,
-        "hname": f"{fname_root}_{fenum[0]}.html",
-        "fname": fenum[1],
-        "cut": fenum[0],
-        "seconds": args.seconds,
-        "audio_tags": args.audio_tags,
-        "mp3file": os.path.basename(fname),
-        "min_offset": args.min_offset,
-        "max_gap": args.max_gap,
-        } for fenum in enumerate(mp3files)
-    ]
+        results.extend(
+            (
+                pf,
+                [
+                    {
+                    "whmodel": args.whmodel,
+                    "whdevice": args.whdevice,
+                    "whlanguage": args.whlanguage,
+                    "hname": f"{fname_root}_{fenum[0]}.html",
+                    "fname": fenum[1],
+                    "cut": fenum[0],
+                    "seconds": args.seconds,
+                    "audio_tags": args.audio_tags,
+                    "mp3file": os.path.basename(fname),
+                    "min_offset": args.min_offset,
+                    "max_gap": args.max_gap,
+                    } for fenum in enumerate(mp3files)
+                ]
+            )
+        )
 
     with ProcessPoolExecutor(cpus) as executor:
-        for f, t in  executor.map(whisper_task_work, cfgs):
-            logging.info(f"{f} ha tardado {t}")
+        for result in results:
+            for f, t in  executor.map(whisper_task_work, result[1]):
+                logging.info(f"{f} ha tardado {t}")
 
-    return (cfg["hname"] for cfg in cfgs)
+    return results
    
 def configure_globals(args):
     global cpus, seconds
-    global fname, fname_root, fname_extension, fname_meta, fname_html
+    global procfnames
 
     cpus = args.cpus
     seconds = int(args.seconds)
-    fname = args.fname
-    fname_root, fname_extension = os.path.splitext(fname)
-    fname_meta = fname_root + ".meta"
-    if args.html_file is not None:
-        fname_html = args.html_file
-    else:
-        fname_html = fname_root + ".html"
+    procfnames = []
 
+    for fname in args.fnames:
+        if os.path.isdir(fname):
+            # Add .mp3 files in dir
+            logging.debug(f"Tratando directorio {fname}")
+            for root, dirs, files in os.walk(fname):
+                for file in files:
+                    if file.endswith(".mp3"):
+                        full_path = os.path.join(root, file)
+                        fname_dict = create_fname_dict(full_path, args.html_suffix)
+                        procfnames.append(fname_dict)
+        else:
+            # Add file
+            logging.debug(f"Tratando fichero {fname}")
+            fname_dict = create_fname_dict(fname, args.html_suffix)
+            procfnames.append(fname_dict)
+
+def create_fname_dict(fname, html_suffix):
+    fname_dict = {}
+    fname_dict["name"] = fname
+    fname_root, fname_extension = os.path.splitext(fname)
+    fname_dict["root"] = fname_root
+    fname_dict["extension"] = fname_extension
+    fname_dict["meta"] = fname_root + ".meta"
+    fname_dict["html"] = fname_root + html_suffix + ".html"
+    return fname_dict
 
 
 def main():
-    global fname_html, fname_meta, fname
-
     args = get_pars()
     logging.info(f"{args}")
     configure_globals(args)
     
     whisper = args.whisper
-    create_meta_file(fname, fname_meta)
     if whisper:
-        hnames = launch_whisper_tasks(args)
+        results = launch_whisper_tasks(args)
     else:
-        hnames = launch_vosk_tasks(args)
+        results = launch_vosk_tasks(args)
     
-    build_html_file(fname_html, fname_meta, hnames )
+    for result in results:
+        build_html_file(result)
     logging.info(f"Terminado de procesar mp3 de duración {duration}")
     
 

@@ -161,6 +161,13 @@ Automation creates an AWS EC2 machine in the Amazon Cloud, provisions it install
 
 Commands are executed in a VM also created with one command.
 
+## To Do
+
+Many modifications can be made and will be made in the future.
+
+* In **sttcast**, the number of **CPUs** can be configured (in **Automation**, this is done with the ```app_exec role``` variables). Each file is divided into that number of pieces and assigned to a Python process. It would be much more intelligent to divide the work to be done (several MP3s) into subsets of similar sizes and start a sttcast process with each subset with the number of **CPUs** equal to 1. This way, time would be optimized, and potential boundary issues between pieces could be avoided. **(Done 2024-07-06)**
+* Add a relevant searching system based in ElasticSearch and Kibana
+
 # Screenshots
 
 ![](sttcast_example.png)

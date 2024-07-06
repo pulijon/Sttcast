@@ -24,12 +24,13 @@ WHLANGUAGE = "es"
 WAVFRATE = 16000
 RWAVFRAMES = 4000
 SECONDS = 600
-HCONF = 0.9
-MCONF = 0.6
-LCONF = 0.4
-OVERLAPTIME = 1.5
-MINOFFSET = 0
+HCONF = 0.95
+MCONF = 0.7
+LCONF = 0.5
+OVERLAPTIME = 2
+MINOFFSET = 30
 MAXGAP = 0.8
+HTMLSUFFIX = ""
 
 # Variables globales reutilizables con distintos motores
 cpus = max(os.cpu_count() - 2, 1)
@@ -113,7 +114,7 @@ def get_pars():
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
     parser.add_argument("-a", "--audio-tags", action='store_true',
                         help=f"inclusión de audio tags")
-    parser.add_argument("--html-suffix", type=str, default="",
+    parser.add_argument("--html-suffix", type=str, default=HTMLSUFFIX,
                         help=f"sufijo para el fichero HTML con el resultado. Por defecto '_result'")
     parser.add_argument("--min-offset", type=float, default=MINOFFSET, 
                         help=f"diferencia mínima entre inicios de marcas de tiempo. Por defecto {MINOFFSET}")
@@ -472,6 +473,7 @@ def configure_globals(args):
     cpus = args.cpus
     seconds = int(args.seconds)
     procfnames = []
+    html_suffix = "" if args.html_suffix == "" else "_" + args.html_suffix
 
     for fname in args.fnames:
         if os.path.isdir(fname):
@@ -481,12 +483,12 @@ def configure_globals(args):
                 for file in files:
                     if file.endswith(".mp3"):
                         full_path = os.path.join(root, file)
-                        fname_dict = create_fname_dict(full_path, args.html_suffix)
+                        fname_dict = create_fname_dict(full_path, html_suffix)
                         procfnames.append(fname_dict)
         else:
             # Add file
             logging.debug(f"Tratando fichero {fname}")
-            fname_dict = create_fname_dict(fname, args.html_suffix)
+            fname_dict = create_fname_dict(fname, html_suffix)
             procfnames.append(fname_dict)
 
 def create_fname_dict(fname, html_suffix):

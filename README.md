@@ -6,7 +6,7 @@ Every big cloud provider has its APIs to transcribe voice to text. Results are u
 
 There are open source projects as Vosk-Kaldi that may be of help in this task. **sttcast.py** makes use of its Python API to offline transcribe podcasts, downloaded as mp3 files.
 
-It is worth also mentioning OpenAI Whisper. It is a very interesting alternative although it is also more time consuming. In the near future, there would probably be an option to use that API in sttcast.
+It is worth also mentioning OpenAI Whisper. It is a very interesting alternative although it is also more resource  consuming. It has been included as an option engine for **sttcast.py**
 
 
 # Requirements
@@ -15,13 +15,13 @@ The requirements for **sttcast.py** are as follows:
 
 * A python 3.x installation (it has been tested on Python 3.10 on Windows and Linux)
 * The tool **ffmpeg** installed in a folder of the PATH variable.
+* Pyyaml library (pip install pyyeml)
 * Vosk library (pip install vosk)
 * Wave library (pip install wave)
+* Whisper library (pip install openai-whisper)
 * A vosk model for the desired language (you may find a lot of them in [alfphacephei](https://alphacephei.com/vosk/models). It has been tested with the Spanish model [vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip))
-* Whisper library 
-```bash
-pip install git+https://github.com/openai/whisper.git
-```
+
+
 
 The tool **add_audio_tag.py** adds audio controls to a transcribed html without **--add-audio-tags** option. It requires:
 
@@ -33,6 +33,8 @@ The tool **add_audio_tag.py** adds audio controls to a transcribed html without 
 # How does sttcast.py work
 
 As transcribing is a CPU intensive operation, **sttcast.py** makes use of multiprocessing in Python (you probably have known about GIL blues for multithreading or coroutines in Python). **sttcast.py** splits the entire work (the transcription of a podcast, perhaps of several hours) in fragments of s seconds (s is an optional paramenter, 600 seconds by default). 
+
+If the task is to transcribe a large number of files (clearly exceeding the number of available CPUs), sttcast.py can utilize its capacity to transcribe multiple files in parallel without splitting them, thus eliminating potential issues at the split boundaries. In this case, it is advisable to set the number of seconds to a value greater than the size of the largest file (36000 seconds, or 10 hours, should be sufficient for almost all files).
 
 **sttcast.py** converts the mp3 file to wav in order to use the vosk API. The main process pass the wav file as an argument to each one of the worker tasks, each proessing a fragment of audio (only part of the total frames of the wav file). The tasks are delivered to a pool of **c** processes (**c** is another optional paramenter, equal, by default, to the number of cpus of the system minus 2). In this way, the system may parallel **c** tasks.
 
@@ -67,7 +69,18 @@ If you want to make transcription with whisper, you shoud take into account:
 * With the --whisper option, you can take advantage of the CUDA acceleration (option --whdevice cuda) or not (--whdevice cpu). Without CUDA, whisper manages multiprocessing, so you will not notice any benefits configuring multiple cpus.
 * Transcriptions are very slow without CUDA acceleration
 * CUDA acceleration requires a good CUDA platform. 
-* CUDA acceleation does benefit from multiple CPUS (option --cpu) 
+* CUDA acceleation does benefit from multiple CPUS (option --cpu)
+
+The following table, taken from [Whisper GitHub Repository](https://github.com/openai/whisper) shows the requirements for GPU memory of whisper models:
+
+| Model | Reauired vRAM | Speed |
+|---|---|---|
+| tiny | ~1 GB | ~32x |
+| base | ~1 GB | ~16x |
+| small | ~2 GB | ¬6x |
+| medium | ~5 GB | ~2x |
+| large | ~10 GB | 1x |
+
 
 
 # Use
@@ -80,15 +93,15 @@ You should consider the location of model files and mp3 files in RAM drives to g
 
 ```bash
 $ ./sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF]
-                  [-o OVERLAP] [-r RWAVFRAMES] [-w]
+$ ./sttcast.py -h
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] [-r RWAVFRAMES] [-w]
                   [--whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}]
-                  [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE] [-a]
-                  [--html-file HTML_FILE] [--min-offset MIN_OFFSET] [--max-gap MAX_GAP]
-                  fname
+                  [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE] [-a] [--html-suffix HTML_SUFFIX]
+                  [--min-offset MIN_OFFSET] [--max-gap MAX_GAP]
+                  fnames [fnames ...]
 
 positional arguments:
-  fname                 fichero de audio a transcribir
+  fnames                archivos de audio o directorios a transcribir
 
 options:
   -h, --help            show this help message and exit
@@ -98,13 +111,13 @@ options:
                         segundos de cada tarea. Por defecto, 600
   -c CPUS, --cpus CPUS  CPUs (tamaño del pool de procesos) a utilizar. Por defecto, 10
   -i HCONF, --hconf HCONF
-                        umbral de confianza alta. Por defecto, 0.9
+                        umbral de confianza alta. Por defecto, 0.95
   -n MCONF, --mconf MCONF
-                        umbral de confianza media. Por defecto, 0.6
+                        umbral de confianza media. Por defecto, 0.7
   -l LCONF, --lconf LCONF
-                        umbral de confianza baja. Por defecto, 0.4
+                        umbral de confianza baja. Por defecto, 0.5
   -o OVERLAP, --overlap OVERLAP
-                        tiempo de solapamientro entre fragmentos. Por defecto, 1.5
+                        tiempo de solapamientro entre fragmentos. Por defecto, 2
   -r RWAVFRAMES, --rwavframes RWAVFRAMES
                         número de tramas en cada lectura del wav. Por defecto, 4000
   -w, --whisper         utilización de motor whisper
@@ -115,14 +128,12 @@ options:
   --whlanguage WHLANGUAGE
                         lenguaje a utilizar. Por defecto, es
   -a, --audio-tags      inclusión de audio tags
-  --html-file HTML_FILE
-                        fichero HTML con el resultado. Por defecto el fichero de entrada con
-                        extensión html
+  --html-suffix HTML_SUFFIX
+                        sufijo para el fichero HTML con el resultado. Por defecto '_result'
   --min-offset MIN_OFFSET
-                        diferencia mínima entre inicios de marcas de tiempo. Por defecto 0
-  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del
-                        anterior. Por encima de esta diferencia, se pone una nueva marca de
-                        tiempo . Por defecto 0.8
+                        diferencia mínima entre inicios de marcas de tiempo. Por defecto 30
+  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del anterior. Por encima de esta
+                        diferencia, se pone una nueva marca de tiempo . Por defecto 0.8
 
 ```
 

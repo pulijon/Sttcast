@@ -51,11 +51,9 @@
       --cpus {{ cpus }} 
       --min-offset {{ min_offset }} 
       --max-gap {{ max_gap }} 
-      --html-file {{ item.path | replace('.mp3', '_whisper.html') }}
-      {{ item.path }}
+      --html-suffix {{ html_suffix }}
+      {{ remote_payload_dir }}
     chdir: "{{ app_dir }}"
-  with_items: 
-  - "{{ mp3s.files }}"
   environment:
     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     VIRTUAL_ENV: "{{ app_dir }}/.venv"
@@ -66,8 +64,8 @@
     cmd: >
       python add_audio_tag.py 
       --mp3-file {{ item.path }}
-      -o {{ item.path | replace('.mp3', '_whisper_audio.html') }}
-      {{ item.path | replace('.mp3', '_whisper.html') }}
+      -o {{ item.path | replace(mp3_extension, audio_extension) }}
+      {{ item.path | replace(mp3_extension, html_extension) }}
     chdir: "{{ app_dir }}"
   with_items: 
   - "{{ mp3s.files }}"

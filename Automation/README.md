@@ -264,10 +264,11 @@ Specifically, the file Ansible ```/roles/app_exec/vars/main.yml``` contains the 
 ```yaml
 # Configure sttcast
 whmodel:    "small"
-seconds:    "1800"
+seconds:    "36000"
 cpus:       "3"
 min_offset: "60"
 max_gap:    "0.8"
+html_suffix: "whisper"
 ```
 You may want to change this parameters to best fit the behaviour to your needs.
 
@@ -277,7 +278,7 @@ Many modifications can be made and will be made in the future.
 
 * To save costs, the most obvious change is to use intermediate S3 storage for the **payload**. A significant portion of the execution time is spent copying the MP3 files to the target machine. The upload time from **S3** is assumed to be much faster (and therefore cheaper) for the machine with **GPU**. One could even consider **EBS**, although I would like to conduct tests. **(Done 2023-11-06)**
 
-* In **sttcast**, the number of **CPUs** can be configured (in **Automation**, this is done with the ```app_exec role``` variables). Each file is divided into that number of pieces and assigned to a Python process. It would be much more intelligent to divide the work to be done (several MP3s) into subsets of similar sizes and start a sttcast process with each subset with the number of **CPUs** equal to 1. This way, time would be optimized, and potential boundary issues between pieces could be avoided
+
 
 
 

@@ -13,7 +13,7 @@
     git:
       repo: "{{ app_repo }}"
       dest: "{{ app_dir }}"
-      version: multifile
+      version: {{ sttcast_version }}
   
   - name: Directory for Spanish vosk model
     file:

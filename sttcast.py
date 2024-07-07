@@ -472,7 +472,7 @@ def configure_globals(args):
 
     cpus = args.cpus
     seconds = int(args.seconds)
-    procfnames = []
+    procfnames_unsorted = []
     html_suffix = "" if args.html_suffix == "" else "_" + args.html_suffix
 
     for fname in args.fnames:
@@ -484,12 +484,19 @@ def configure_globals(args):
                     if file.endswith(".mp3"):
                         full_path = os.path.join(root, file)
                         fname_dict = create_fname_dict(full_path, html_suffix)
-                        procfnames.append(fname_dict)
+                        procfnames_unsorted.append(fname_dict)
         else:
             # Add file
             logging.debug(f"Tratando fichero {fname}")
             fname_dict = create_fname_dict(fname, html_suffix)
-            procfnames.append(fname_dict)
+            procfnames_unsorted.append(fname_dict)
+            
+    # Se ordenan los ficheros en función del tamaño de manera descendente
+    # Así se optimiza el proceso de transcripción
+    procfnames = sorted(procfnames_unsorted,
+                        key = lambda f: os.path.getsize(f["name"]),
+                        reverse = True)
+    logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], os.path.getsize(pf['name'])) for pf in procfnames]}")
 
 def create_fname_dict(fname, html_suffix):
     fname_dict = {}

@@ -25,21 +25,24 @@ whisper_vosk_files=()
 meta_vosk_files=()
 meta_whisper_files=()
 
-for episode in $(find "$srcdir" -maxdepth 1 -type f -name "*.mp3" | sort -r)
+oldIFS=$IFS
+IFS=$'\n'
+episodes=$(find "$srcdir" -maxdepth 1 -type f -name "*.mp3")
+for episode in $episodes
 do
-	mp3=$(basename $episode)
-	ep=${mp3%.mp3}
-	meta=${ep}.meta
-	html_vosk=${ep}_${vosk_suffix}.html
-	html_vosk_audio=${ep}_${vosk_suffix}_${audio_suffix}.html
-	html_whisper=${ep}_${whisper_suffix}.html
-	html_whisper_audio=${ep}_${whisper_suffix}_${audio_suffix}.html
+	mp3=$(basename "$episode")
+	ep="${mp3%.mp3}"
+	meta="${ep}.meta"
+	html_vosk="${ep}_${vosk_suffix}.html"
+	html_vosk_audio="${ep}_${vosk_suffix}_${audio_suffix}.html"
+	html_whisper="${ep}_${whisper_suffix}.html"
+	html_whisper_audio="${ep}_${whisper_suffix}_${audio_suffix}.html"
 
 	if [ ! -f "${srcdir}/${html_vosk}" ]
 	then
 		if [ ! -f "${prcdir}/${mp3}" ]
 		then
-			cp "${srcdir}/${mp3}" "${prcdir}"
+			echo cp "${srcdir}/${mp3}" "${prcdir}"
 		fi
 		mp3_vosk_files+=("${prcdir}/${mp3}")
 		html_vosk_files+=("${prcdir}/${html_vosk}")
@@ -51,7 +54,7 @@ do
 	then
 		if [ ! -f "${prcdir}/${mp3}" ]
 		then
-			cp "${srcdir}/${mp3}" "${prcdir}"
+			echo cp "${srcdir}/${mp3}" "${prcdir}"
 		fi
 		mp3_whisper_files+=("${prcdir}/${mp3}")
 		html_whisper_files+=("${prcdir}/${html_whisper}")
@@ -59,12 +62,13 @@ do
     	meta_whisper_files+=("${prcdir}/${meta}")
     fi
 done
+IFS=$oldIFS
 
 if [ ${#mp3_vosk_files[*]} -gt 0 ]
 then
 	cpus=$(cat cpus.txt | tr -d '\n')
 	seconds=$(cat seconds.txt | tr -d '\n')
-	Procesando con vosk ${mp3_vosk_files[*]}
+	echo Procesando con vosk ${mp3_vosk_files[*]}
 	echo Trabajando con $cpus CPUs y $seconds segundos
 	echo "${mp3_vosk_files[*]}"
 	./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix} ${mp3_vosk_files[*]}
@@ -74,13 +78,12 @@ then
 	do
 		cp "${html_vosk_files[$i]}" "${srcdir}"
 		cp "${meta_vosk_files[$i]}" "${srcdir}"
-		echo ./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
-
-		./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
-		cp "${audio_vosk_files[$i]}" "${srcdir}"
-    	rm "${html_vosk_files[$i]}"
-		rm "${audio_vosk_files[$i]}"
-	done
+ 		echo ./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
+ 		./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
+ 		cp "${audio_vosk_files[$i]}" "${srcdir}"
+     	rm "${html_vosk_files[$i]}"
+ 		rm "${audio_vosk_files[$i]}"
+ 	done
 fi
 
 if [ ${#mp3_whisper_files[*]} -gt 0 ]

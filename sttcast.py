@@ -5,6 +5,7 @@ import logging
 import whisper
 from vosk import Model, KaldiRecognizer
 import wave
+import ffmpeg
 import json
 import datetime
 import argparse
@@ -472,7 +473,12 @@ def launch_whisper_tasks(args):
             logging.info(f"{f} ha tardado {t}")
 
     return results
-   
+ 
+def get_mp3_duration(f):
+    probe = ffmpeg.probe(f)
+    duration = float(probe['format']['duration'])
+    return duration  
+
 def configure_globals(args):
     global cpus, seconds
     global procfnames
@@ -501,9 +507,9 @@ def configure_globals(args):
     # Se ordenan los ficheros en función del tamaño de manera descendente
     # Así se optimiza el proceso de transcripción
     procfnames = sorted(procfnames_unsorted,
-                        key = lambda f: os.path.getsize(f["name"]),
+                        key = get_mp3_duration,
                         reverse = True)
-    logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], os.path.getsize(pf['name'])) for pf in procfnames]}")
+    logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], get_mp3_duration(pf['name'])) for pf in procfnames]}")
 
 def create_fname_dict(fname, html_suffix):
     fname_dict = {}

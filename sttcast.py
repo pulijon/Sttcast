@@ -507,7 +507,7 @@ def configure_globals(args):
     # Se ordenan los ficheros en función del tamaño de manera descendente
     # Así se optimiza el proceso de transcripción
     procfnames = sorted(procfnames_unsorted,
-                        key = get_mp3_duration,
+                        key = lambda f: get_mp3_duration(f["name"]),
                         reverse = True)
     logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], get_mp3_duration(pf['name'])) for pf in procfnames]}")
 

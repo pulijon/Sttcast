@@ -42,7 +42,7 @@ do
 	then
 		if [ ! -f "${prcdir}/${mp3}" ]
 		then
-			echo cp "${srcdir}/${mp3}" "${prcdir}"
+			cp "${srcdir}/${mp3}" "${prcdir}"
 		fi
 		mp3_vosk_files+=("${prcdir}/${mp3}")
 		html_vosk_files+=("${prcdir}/${html_vosk}")
@@ -54,7 +54,7 @@ do
 	then
 		if [ ! -f "${prcdir}/${mp3}" ]
 		then
-			echo cp "${srcdir}/${mp3}" "${prcdir}"
+			cp "${srcdir}/${mp3}" "${prcdir}"
 		fi
 		mp3_whisper_files+=("${prcdir}/${mp3}")
 		html_whisper_files+=("${prcdir}/${html_whisper}")
@@ -78,6 +78,7 @@ then
 	do
 		cp "${html_vosk_files[$i]}" "${srcdir}"
 		cp "${meta_vosk_files[$i]}" "${srcdir}"
+		rm "${meta_vosk_files[$i]}"
  		echo ./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
  		./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
  		cp "${audio_vosk_files[$i]}" "${srcdir}"
@@ -95,8 +96,8 @@ then
 	for i in "${!mp3_whisper_files[@]}"
 	do
 		cp "${html_whisper_files[$i]}" "${srcdir}"
-		rm "${meta_whisper_files[$i]}"
 		cp "${meta_whisper_files[$i]}" "${srcdir}"
+		rm "${meta_whisper_files[$i]}"
 		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
 		./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
 		cp "${audio_whisper_files[$i]}" "${srcdir}"
@@ -104,3 +105,10 @@ then
 		rm "${audio_whisper_files[$i]}"
 	done
 fi
+for f in ${mp3_vosk_files[@]} ${mp3_whisper_files[@]}
+do
+	if [ -f $f ]
+	then
+		rm $f
+	fi
+done

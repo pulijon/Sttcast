@@ -8,7 +8,13 @@ variable "ssh_port" {
 variable "sttcast_instance_type" {
   description = "Instance type for sttcast"
   type        = string
-  default     = "g4dn.xlarge"
+  default     = "g4dn.2xlarge"
+}
+
+variable "sttcast_spot_price" {
+  description = "Instance type for sttcast"
+  type        = string
+  default     = "0.3"
 }
 
 variable "AWS_SECRET_ACCESS_KEY" {
@@ -40,6 +46,13 @@ variable "ec2_user" {
   type        = string
   default     = "ubuntu"
 }
+
+variable "ec2_region" {
+  description = "EC2 region"
+  type        = string
+  default     = "us-east-2"
+}
+
 
 variable "ansible_dir" {
   description = "Ansible directory"
@@ -74,7 +87,7 @@ variable "payload_directory" {
 data "aws_caller_identity" "current" {}
 
 provider "aws" {
-    region = "us-east-2"
+    region = var.ec2_region
     access_key = var.AWS_ACCESS_KEY_ID
     secret_key = var.AWS_SECRET_ACCESS_KEY
 }
@@ -199,21 +212,23 @@ resource "aws_iam_instance_profile" "sttcast_profile_iam" {
   role = aws_iam_role.sttcast_role.name
 }
 
-resource "aws_instance" "sttcast" {
+resource "aws_spot_instance_request" "sttcast" {
   depends_on = [aws_security_group.sttcast, 
                 aws_key_pair.vm_keypair,
                 aws_s3_object.mp3,
                 aws_iam_instance_profile.sttcast_profile_iam,]
-  ami           = var.sttcast_ami
-  instance_type = var.sttcast_instance_type
+  ami                  = var.sttcast_ami
+  instance_type        = var.sttcast_instance_type
+  spot_price           = var.sttcast_spot_price
+  wait_for_fulfillment = true
   vpc_security_group_ids = [aws_security_group.sttcast.id]
-  key_name = var.sttcast_key_pair
+  key_name             = var.sttcast_key_pair
   iam_instance_profile = aws_iam_instance_profile.sttcast_profile_iam.name
- 
+  
   tags = {
     Name = "sttcast_machine"
   }
-  
+
   provisioner "local-exec" {
     command = <<-EOF
        cd ${var.ansible_dir}
@@ -227,10 +242,45 @@ resource "aws_instance" "sttcast" {
         >> result.log
     EOF
   } 
+
+  root_block_device {
+    volume_size = 65
+  }
 }
+
+resource "null_resource" "terminate_spot_instance" {
+  depends_on = [aws_spot_instance_request.sttcast]
+
+  provisioner "local-exec" {
+    command = "aws ec2 terminate-instances --instance-ids ${aws_spot_instance_request.sttcast.spot_instance_id}"
+    environment = {
+      AWS_REGION = var.ec2_region
+      AWS_ACCESS_KEY_ID = var.AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY = var.AWS_SECRET_ACCESS_KEY
+    }
+  }
+}
+
+resource "null_resource" "delete_s3_bucket" {
+  depends_on = [aws_spot_instance_request.sttcast]
+
+  provisioner "local-exec" {
+    command = <<-EOF
+      aws s3 rm s3://${aws_s3_bucket.sttcast_payload_bucket.bucket} --recursive
+      aws s3api delete-bucket --bucket ${aws_s3_bucket.sttcast_payload_bucket.bucket}
+    EOF
+    environment = {
+      AWS_REGION = var.ec2_region
+      AWS_ACCESS_KEY_ID = var.AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY = var.AWS_SECRET_ACCESS_KEY
+    }
+
+  }
+}
+
 output "public_ip" {
   description = "The public IP address of the web server"
   # value = aws_spot_instance_request.sttcast.public_ip
-  value = aws_instance.sttcast.public_ip
+  value = aws_spot_instance_request.sttcast.public_ip
 }
 

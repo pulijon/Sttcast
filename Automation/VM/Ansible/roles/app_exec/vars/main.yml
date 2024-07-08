@@ -10,7 +10,7 @@ remote_payload_dir: "{{ app_dir }}/Payload"
 # Configure sttcast
 whmodel:    "small"
 seconds:    "36000"
-cpus:       "3"
+cpus:       "7"
 min_offset: "60"
 max_gap:    "0.8"
 html_suffix: "whisper"

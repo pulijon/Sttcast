@@ -178,6 +178,7 @@ def vosk_task_work(cfg):
         model = Model(cfg["model"])
         frate = wf.getframerate()
         rec = KaldiRecognizer(model, frate)
+        fnumframes = wf.getnframes()
 
         # Se calcula el momento de inicio en segundos
         # del presente fragmento relativo al comienzo del mp3,
@@ -193,7 +194,8 @@ def vosk_task_work(cfg):
         # Se hace un cierto solapamiento entre el corte actual
         # y el siguiente para evitar perder audio
         overlap_frames = cfg["overlap"] * frate
-        left_frames = cfg["nframes"] + overlap_frames
+        # Las tramas a leer no pueden ser más que las que tiene el fichero
+        left_frames = min(cfg["nframes"] + overlap_frames, fnumframes)
 
         # Tramas en cada lectura del wav
         rwavframes = cfg["rwavframes"]
@@ -211,8 +213,10 @@ def vosk_task_work(cfg):
             html.write("<!-- New segment -->\n")
             last_ti = None
             while left_frames > 0:
-                data = wf.readframes(rwavframes)
-                left_frames -= rwavframes
+                # No hace falta leer rwavframes frames si no quedan tantas por leer
+                frames_to_read = min(rwavframes, left_frames - rwavframes)
+                data = wf.readframes(frames_to_read)
+                left_frames -= frames_to_read
                 if len(data) == 0:
                     break
                 last_accepted = True
@@ -363,7 +367,7 @@ def launch_vosk_tasks(args):
     for pf in procfnames:
         fname = pf["name"]
         fname_root = pf["root"]
-        fname_wav = fname_root + ".wav"
+        fname_wav = pf["wav"]
         fname_meta = pf["meta"]
         create_meta_file(fname, fname_meta)
         create_wav_file(fname, fname_wav)
@@ -401,6 +405,9 @@ def launch_vosk_tasks(args):
             tasks.extend(result[1])
         for f, t in  executor.map(vosk_task_work, tasks):
            logging.info(f"{f} ha tardado {t}")
+    
+    for pf in procfnames:
+        os.remove(pf['wav'])
 
     return results
 
@@ -506,6 +513,7 @@ def create_fname_dict(fname, html_suffix):
     fname_dict["extension"] = fname_extension
     fname_dict["meta"] = fname_root + ".meta"
     fname_dict["html"] = fname_root + html_suffix + ".html"
+    fname_dict["wav"] = fname_root + ".wav"
     return fname_dict
 
 

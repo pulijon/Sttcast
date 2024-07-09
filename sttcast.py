@@ -503,11 +503,12 @@ def configure_globals(args):
             logging.debug(f"Tratando fichero {fname}")
             fname_dict = create_fname_dict(fname, html_suffix)
             procfnames_unsorted.append(fname_dict)
-            
+
+    logging.info(f"Se van a procesar {len(procfnames_unsorted)} ficheros con un total de {sum(pf["duration"] for pf in procfnames_unsorted)} segundos")            
     # Se ordenan los ficheros en función del tamaño de manera descendente
     # Así se optimiza el proceso de transcripción
     procfnames = sorted(procfnames_unsorted,
-                        key = lambda f: get_mp3_duration(f["name"]),
+                        key = lambda f: f["duration"],
                         reverse = True)
     logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], get_mp3_duration(pf['name'])) for pf in procfnames]}")
 
@@ -520,6 +521,7 @@ def create_fname_dict(fname, html_suffix):
     fname_dict["meta"] = fname_root + ".meta"
     fname_dict["html"] = fname_root + html_suffix + ".html"
     fname_dict["wav"] = fname_root + ".wav"
+    fname_dict["duration"] = get_mp3_duration(fname)
     return fname_dict
 
 

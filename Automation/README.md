@@ -1,7 +1,9 @@
 # Caution
-The automation in sttcast uses an expensive machine from AWS, of type **g4dn.xlarge**, which has a usage price of about **$0.60/hour** (VAT included). This price is much less that the cost of the transcription service of AWS (similar, by the way, to that of other prividers as Azure, or Google) but can be very expensive if resources are not destroyed immediately after the job is done.
+The automation in Sttcast utilizes a high-performance AWS machine, specifically the g4dn.2xlarge instance, which costs approximately $0.75 per hour (excluding VAT). While this price is significantly lower than the cost of AWS's transcription service (comparable to those of other providers such as Azure and Google), it can become quite expensive if resources are not terminated immediately after the job completes.
 
-![](g4xdn.xlarge_price.png)
+It is important to note that these prices apply to "on-demand" instances. Sttcast is configured to use "spot" instances, where users can specify a maximum price they are willing to pay. By default (though configurable like other Terraform variables), this limit is set at $0.29 per hour.hour**
+
+![](2024-07-09_gd4dn_prices.png)
 
 
 **The user must be aware of these costs and must ensure that the resources used are destroyed at the completion of the process or if, for any reason, including a malfunction of the program (the developer makes does not warranty its proper functioning, the program is provided "AS IS"), the transcription time exceeds reasonable limits (in tests carried out, a 6-hour transcription takes 50 minutes).**
@@ -27,7 +29,7 @@ From the virtual machine, terraform and ansible will be used through a simple co
 * Installation of the sttcast tool and all its dependencies.
 * Uploading the files to be transcribed.
 * Transcription.
-* Downloading the transcriptions.
+* Downloading the results of the process.
 
 
 # Requirements

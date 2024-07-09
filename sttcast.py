@@ -547,3 +547,4 @@ if __name__ == "__main__":
     main()
     etime = datetime.datetime.now()
     logging.info(f"Ejecución del programa ha tardado {etime - stime}")
+    exit(0)

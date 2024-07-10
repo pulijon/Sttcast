@@ -1,9 +1,9 @@
 # Caution
-The automation in Sttcast utilizes a high-performance AWS machine, specifically the g4dn.2xlarge instance, which costs approximately $0.75 per hour (excluding VAT). While this price is significantly lower than the cost of AWS's transcription service (comparable to those of other providers such as Azure and Google), it can become quite expensive if resources are not terminated immediately after the job completes.
+The automation in Sttcast utilizes a high-performance AWS machine, specifically the g4dn.2xlarge instance, which costs approximately **$0.75** per hour (excluding VAT). While this price is significantly lower than the cost of AWS's transcription service (comparable to those of other providers such as Azure and Google), it can become quite expensive if resources are not terminated immediately after the job completes.
 
-It is important to note that these prices apply to "on-demand" instances. Sttcast is configured to use "spot" instances, where users can specify a maximum price they are willing to pay. By default (though configurable like other Terraform variables), this limit is set at $0.29 per hour.hour**
+It is important to note that these prices apply to "on-demand" instances. Sttcast is configured to use "spot" instances, where users can specify a maximum price they are willing to pay. By default (though configurable like other Terraform variables), this limit is set at **$0.29** per hour
 
-![](2024-07-09_gd4dn_prices.png)
+![](g4dn_prices.png)
 
 
 **The user must be aware of these costs and must ensure that the resources used are destroyed at the completion of the process or if, for any reason, including a malfunction of the program (the developer makes does not warranty its proper functioning, the program is provided "AS IS"), the transcription time exceeds reasonable limits (in tests carried out, a 6-hour transcription takes 50 minutes).**
@@ -175,7 +175,7 @@ Filenames ended in whisper_audio.html are transcriptions in HTML format with pla
 
 ## Destroying the resources
 
-This is a very important step, as the used machine is very expensive and you pay for it while it's alive. Remember the  **Caution note** at the beginning of this document. 
+The terraform configuration destroy the expensive g4dn machine. However, you should realize that if the instance is not destroyed, it could be very expensive as you pay for it while it's alive. Remember the  **Caution note** at the beginning of this document. 
 
 You have to destroy the resources with ```terraform destroy -auto--aprove```
 
@@ -267,11 +267,57 @@ Specifically, the file Ansible ```/roles/app_exec/vars/main.yml``` contains the 
 # Configure sttcast
 whmodel:    "small"
 seconds:    "36000"
-cpus:       "3"
+cpus:       "6"
 min_offset: "60"
 max_gap:    "0.8"
 html_suffix: "whisper"
+mp3_extension: ".mp3"
+html_extension: "_{{ html_suffix }}.html"
+audio_extension: "_{{ html_suffix }}_audio.html"
 ```
+
+Terraform has variables that could be overwritten by enfironment variables that should be named as the terraform variable prefixed by TF_VAR, so if you want to change the g4dn.2xlarge to g4dn.xlarge, you should set the environment variable TF_VAR_sttcast_instance_typo as below:
+
+```bash
+export TF_VAR_sttcast_instance_type="g4dn.xlarge"
+```
+
+Some of the terraform variables are shown here
+
+```hcl
+
+
+variable "sttcast_instance_type" {
+  description = "Instance type for sttcast"
+  type        = string
+  default     = "g4dn.2xlarge"
+}
+
+variable "sttcast_spot_price" {
+  description = "Instance type for sttcast"
+  type        = string
+  default     = "0.28"
+}
+
+variable "sttcast_ami" {
+  description = "AMI for sttcast"
+  type        = string
+  # Instance CUDA TensorFlow
+  # default     = "ami-0e0d36dffd7ce3f68"
+  # Instance Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.3.0 (Ubuntu 20.04) 20240611
+  # default = "ami-0c540ca1e5211e422"
+  # Instance Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20240624
+  default     = "ami-0fa7c50f46a48ae63"
+}
+
+variable "payload_directory" {
+  description = "Local directory to upload content from"
+  type        = string
+  default     = "/vagrant/Payload"
+}
+
+```
+
 You may want to change this parameters to best fit the behaviour to your needs.
 
 ## To Do
@@ -280,7 +326,7 @@ Many modifications can be made and will be made in the future.
 
 * To save costs, the most obvious change is to use intermediate S3 storage for the **payload**. A significant portion of the execution time is spent copying the MP3 files to the target machine. The upload time from **S3** is assumed to be much faster (and therefore cheaper) for the machine with **GPU**. One could even consider **EBS**, although I would like to conduct tests. **(Done 2023-11-06)**
 
-
+  
 
 
 

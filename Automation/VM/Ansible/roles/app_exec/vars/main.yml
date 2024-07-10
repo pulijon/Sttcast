@@ -6,11 +6,13 @@ local_payload_dir: "/vagrant/Payload"
 
 # Remote dir
 remote_payload_dir: "{{ app_dir }}/Payload"
+# remote_payload_dir: "{{ ram_mount_point }}/Payload"
+
 
 # Configure sttcast
 whmodel:    "small"
 seconds:    "36000"
-cpus:       "7"
+cpus:       "6"
 min_offset: "60"
 max_gap:    "0.8"
 html_suffix: "whisper"

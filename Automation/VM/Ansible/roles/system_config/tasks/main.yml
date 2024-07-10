@@ -42,16 +42,16 @@
 #
 # - name: Creating Mounting point for RAM filesystem
 #   file:
-#     path: /mnt/ram
+#     path: "{{ ram_mount_point }}"
 #     state: directory
 #     owner: ubuntu
 #   become: true
 
 # - name: Mount RAM filesystem
 #   mount:
-#     path: "/mnt/ram"
+#     path: "{{ ram_mount_point }}"
 #     src: tmpfs
 #     fstype: tmpfs
-#     opts: "size=2048m"
+#     opts: "size=16G"
 #     state: mounted
 #   become: true

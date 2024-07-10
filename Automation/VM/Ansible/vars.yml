@@ -4,4 +4,5 @@
 # Repositorio y ubicación
 # mount_point: "/mnt/vol"
 mount_point: "/opt/dlami/nvme"
+# ram_mount_point: "/mnt/ram"
 app_dir: "{{ mount_point }}/Sttcast"

@@ -14,7 +14,7 @@ variable "sttcast_instance_type" {
 variable "sttcast_spot_price" {
   description = "Instance type for sttcast"
   type        = string
-  default     = "0.3"
+  default     = "0.28"
 }
 
 variable "AWS_SECRET_ACCESS_KEY" {
@@ -233,7 +233,7 @@ resource "aws_spot_instance_request" "sttcast" {
     command = <<-EOF
        cd ${var.ansible_dir}
        echo ${self.public_ip} > inventory 
-       ANSIBLE_HOST_KEY_CHECKING=false  ansible-playbook -v \
+       ANSIBLE_HOST_KEY_CHECKING=false  ansible-playbook -vvv \
          -e 'ec2_instance_id=${self.id}' \
          -u ${var.ec2_user} \
          -i inventory  \

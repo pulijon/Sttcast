@@ -38,26 +38,45 @@
     recurse: true
     patterns: ["^.*mp3"]
   register: mp3s
-
-- name: Obtain whisper file
-  shell:
-    # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3
-    cmd: >
-      python sttcast.py 
-      --whisper 
-      --whmodel {{ whmodel }} 
-      --whdevice cuda 
-      --seconds {{ seconds }}  
-      --cpus {{ cpus }} 
-      --min-offset {{ min_offset }} 
-      --max-gap {{ max_gap }} 
-      --html-suffix {{ html_suffix }}
-      {{ remote_payload_dir }}
+  
+- name: Obtain whisper files
+  shell: >
+    python sttcast.py
+    --whisper
+    --whmodel {{ whmodel }}
+    --whdevice cuda
+    --seconds {{ seconds }}
+    --cpus {{ cpus }}
+    --min-offset {{ min_offset }}
+    --max-gap {{ max_gap }}
+    --html-suffix {{ html_suffix }}
+    {{ remote_payload_dir }}
+  args:
     chdir: "{{ app_dir }}"
   environment:
     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     VIRTUAL_ENV: "{{ app_dir }}/.venv"
-  
+  async: 7200 # 2 hours max
+  poll: 0
+  register: whisper_files_result
+
+# - name: Debug whisper files result
+#   debug:
+#     var: whisper_files_result
+
+- name: Check whisper files result
+  async_status:
+    jid: "{{ whisper_files_result.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 120
+  delay: 60  # Check every minute 
+
+- name: Fail if whisper file job failed
+  fail:
+    msg: "The whisper file job failed"
+  when: job_result.failed
+
 - name: Add tags
   shell:
     # cmd: /mnt/vol/Sttcast/.venv/bin/python3 /mnt/vol/Sttcast/sttcast.py --seconds 3000 --whisper --whmodel small --cpus 2 --html-file resultado.html --min-offset 60 --max-gap 0.8 --audio-tags  /mnt/vol/Payload/cm230331.mp3

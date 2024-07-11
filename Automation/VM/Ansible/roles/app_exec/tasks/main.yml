@@ -56,7 +56,7 @@
   environment:
     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     VIRTUAL_ENV: "{{ app_dir }}/.venv"
-  async: 7200 # 2 hours max
+  async: 72000 # 2 hours max
   poll: 0
   register: whisper_files_result
 
@@ -69,7 +69,7 @@
     jid: "{{ whisper_files_result.ansible_job_id }}"
   register: job_result
   until: job_result.finished
-  retries: 120
+  retries: 1200
   delay: 60  # Check every minute 
 
 - name: Fail if whisper file job failed

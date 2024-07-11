@@ -1,9 +1,11 @@
 # Caution
 The automation in Sttcast utilizes a high-performance AWS machine, specifically the g4dn.2xlarge instance, which costs approximately **$0.75** per hour (excluding VAT). While this price is significantly lower than the cost of AWS's transcription service (comparable to those of other providers such as Azure and Google), it can become quite expensive if resources are not terminated immediately after the job completes.
 
-It is important to note that these prices apply to "on-demand" instances. Sttcast is configured to use "spot" instances, where users can specify a maximum price they are willing to pay. By default (though configurable like other Terraform variables), this limit is set at **$0.29** per hour
+It is important to note that these prices apply to "*on-demand*" instances. Sttcast is configured to use "*spot*" instances, where users can specify a maximum price they are willing to pay. By default (though configurable like other Terraform variables), this limit is set at **$0.28** per hour
 
 ![](g4dn_prices.png)
+
+![](EC2_spot_costs.png)
 
 
 **The user must be aware of these costs and must ensure that the resources used are destroyed at the completion of the process or if, for any reason, including a malfunction of the program (the developer makes does not warranty its proper functioning, the program is provided "AS IS"), the transcription time exceeds reasonable limits (in tests carried out, a 6-hour transcription takes 50 minutes).**

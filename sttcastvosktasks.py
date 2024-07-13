@@ -1,16 +1,13 @@
 import datetime
 from vosk import Model, KaldiRecognizer
 import wave
-from sttcasttask import SttcastTask
+from sttcasttask import SttcastTask, SttcastTaskSet
 import logging
 import os
 from timeinterval import TimeInterval
 import json
 from util import logcfg
-from sttcasttask import SttcastTaskSet
-from timeinterval import TimeInterval, seconds_str
-from copy import copy, deepcopy
-from sttaux import write_transcription, add_result_to_transcription, sm_create, sm_notice, build_html_file, sm_cleanup
+from sttaux import write_transcription, add_result_to_transcription, sm_create, sm_notice, sm_cleanup
 
 def vosk_task_work(pars):
     stt_model = pars["model"]
@@ -170,9 +167,9 @@ class SttcastVoskTaskSet(SttcastTaskSet):
         # tasks.append(SttcastVoskMakeHtml(self))
         build_task_pars = {**self.pars, 
                            "hnames": self.hnames}
-        tasks.append({"data": build_task_pars,
-                      "func": build_html_file})
-        return tasks
+        # tasks.append({"data": build_task_pars,
+        #               "func": build_html_file})
+        return tasks, build_task_pars
 
 
 

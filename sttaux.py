@@ -117,37 +117,38 @@ def sm_cleanup(file_name):
     except FileNotFoundError:
         pass  # Handle the case where shared memory has already been unlinked
 
-def build_html_file(pars):
+def build_html_files(pars_array):
     logcfg(__file__)
     stime = datetime.datetime.now()
 
-    hnames = pars["hnames"]
-    html_fname = pars["fname"]["html"]
-    meta_fname = pars["fname"]["meta"]
-    html_path = Path(html_fname)
-    
-    if html_path.exists():
-        html_path.unlink()
+    for pars in pars_array:
+        hnames = pars["hnames"]
+        html_fname = pars["fname"]["html"]
+        meta_fname = pars["fname"]["meta"]
+        html_path = Path(html_fname)
         
-    with open(html_fname, "w") as html:
-        html.write(HTMLHEADER)
-        config = configparser.ConfigParser()
-        with open(meta_fname, "r") as cf:
-            config.read_string("[global]\n" + cf.read())
-        hmsg = ""
-        rold = '\\;'
-        rnew = '\n</li><li>\n'
-        for key in config['global']:
-            hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold, rnew)}<br></li></ul>\n"
-        html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
-        for hn in hnames:
-            sm_wait_for(hn)
-            with open(hn, "r") as hnf:
-                html.write(hnf.read())
-            sm_cleanup(hn)
-            Path(hn).unlink()
-        html.write(HTMLFOOTER)
-    return html_fname, datetime.datetime.now() - stime
+        if html_path.exists():
+            html_path.unlink()
+            
+        with open(html_fname, "w") as html:
+            html.write(HTMLHEADER)
+            config = configparser.ConfigParser()
+            with open(meta_fname, "r") as cf:
+                config.read_string("[global]\n" + cf.read())
+            hmsg = ""
+            rold = '\\;'
+            rnew = '\n</li><li>\n'
+            for key in config['global']:
+                hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold, rnew)}<br></li></ul>\n"
+            html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
+            for hn in hnames:
+                sm_wait_for(hn)
+                with open(hn, "r") as hnf:
+                    html.write(hnf.read())
+                sm_cleanup(hn)
+                Path(hn).unlink()
+            html.write(HTMLFOOTER)
+    return "build_html_files", datetime.datetime.now() - stime
 
 def split_podcast(fname_dict, seconds):
     root = fname_dict["root"]

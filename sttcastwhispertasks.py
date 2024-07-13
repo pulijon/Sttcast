@@ -5,8 +5,7 @@ import os
 from timeinterval import TimeInterval, seconds_str
 import whisper
 from util import logcfg
-from sttaux import sm_create, sm_notice, build_html_file, sm_cleanup, split_podcast, \
-                   write_transcription
+from sttaux import sm_create, sm_notice, sm_cleanup, split_podcast,  write_transcription
 
 def whisper_task_work(pars):
     logcfg(__file__)
@@ -108,7 +107,7 @@ class SttcastWhisperTaskSet(SttcastTaskSet):
         # tasks.append(SttcastVoskMakeHtml(self))
         build_task_pars = {**self.pars, 
                            "hnames": self.hnames}
-        tasks.append({"data": build_task_pars,
-                      "func": build_html_file})
-        return tasks
+        # tasks.append({"data": build_task_pars,
+        #               "func": build_html_file})
+        return tasks, build_task_pars
 

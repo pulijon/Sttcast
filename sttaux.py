@@ -5,6 +5,8 @@ from pathlib import Path
 from multiprocessing import shared_memory
 import time
 import configparser
+import glob
+import ffmpeg
 
 HTMLHEADER = """<html>
 
@@ -41,7 +43,7 @@ def class_str(st, cl):
     return f'<span class="{cl}">{st}</span>'
 
 def audio_tag_str(pars, seconds):
-    return f'<audio controls src="{pars["fbasename"]}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
+    return f'<audio controls src="{pars["fname"]["basename"]}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
 
 def write_transcription(pars, html, transcription, ti):
     html.write("\n<p>\n")
@@ -99,9 +101,9 @@ def sm_wait_for(file_name):
     shm = sm_get(file_name)
     
     try:
-        # Wait until the byte in shared memory is equal to b'1'
+        # Wait until the byte in shared memory is equal to 1
         while shm.buf[0] != 1:
-            time.sleep(0.1)  # Sleep for a short while to prevent busy waiting
+            time.sleep(0.5)  
     finally:
         # Clean up
         shm.close()
@@ -146,3 +148,20 @@ def build_html_file(pars):
             Path(hn).unlink()
         html.write(HTMLFOOTER)
     return html_fname, datetime.datetime.now() - stime
+
+def split_podcast(fname_dict, seconds):
+    root = fname_dict["root"]
+    fname = fname_dict["name"]
+    extension = fname_dict["extension"]
+    wildcard_mp3_files = f"{root}_???{extension}"
+    files_to_remove = glob.glob(wildcard_mp3_files)
+    for f in files_to_remove:
+        Path(f).unlink()
+    
+    ffmpeg.input(fname).output(
+        f"{root}_%03d{extension}",
+        f='segment', segment_time=seconds, segment_start_number=1, c='copy'
+    ).run()
+    return sorted(glob.glob(wildcard_mp3_files))
+
+

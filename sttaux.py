@@ -41,7 +41,7 @@ def class_str(st, cl):
     return f'<span class="{cl}">{st}</span>'
 
 def audio_tag_str(pars, seconds):
-    return f'<audio controls src="{pars["fname"]}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
+    return f'<audio controls src="{pars["fbasename"]}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
 
 def write_transcription(pars, html, transcription, ti):
     html.write("\n<p>\n")
@@ -108,8 +108,8 @@ def sm_wait_for(file_name):
 
 def sm_cleanup(file_name):
     # Connect to the existing shared memory block
-    shm = sm_get(file_name)
     try:
+        shm = sm_get(file_name)
         # Unlink the shared memory block
         shm.unlink()
     except FileNotFoundError:

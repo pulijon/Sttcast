@@ -10,7 +10,7 @@ from util import logcfg
 from sttcasttask import SttcastTaskSet
 from timeinterval import TimeInterval, seconds_str
 from copy import copy, deepcopy
-from sttaux import write_transcription, add_result_to_transcription, sm_create, sm_notice, build_html_file
+from sttaux import write_transcription, add_result_to_transcription, sm_create, sm_notice, build_html_file, sm_cleanup
 
 def vosk_task_work(pars):
     stt_model = pars["model"]
@@ -117,6 +117,7 @@ def vosk_task_work(pars):
             if last_ti is not None:
                 write_transcription(pars, html, transcription, last_ti)
     sm_notice(hname, 1)
+    # TBD - Wav file deletion
     logging.info(f"Terminado fragmento con vosk {hname}")
     return hname, datetime.datetime.now() - stime
 
@@ -154,6 +155,7 @@ class SttcastVoskTaskSet(SttcastTaskSet):
         
         for fenum in enumerate(range(0, self.frames, self.nframes)):
             hname = f"{fname_root}_{fenum[0]}.html"
+            sm_cleanup(hname)
             sm_create(hname)
             trans_task_pars = {**self.pars, 
                                "cut": fenum[0],

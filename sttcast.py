@@ -504,7 +504,7 @@ def configure_globals(args):
             fname_dict = create_fname_dict(fname, html_suffix)
             procfnames_unsorted.append(fname_dict)
 
-    logging.info(f"Se van a procesar {len(procfnames_unsorted)} ficheros con un total de {sum(pf["duration"] for pf in procfnames_unsorted)} segundos")            
+    logging.info(f"Se van a procesar {len(procfnames_unsorted)} ficheros con un total de {sum([pf['duration'] for pf in procfnames_unsorted])} segundos")
     # Se ordenan los ficheros en función del tamaño de manera descendente
     # Así se optimiza el proceso de transcripción
     procfnames = sorted(procfnames_unsorted,

@@ -21,8 +21,8 @@ Python dependencies can be installed in a virtual environment. The dependencies 
 
 ```bash
 python -m venv .venv
-pip install -r requirements.txt
 source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 In Windows, `python` could be `py` depending on the installation and the activation script is in `.venv\Scripts`

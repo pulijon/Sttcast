@@ -71,7 +71,7 @@ then
 	echo Procesando con vosk ${mp3_vosk_files[*]}
 	echo Trabajando con $cpus CPUs y $seconds segundos
 	echo "${mp3_vosk_files[*]}"
-	./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix} ${mp3_vosk_files[*]}
+	python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix} ${mp3_vosk_files[*]}
 	echo Fin de la transcripción con vosk
 	echo Creación de etiquetas de audio para los ficheros vosk y obtención de resultados
 	for i in "${!mp3_vosk_files[@]}"
@@ -80,7 +80,7 @@ then
 		cp "${meta_vosk_files[$i]}" "${srcdir}"
 		rm "${meta_vosk_files[$i]}"
  		echo ./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
- 		./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
+ 		python ./add_audio_tag.py --mp3-file "${mp3_vosk_files[$i]}" -o "${audio_vosk_files[$i]}" "${html_vosk_files[$i]}"
  		cp "${audio_vosk_files[$i]}" "${srcdir}"
      	rm "${html_vosk_files[$i]}"
  		rm "${audio_vosk_files[$i]}"
@@ -90,7 +90,7 @@ fi
 if [ ${#mp3_whisper_files[*]} -gt 0 ]
 then
 	echo Procesando con whisper ${mp3_whisper_files[*]}
-	./sttcast.py --seconds 15000 --whisper --whmodel small --cpus 1 --html-suffix ${whisper_suffix} ${mp3_whisper_files[*]}
+        python ./sttcast.py --seconds 15000 --whisper --whmodel small --cpus 1 --html-suffix ${whisper_suffix} ${mp3_whisper_files[*]}
 	echo Fin de la transcripción con vosk
 	echo Creación de etiquetas de audio para los ficheros whisper y obtención de resultados
 	for i in "${!mp3_whisper_files[@]}"
@@ -99,7 +99,7 @@ then
 		cp "${meta_whisper_files[$i]}" "${srcdir}"
 		rm "${meta_whisper_files[$i]}"
 		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
-		./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
+		python ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
 		cp "${audio_whisper_files[$i]}" "${srcdir}"
     	rm "${html_whisper_files[$i]}"
 		rm "${audio_whisper_files[$i]}"

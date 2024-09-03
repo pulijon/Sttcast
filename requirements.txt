@@ -1,0 +1,8 @@
+pyyaml
+vosk
+wave
+ffmpeg-python
+bs4
+botocore
+boto3
+openai-whisper

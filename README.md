@@ -15,12 +15,19 @@ The requirements for **sttcast.py** are as follows:
 
 * A python 3.x installation (it has been tested on Python 3.10 on Windows and Linux)
 * The tool **ffmpeg** installed in a folder of the PATH variable.
-* Pyyaml library (pip install pyyeml)
-* Vosk library (pip install vosk)
-* Wave library (pip install wave)
-* Whisper library (pip install openai-whisper)
 * A vosk model for the desired language (you may find a lot of them in [alfphacephei](https://alphacephei.com/vosk/models). It has been tested with the Spanish model [vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip))
+  
+Python dependencies can be installed in a virtual environment. The dependencies are specified in the file `requirements.txt`. The following commands install, in Linux, such dependencies (I suppose they should also work in Mac):
 
+```bash
+python -m venv .venv
+pip install -r requirements.txt
+source .venv/bin/activate
+```
+
+In Windows, `python` could be `py` depending on the installation and the activation script is in `.venv\Scripts`
+
+You can find [here](https://dev.to/shriekdj/how-to-create-and-activate-the-virtual-environment-for-python3-project-3g4l) detailed instructions to create and activate the virtual environment.
 
 
 The tool **add_audio_tag.py** adds audio controls to a transcribed html without **--add-audio-tags** option. It requires:

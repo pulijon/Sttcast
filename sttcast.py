@@ -491,7 +491,7 @@ def configure_globals(args):
     for fname in args.fnames:
         if os.path.isdir(fname):
             # Add .mp3 files in dir
-            logging.debug(f"Tratando directorio {fname}")
+            logging.info(f"Tratando directorio {fname}")
             for root, dirs, files in os.walk(fname):
                 for file in files:
                     if file.endswith(".mp3"):
@@ -500,7 +500,7 @@ def configure_globals(args):
                         procfnames_unsorted.append(fname_dict)
         else:
             # Add file
-            logging.debug(f"Tratando fichero {fname}")
+            logging.info(f"Tratando fichero {fname}")
             fname_dict = create_fname_dict(fname, html_suffix)
             procfnames_unsorted.append(fname_dict)
 
@@ -524,10 +524,7 @@ def create_fname_dict(fname, html_suffix):
     fname_dict["duration"] = get_mp3_duration(fname)
     return fname_dict
 
-
-def main():
-    args = get_pars()
-    logging.info(f"{args}")
+def start_stt_process(args):
     configure_globals(args)
     
     whisper = args.whisper
@@ -539,6 +536,13 @@ def main():
     for result in results:
         build_html_file(result)
     logging.info(f"Terminado de procesar mp3 de duración {duration}")
+
+def main():
+    args = get_pars()
+    logging.info(f"{args}")
+
+    start_stt_process(args)
+    
     
 
 if __name__ == "__main__":

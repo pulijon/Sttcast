@@ -30,12 +30,6 @@ In Windows, `python` could be `py` depending on the installation and the activat
 You can find [here](https://dev.to/shriekdj/how-to-create-and-activate-the-virtual-environment-for-python3-project-3g4l) detailed instructions to create and activate the virtual environment.
 
 
-The tool **add_audio_tag.py** adds audio controls to a transcribed html without **--add-audio-tags** option. It requires:
-
-* BeautifulSoup
-  ```bash
-  pip install bs4
-  ```
 
 # How does sttcast.py work
 

@@ -85,6 +85,12 @@ The following table, taken from [Whisper GitHub Repository](https://github.com/o
 
 
 # Use
+## YouTube Tutorial
+
+There is [a video in YouTube](https://www.youtube.com/watch?v=l7TtUFJio2g) where you can view general instructions about how to install and use the application
+
+
+## CLI
 
 **sttcast.py** is a python module that runs with the help of a 3.x interpreter. 
 
@@ -154,6 +160,21 @@ options:
                         Fichero resultado tras añadir los audio tags
 
 ```
+
+## GUI
+
+From version v2.2.0, sttcast has also a GUI interface. It can be started with:
+
+```bash
+$ python ./sttcast-gui.py
+```
+
+With this interface, you can configure the arguments (the same arguments that the CLI supports) in a graphical manner.
+
+The following snapshot is an snapshot of the interface:
+
+![](sttcast-gui.png)
+
 # Automation
 
 The whisper engine requires GPUs to avoid taking too much time. If you don't have a machine with GPU acceleration, or if you prefer not to have to install sttcasst in your environment, you can use the automation procedure explained in the ```Automation``` directory.

@@ -101,29 +101,14 @@ def on_mode_change():
     if radio_var.get() == "vosk":
         whisper_frame.grid_forget()
         vosk_frame.grid(row=2, column=0, sticky=tk.W)
-        # entry_model.config(state="normal")
-        # scale_hconf.config(state="normal")
-        # scale_mconf.config(state="normal")
-        # scale_lconf.config(state="normal")
-        # option_whmodel.config(state="disabled")
-        # option_whdevice.config(state="disabled")
-        # entry_whlanguage.config(state="disabled")
     else:
         vosk_frame.grid_forget()
         whisper_frame.grid(row=3, column=0, sticky=tk.W)
-        # entry_model.config(state="disabled")
-        # scale_hconf.config(state="disabled")
-        # scale_mconf.config(state="disabled")
-        # scale_lconf.config(state="disabled")
-        # option_whmodel.config(state="normal")
-        # option_whdevice.config(state="normal")
-        # entry_whlanguage.config(state="normal")
-
 
 logcfg(__file__)
 
 root = tk.Tk()
-root.title("SttCast GUI")
+root.title("Sttcast GUI")
 
 # General parameters group
 general_frame = tk.LabelFrame(root, text="General Parameters", padx=10, pady=10)

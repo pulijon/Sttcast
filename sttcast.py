@@ -16,6 +16,7 @@ import configparser
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Value
 from timeinterval import TimeInterval, seconds_str
+import re
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -171,7 +172,11 @@ def write_transcription(html, transcription, ti, audio_tag, mp3file):
     html.write(transcription)
     html.write("\n</p>\n")
 
-
+def write_srt_entry(srt, start_time, end_time, str):
+    srt.write("\n<>\n") # Aquí irá el múmero de párrafo
+    srt.write(f"{seconds_str(start_time)}0 --> {seconds_str(end_time)}0\n".replace(".", ","))
+    srt.write(f"{str.strip()}\n")
+    
 def vosk_task_work(cfg):   
     logcfg(__file__)
     stime = datetime.datetime.now()
@@ -206,11 +211,14 @@ def vosk_task_work(cfg):
         wf.setpos(fframe)
         
         hname = cfg["hname"]
+        sname = cfg["sname"]
         if os.path.exists(hname):
             os.remove(hname)
+        if os.path.exists(sname):
+            os.remove(sname)
 
         logging.info(f"Comenzando fragmento con vosk {hname}")
-        with open(hname, "w") as html:
+        with open(hname, "w") as html, open(sname, "w") as srt:
             html.write("<!-- New segment -->\n")
             last_ti = None
             while left_frames > 0:
@@ -229,12 +237,15 @@ def vosk_task_work(cfg):
                         continue
                     start_time = res["result"][0]["start"] + offset_seconds
                     end_time = res["result"][-1]["end"] + offset_seconds
+                    write_srt_entry(srt, 
+                                    start_time, end_time, 
+                                    " ".join([r['word'] for r in res['result']]))
+
                     new_ti = TimeInterval(start_time, end_time)
                     logging.debug(f"{hname} - por procesar: {left_frames/frate} segundos - text: {res.get('text','')}")
                     gap = new_ti.gap(last_ti)
                     offset = new_ti.offset(last_ti)
                     logging.debug(f"gap = {gap} - offset = {offset}")
- 
                     if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
                         last_ti.extend(new_ti)
                         logging.debug(f"Alargando last_ti: {last_ti}")
@@ -260,11 +271,13 @@ def vosk_task_work(cfg):
                 if res["partial"] != "":
                     start_time = res["partial_result"][0]["start"] + offset_seconds
                     end_time = res["partial_result"][-1]["end"] + offset_seconds
+                    write_srt_entry(srt, 
+                                    start_time, end_time, 
+                                    ' '.join([r['word'] for r in res['partial_result']]))
                     new_ti = TimeInterval(start_time, end_time)
                     gap = new_ti.gap(last_ti)
                     offset = new_ti.offset(last_ti)
                     logging.debug(f"gap = {gap} - offset = {offset}")
- 
                     if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
                         last_ti.extend(new_ti)
                         logging.debug(f"Alargando last_ti: {last_ti}")
@@ -275,7 +288,6 @@ def vosk_task_work(cfg):
                         last_ti = new_ti
                         logging.debug(f"Nuevo last_ti: {last_ti}")
                         transcription = ""
- 
                     add_result_to_transcription(transcription, res["partial_result"],
                                                 cfg['lconf'], cfg['mconf'], cfg['hconf'])                   
 
@@ -284,7 +296,7 @@ def vosk_task_work(cfg):
                                     cfg['audio_tags'], cfg['mp3file'])
         logging.info(f"Terminado fragmento con vosk {hname}")
 
-    return hname, datetime.datetime.now() - stime
+    return hname, sname, datetime.datetime.now() - stime
 
 def whisper_task_work(cfg):
     logcfg(__file__)
@@ -301,15 +313,19 @@ def whisper_task_work(cfg):
     os.remove(cfg['fname'])
 
     hname = cfg["hname"]
+    sname = cfg["sname"]
     if os.path.exists(hname):
         os.remove(hname)
     logging.info(f"Comenzando fragmento con whisper {hname}")
-    with open(hname, "w") as html:
+    with open(hname, "w") as html, open(sname, "w") as srt:
         html.write("<!-- New segment -->\n")
         last_ti = None
         for s in result['segments']:
             start_time = float(s['start']) + offset_seconds
             end_time = float(s['end'])+ offset_seconds
+            write_srt_entry(srt, 
+                            start_time, end_time, 
+                            s['text'])
             new_ti = TimeInterval(start_time, end_time)
             gap = new_ti.gap(last_ti)
             offset = new_ti.offset(last_ti)
@@ -330,7 +346,7 @@ def whisper_task_work(cfg):
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
     logging.info(f"Terminado fragmento con whisper {hname}")
-    return hname, datetime.datetime.now() - stime
+    return hname, sname, datetime.datetime.now() - stime
 
 
 def build_html_file(fdata):
@@ -359,6 +375,27 @@ def build_html_file(fdata):
             os.remove(hn)
         html.write(HTMLFOOTER)
 
+def replace_with_numbers(match):
+    replace_with_numbers.counter += 1
+    return str(replace_with_numbers.counter)
+
+def build_srt_file(fdata):
+    pf = fdata[0]
+    chunks = fdata[1]
+    fname_srt = pf['srt']
+    if (os.path.exists(fname_srt)):
+        os.remove(fname_srt)
+    snames = [chunk["sname"] for chunk in chunks]
+    raw_srt_content = ""
+    replace_with_numbers.counter = 0
+    for sn in snames:
+        with open(sn, "r") as snf:
+            raw_srt_content += snf.read()
+    srt_content = re.sub(r"<>", replace_with_numbers, raw_srt_content)
+    with open(fname_srt, "w") as srt:
+        srt.write(srt_content)
+    
+
 def launch_vosk_tasks(args):
     global cpus, seconds, duration
     global procfnames
@@ -385,6 +422,7 @@ def launch_vosk_tasks(args):
                     "model": args.model,
                     "wname": fname_wav,
                     "hname": f"{fname_root}_{fenum[0]}.html",
+                    "sname": f"{fname_root}_{fenum[0]}.srt",
                     "nframes": num_frames,
                     "lconf": args.lconf,
                     "mconf": args.mconf,
@@ -404,8 +442,8 @@ def launch_vosk_tasks(args):
         tasks = []
         for result in results:
             tasks.extend(result[1])
-        for f, t in  executor.map(vosk_task_work, tasks):
-           logging.info(f"{f} ha tardado {t}")
+        for f, s, t in  executor.map(vosk_task_work, tasks):
+           logging.info(f"{f} y {s} han tardado {t}")
     
     for pf in procfnames:
         os.remove(pf['wav'])
@@ -453,6 +491,7 @@ def launch_whisper_tasks(args):
                     "whdevice": args.whdevice,
                     "whlanguage": args.whlanguage,
                     "hname": f"{fname_root}_{fenum[0]}.html",
+                    "sname": f"{fname_root}_{fenum[0]}.srt",
                     "fname": fenum[1],
                     "cut": fenum[0],
                     "seconds": args.seconds,
@@ -469,8 +508,8 @@ def launch_whisper_tasks(args):
         tasks = []
         for result in results:
             tasks.extend(result[1])
-        for f, t in  executor.map(whisper_task_work, tasks):
-            logging.info(f"{f} ha tardado {t}")
+        for f, s, t in  executor.map(whisper_task_work, tasks):
+            logging.info(f"{f} y {s} han tardado {t}")
 
     return results
  
@@ -521,6 +560,7 @@ def create_fname_dict(fname, html_suffix):
     fname_dict["meta"] = fname_root + ".meta"
     fname_dict["html"] = fname_root + html_suffix + ".html"
     fname_dict["wav"] = fname_root + ".wav"
+    fname_dict['srt'] = fname_root + html_suffix + ".srt"
     fname_dict["duration"] = get_mp3_duration(fname)
     return fname_dict
 
@@ -535,6 +575,7 @@ def start_stt_process(args):
     
     for result in results:
         build_html_file(result)
+        build_srt_file(result)
     logging.info(f"Terminado de procesar mp3 de duración {duration}")
 
 def main():

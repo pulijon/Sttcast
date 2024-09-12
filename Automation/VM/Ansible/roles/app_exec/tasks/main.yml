@@ -92,7 +92,7 @@
     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     VIRTUAL_ENV: "{{ app_dir }}/.venv"
   
-- name: Get html and meta files
+- name: Get html, meta and srt files
   find:
     paths: ["{{ remote_payload_dir }}"]
     file_type: file
@@ -101,6 +101,7 @@
     patterns: 
     - "^.*html"
     - "^.*meta"
+    - "^.*srt"
   register: htmls
 
 - name: Get results

@@ -12,7 +12,7 @@ variable "sttcast_instance_type" {
 }
 
 variable "sttcast_spot_price" {
-  description = "Instance type for sttcast"
+  description = "Proposed price for spot instance"
   type        = string
   default     = "0.28"
 }

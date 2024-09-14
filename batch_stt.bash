@@ -117,8 +117,9 @@ then
 		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
 		python ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
 		cp "${audio_whisper_files[$i]}" "${srcdir}"
-    	rm "${html_whisper_files[$i]}"
+    	        rm "${html_whisper_files[$i]}"
 		rm "${audio_whisper_files[$i]}"
+		rm "${srt_whisper_files[$i]}"
 	done
 fi
 for f in ${mp3_vosk_files[@]} ${mp3_whisper_files[@]} ${srt_vosk_files[@]} ${srt_whisper_files[@]}

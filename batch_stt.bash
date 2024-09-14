@@ -23,6 +23,8 @@ else
     whlang=$2
 fi
 
+vlang="es"
+
 mp3_vosk_files=()
 mp3_whisper_files=()
 html_vosk_files=()
@@ -42,9 +44,9 @@ do
 	mp3=$(basename "$episode")
 	ep="${mp3%.mp3}"
 	meta="${ep}.meta"
-	html_vosk="${ep}_${vosk_suffix}.html"
-	srt_vosk="${ep}_${vosk_suffix}.srt"
-	html_vosk_audio="${ep}_${vosk_suffix}_${audio_suffix}.html"
+	html_vosk="${ep}_${vosk_suffix}_${vlang}.html"
+	srt_vosk="${ep}_${vosk_suffix}_${vlang}.srt"
+	html_vosk_audio="${ep}_${vosk_suffix}_${audio_suffix}${vlang}.html"
 	html_whisper="${ep}_${whisper_suffix}_${whlang}.html"
 	srt_whisper="${ep}_${whisper_suffix}_${whlang}.srt"
 	html_whisper_audio="${ep}_${whisper_suffix}_${audio_suffix}_${whlang}.html"

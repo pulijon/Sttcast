@@ -391,6 +391,7 @@ def build_srt_file(fdata):
     for sn in snames:
         with open(sn, "r") as snf:
             raw_srt_content += snf.read()
+        os.remove(sn)
     srt_content = re.sub(r"<>", replace_with_numbers, raw_srt_content)
     with open(fname_srt, "w") as srt:
         srt.write(srt_content)

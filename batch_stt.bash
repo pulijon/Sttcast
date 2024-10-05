@@ -46,7 +46,7 @@ do
 	meta="${ep}.meta"
 	html_vosk="${ep}_${vosk_suffix}_${vlang}.html"
 	srt_vosk="${ep}_${vosk_suffix}_${vlang}.srt"
-	html_vosk_audio="${ep}_${vosk_suffix}_${audio_suffix}${vlang}.html"
+	html_vosk_audio="${ep}_${vosk_suffix}_${audio_suffix}_${vlang}.html"
 	html_whisper="${ep}_${whisper_suffix}_${whlang}.html"
 	srt_whisper="${ep}_${whisper_suffix}_${whlang}.srt"
 	html_whisper_audio="${ep}_${whisper_suffix}_${audio_suffix}_${whlang}.html"
@@ -86,7 +86,8 @@ then
 	echo Procesando con vosk ${mp3_vosk_files[*]}
 	echo Trabajando con $cpus CPUs y $seconds segundos
 	echo "${mp3_vosk_files[*]}"
-	python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix} ${mp3_vosk_files[*]}
+	echo python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix}_${vlang} ${mp3_vosk_files[*]}
+	python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix}_${vlang} ${mp3_vosk_files[*]}
 	echo Fin de la transcripción con vosk
 	echo Creación de etiquetas de audio para los ficheros vosk y obtención de resultados
 	for i in "${!mp3_vosk_files[@]}"

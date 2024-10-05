@@ -6,18 +6,24 @@ formatters:
     format: "[%(asctime)s] %(levelname)-8s %(threadName)-12s - %(message)s"
 handlers:
   file:
-    filename: log.log
     level: DEBUG
     class: logging.FileHandler
     formatter: standard
-  gui:
+  queue:
+    level: DEBUG
+    class: logging.handlers.QueueHandler
+    formatter: standard
+  nullhandler:
     level: INFO
-    class: sttcast-gui.LoggingHandler
-    formatter: standard 
+    class: logging.NullHandler 
+  stream:
+    level: DEBUG
+    class: logging.StreamHandler
+    formatter: standard
 loggers:
   "":
     handlers:
+      - stream
       - file
-      - gui
     level: DEBUG
 ...

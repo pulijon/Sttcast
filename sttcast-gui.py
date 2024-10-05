@@ -4,10 +4,11 @@ import os
 from sttcastargs import SttcastArgs
 from sttcast import start_stt_process
 import logging
-from util import logcfg
+from util import logcfg, enable_logs
 import whisper
 import threading
 import multiprocessing as mp
+import threading
 
 # Constants
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -105,7 +106,9 @@ def on_mode_change():
         vosk_frame.grid_forget()
         whisper_frame.grid(row=3, column=0, sticky=tk.W)
 
-logcfg(__file__)
+
+# logcfg(__file__)
+enable_logs(False)
 
 root = tk.Tk()
 root.title("Sttcast GUI")
@@ -257,15 +260,16 @@ var_audio_tags = tk.IntVar()
 chk_audio_tags = tk.Checkbutton(root, text="Include Audio Tags", variable=var_audio_tags)
 chk_audio_tags.grid(row=4, column=0)
 
-# Start button
-
 def start_process():
-    # Disable the button and start the process in a separate thread
+    # Disable the button and update the status
     btn_start.config(state=tk.DISABLED)
     status_label.config(text="Processing...", fg="red")
     log_display.grid_forget()
-    root.update()
+    root.update()  # Force UI to update before starting the thread
+    
+    # threading.Thread(target=run_transcription_process).start()
     start_transcription()
+    
     btn_start.config(state=tk.NORMAL)
     status_label.config(text="Process completed", fg="green")
     log_display.grid()

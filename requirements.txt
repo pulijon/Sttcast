@@ -5,4 +5,8 @@ ffmpeg-python
 bs4
 botocore
 boto3
+numpy==1.26.4
 openai-whisper
+whisperx
+python-dotenv
+git+https://github.com/pyannote/pyannote-audio.git@3.1.1

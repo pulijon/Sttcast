@@ -14,4 +14,6 @@ NoGit/
 /Automation/VM/Ansible/inventory
 .venv/
 nohup.out
+.env/
+*.btr
 

@@ -2,7 +2,7 @@
 
 from util import logcfg
 import logging
-import whisper
+import whisperx
 from vosk import Model, KaldiRecognizer
 import wave
 import ffmpeg
@@ -17,6 +17,9 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import Value
 from timeinterval import TimeInterval, seconds_str
 import re
+from dotenv import load_dotenv
+import glob
+from pyannote.audio import Pipeline
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -38,6 +41,13 @@ HTMLSUFFIX = ""
 cpus = max(os.cpu_count() - 2, 1)
 seconds = SECONDS
 duration = 0.0
+
+# Directorio de configuración
+CONF_DIR = os.path.join(os.path.dirname(__file__), ".env")
+
+# Huggingface token
+HUGGINGFACE_TOKEN = ""
+
 
 
 HTMLHEADER = """<html>
@@ -108,7 +118,7 @@ def get_pars():
                         help=f"número de tramas en cada lectura del wav. Por defecto, {RWAVFRAMES}")
     parser.add_argument("-w", "--whisper", action='store_true',
                         help=f"utilización de motor whisper")
-    parser.add_argument("--whmodel", choices=whisper.available_models(), type=str, default=WHMODEL,
+    parser.add_argument("--whmodel", type=str, default=WHMODEL,
                         help=f"modelo whisper a utilizar. Por defecto, {WHMODEL}")
     parser.add_argument("--whdevice", choices=['cuda', 'cpu'], default=WHDEVICE,
                         help=f"aceleración a utilizar. Por defecto, {WHDEVICE}")
@@ -218,7 +228,7 @@ def vosk_task_work(cfg):
             os.remove(sname)
 
         logging.info(f"Comenzando fragmento con vosk {hname}")
-        with open(hname, "w") as html, open(sname, "w") as srt:
+        with open(hname, "w") as html, open(sname, "w", encoding="utf-8") as srt:
             html.write("<!-- New segment -->\n")
             last_ti = None
             while left_frames > 0:
@@ -299,12 +309,25 @@ def vosk_task_work(cfg):
     return hname, sname, datetime.datetime.now() - stime
 
 def whisper_task_work(cfg):
+    global HUGGINGFACE_TOKEN
+    
     logcfg(__file__)
     stime = datetime.datetime.now()
 
-    model = whisper.load_model(cfg['whmodel'], device=cfg['whdevice'])
+    whdevice = cfg['whdevice']
+    whmodel = cfg['whmodel']
+    audio_file = cfg['fname']
+    model = whisperx.load_model(whmodel, device=whdevice)
     # Solución a error pytorch - ver https://github.com/openai/whisper/discussions/1068
-    result = model.transcribe(cfg["fname"], language=cfg['whlanguage'], fp16=False)
+    # result = model.transcribe(audio_file, language=cfg['whlanguage'], fp16=False)
+    result = model.transcribe(audio_file, language=cfg['whlanguage'])
+
+    # Inicializar el pipeline de diarización de WhisperX
+    logging.info(HUGGINGFACE_TOKEN)
+    diarization_pipeline = whisperx.DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
+    diarization = diarization_pipeline(audio_file)
+    result = whisperx.assign_word_speakers(diarization, result)
+    
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
     min_offset = cfg["min_offset"]
     max_gap = cfg["max_gap"]
@@ -317,15 +340,18 @@ def whisper_task_work(cfg):
     if os.path.exists(hname):
         os.remove(hname)
     logging.info(f"Comenzando fragmento con whisper {hname}")
-    with open(hname, "w") as html, open(sname, "w") as srt:
+    with open(hname, "w", encoding="utf-8") as html, open(sname, "w", encoding="utf-8") as srt:
         html.write("<!-- New segment -->\n")
         last_ti = None
         for s in result['segments']:
             start_time = float(s['start']) + offset_seconds
             end_time = float(s['end'])+ offset_seconds
+            speaker = s['speaker']
+            text = s['text']
+            text_with_speaker = f"[{speaker}]: {text}"
             write_srt_entry(srt, 
                             start_time, end_time, 
-                            s['text'])
+                            text_with_speaker)
             new_ti = TimeInterval(start_time, end_time)
             gap = new_ti.gap(last_ti)
             offset = new_ti.offset(last_ti)
@@ -340,7 +366,7 @@ def whisper_task_work(cfg):
                 last_ti = new_ti
                 logging.debug(f"Nuevo last_ti: {last_ti}")
                 transcription = ""
-            transcription += (f"{s['text']}")
+            transcription += ("<br>" + text_with_speaker + " ")
 
         if last_ti is not None:
             write_transcription(html, transcription, last_ti, 
@@ -358,7 +384,7 @@ def build_html_file(fdata):
     if os.path.exists(fname_html):
         os.remove(fname_html)
         
-    with open(fname_html, "w") as html:             
+    with open(fname_html, "w", encoding="utf-8") as html:             
         html.write(HTMLHEADER)
         config = configparser.ConfigParser()
         with open (fname_meta, "r") as cf:
@@ -393,7 +419,7 @@ def build_srt_file(fdata):
             raw_srt_content += snf.read()
         os.remove(sn)
     srt_content = re.sub(r"<>", replace_with_numbers, raw_srt_content)
-    with open(fname_srt, "w") as srt:
+    with open(fname_srt, "w", encoding="utf-8") as srt:
         srt.write(srt_content)
     
 
@@ -522,11 +548,23 @@ def get_mp3_duration(f):
 def configure_globals(args):
     global cpus, seconds
     global procfnames
+    global HUGGINGFACE_TOKEN
 
     cpus = args.cpus
     seconds = int(args.seconds)
     procfnames_unsorted = []
     html_suffix = "" if args.html_suffix == "" else "_" + args.html_suffix
+    
+    # Variables de entorno en .venv
+    logging.info(f"Directorio de configuración: {CONF_DIR}")
+    conf_files = glob.glob(os.path.join(CONF_DIR, "*.conf"))
+    for conf_file in conf_files:
+        logging.info(f"Cargando variables de entorno de {conf_file}")
+        load_dotenv(conf_file)
+            
+    HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+    logging.info(f"Token de Huggingface: {HUGGINGFACE_TOKEN}")
+    
 
     for fname in args.fnames:
         if os.path.isdir(fname):

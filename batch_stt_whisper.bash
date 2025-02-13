@@ -13,17 +13,17 @@
 
 NCPUS_FNAME='whispercpus.txt'
 srcdir=$1
-prcdir=/mnt/ram/whisper
-whisper_suffix="whisper"
-audio_suffix="audio"
-
-mkdir -p $prcdir
-
 if [ -z "$2" ]; then
     whlang="es"
 else
     whlang=$2
 fi
+prcdir=/mnt/ram/whisper_$whlang
+mkdir -p $prcdir
+
+whisper_suffix="whisper"
+audio_suffix="audio"
+
 mp3_whisper_files=()
 html_whisper_files=()
 meta_whisper_files=()

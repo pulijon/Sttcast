@@ -77,7 +77,6 @@ then
  	done
 fi
 
-fi
 for f in ${mp3_vosk_files[@]} ${srt_vosk_files[@]} 
 do
 	if [ -f $f ]

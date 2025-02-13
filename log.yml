@@ -10,11 +10,18 @@ handlers:
     class: logging.FileHandler
     formatter: standard
   stream:
-    level: DEBUG
+    level: INFO
     class: logging.StreamHandler
     formatter: standard
   queue:
     level: DEBUG
     class: logging.handlers.QueueHandler
     formatter: standard
+loggers:
+  "":
+    handlers:
+      - stream
+      - file
+    level: DEBUG
+...
 ...

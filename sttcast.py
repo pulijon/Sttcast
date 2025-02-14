@@ -346,7 +346,7 @@ def whisper_task_work(cfg):
         for s in result['segments']:
             start_time = float(s['start']) + offset_seconds
             end_time = float(s['end'])+ offset_seconds
-            speaker = s['speaker']
+            speaker = s.get('speaker', 'Unknown')
             text = s['text']
             text_with_speaker = f"[{speaker}]: {text}"
             write_srt_entry(srt, 

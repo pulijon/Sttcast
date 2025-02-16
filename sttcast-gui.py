@@ -57,6 +57,7 @@ def start_transcription():
         args.whmodel = whmodel_var.get()
         args.whdevice = whdevice_var.get()  # cuda or cpu
         args.whlanguage = entry_whlanguage.get()
+        args.whtraining = entry_whtraining.get()
     else:
         args.whisper = False
         args.model = entry_model.get()
@@ -88,6 +89,12 @@ def select_files_and_directories():
     entry_fnames.delete(0, tk.END)
     if combined_list:
         entry_fnames.insert(0, ", ".join(combined_list))
+
+def select_training_file():
+    selected_file = filedialog.askopenfilename(title="Select Training File", filetypes=[("MP3 Files", "*.mp3")])
+    if selected_file:
+        entry_whtraining.delete(0, tk.END)  # Clear the current content of the entry
+        entry_whtraining.insert(0, selected_file)  # Insert the selected file into the entry
 
 
 def select_vosk_model():
@@ -254,6 +261,13 @@ tk.Label(whisper_frame, text="Whisper Language:").grid(row=2, column=0, sticky=t
 entry_whlanguage = tk.Entry(whisper_frame, width=50)
 entry_whlanguage.grid(row=2, column=1)
 entry_whlanguage.insert(0, WHLANGUAGE)
+
+# Whisper trainig file
+tk.Label(whisper_frame, text="Whisper Training File:").grid(row=3, column=0, sticky=tk.W)
+entry_whtraining = tk.Entry(whisper_frame, width=50)
+entry_whtraining.grid(row=3, column=1)
+btn_browse_whtraining = tk.Button(whisper_frame, text="Browse", command=select_training_file)
+btn_browse_whtraining.grid(row=3, column=2)
 
 # Audio tags
 var_audio_tags = tk.IntVar()

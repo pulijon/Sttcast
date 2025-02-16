@@ -12,6 +12,7 @@
 # If a second parameter is provided it is the whisper language (es by default)
 
 NCPUS_FNAME='whispercpus.txt'
+TRAINING_FILE='training.mp3'
 srcdir=$1
 if [ -z "$2" ]; then
     whlang="es"
@@ -32,9 +33,18 @@ srt_whisper_files=()
 oldIFS=$IFS
 IFS=$'\n'
 episodes=$(find "$srcdir" -maxdepth 1 -type f -name "*.mp3")
+echo "Processing $episodes in $srcdir"
 for episode in $episodes
 do
 	mp3=$(basename "$episode")
+	if [ "${mp3}" == "${TRAINING_FILE}" ]
+	then
+		if [ ! -f "${prcdir}/${mp3}" ]
+		then
+			cp "${srcdir}/${mp3}" "${prcdir}"
+		fi
+		continue
+	fi	
 	ep="${mp3%.mp3}"
 	meta="${ep}.meta"
 	html_whisper="${ep}_${whisper_suffix}_${whlang}.html"
@@ -47,11 +57,13 @@ do
 		then
 			cp "${srcdir}/${mp3}" "${prcdir}"
 		fi
+
 		mp3_whisper_files+=("${prcdir}/${mp3}")
 		html_whisper_files+=("${prcdir}/${html_whisper}")
 		audio_whisper_files+=("${prcdir}/${html_whisper_audio}")
-    	meta_whisper_files+=("${prcdir}/${meta}")
+		meta_whisper_files+=("${prcdir}/${meta}")
 		srt_whisper_files+=("${prcdir}/${srt_whisper}")
+		training_file="${prcdir}/${TRAINING_FILE}"
     fi
 done
 IFS=$oldIFS
@@ -61,7 +73,7 @@ then
 	cpus=$(cat $NCPUS_FNAME | tr -d '\n')
 	echo Procesando con whisper ${mp3_whisper_files[*]}
 	echo  python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} ${mp3_whisper_files[*]}
-    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} ${mp3_whisper_files[*]}
+    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} ${mp3_whisper_files[*]}
 	echo Fin de la transcripción con whisper
 	echo Creación de etiquetas de audio para los ficheros whisper y obtención de resultados
 	for i in "${!mp3_whisper_files[@]}"
@@ -78,7 +90,7 @@ then
 		rm "${srt_whisper_files[$i]}"
 	done
 fi
-for f in  ${mp3_whisper_files[@]} ${srt_whisper_files[@]}
+for f in  ${mp3_whisper_files[@]} ${srt_whisper_files[@]} ${training_file}	
 do
 	if [ -f $f ]
 	then

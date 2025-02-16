@@ -32,7 +32,7 @@ def main():
     else:
         html_audio_file = args.output
     
-    time_re = re.compile("\[(?P<tbh>[0-9]+):(?P<tbm>[0-9]+):(?P<tbs>[0-9]+).*")
+    time_re = re.compile(r"\[(?P<tbh>[0-9]+):(?P<tbm>[0-9]+):(?P<tbs>[0-9]+).*")
     with open(html_file) as fp:
         soup = BeautifulSoup(fp, 'html.parser')
 

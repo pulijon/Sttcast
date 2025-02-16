@@ -16,4 +16,7 @@ NoGit/
 nohup.out
 .env/
 *.btr
+*.mp3
+*.wav
+Training/
 

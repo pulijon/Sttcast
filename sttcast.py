@@ -20,6 +20,9 @@ import re
 from dotenv import load_dotenv
 import glob
 from pyannote.audio import Pipeline
+import yaml
+from mutagen.id3 import ID3
+from pydub import AudioSegment
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -70,6 +73,16 @@ HTMLHEADER = """<html>
         border: 3px solid green;
         color: black;
     }
+        .speaker-0 { color: #1f77b4; } /* Azul */
+    .speaker-1 { color: #ff7f0e; } /* Naranja */
+    .speaker-2 { color: #2ca02c; } /* Verde */
+    .speaker-3 { color: #d62728; } /* Rojo */
+    .speaker-4 { color: #9467bd; } /* Morado */
+    .speaker-5 { color: #8c564b; } /* Marrón */
+    .speaker-6 { color: #e377c2; } /* Rosa */
+    .speaker-7 { color: #7f7f7f; } /* Gris */
+    .speaker-8 { color: #bcbd22; } /* Amarillo */
+    .speaker-9 { color: #17becf; } /* Cian */
   </style>
 
 </head>
@@ -124,6 +137,8 @@ def get_pars():
                         help=f"aceleración a utilizar. Por defecto, {WHDEVICE}")
     parser.add_argument("--whlanguage", default=WHLANGUAGE,
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
+    parser.add_argument("--whtraining", type=str, default="training.mp3",
+                        help=f"nombre del fichero de entrenamiento. Por defecto, 'training.mp3'")
     parser.add_argument("-a", "--audio-tags", action='store_true',
                         help=f"inclusión de audio tags")
     parser.add_argument("--html-suffix", type=str, default=HTMLSUFFIX,
@@ -308,6 +323,23 @@ def vosk_task_work(cfg):
 
     return hname, sname, datetime.datetime.now() - stime
 
+def build_trained_audio(training_file, audio_file):
+    if training_file is None:
+        logging.warning("No se ha especificado fichero de entrenamiento")
+        return audio_file, 0.0
+    if not os.path.exists(training_file):
+        logging.error(f"El fichero de entrenamiento {training_file} no existe")
+        return audio_file, 0.0
+    logging.debug(f"Combinando ficheros de entrenamiento {training_file} y {audio_file}")
+    combined_audio = AudioSegment.from_file(training_file, format="mp3") + \
+                     AudioSegment.from_file(audio_file, format="mp3")
+    training_duration = len(AudioSegment.from_file(training_file, format="mp3")) / 1000.0  # Duration in seconds
+    trained_file = os.path.join(os.path.dirname(audio_file), f"trained_{os.path.basename(audio_file)}")
+    combined_audio.export(trained_file, format="mp3")
+    logging.debug(f"Fichero de entrenamiento combinado: {trained_file}")
+    return trained_file, training_duration
+
+    
 def whisper_task_work(cfg):
     global HUGGINGFACE_TOKEN
     
@@ -316,10 +348,13 @@ def whisper_task_work(cfg):
 
     whdevice = cfg['whdevice']
     whmodel = cfg['whmodel']
-    audio_file = cfg['fname']
+    #audio_file = cfg['fname']
     model = whisperx.load_model(whmodel, device=whdevice)
     # Solución a error pytorch - ver https://github.com/openai/whisper/discussions/1068
     # result = model.transcribe(audio_file, language=cfg['whlanguage'], fp16=False)
+    logging.debug(f"Construyendo el fichero de audio entrenado con {cfg.get('whtraining', None)}")
+    audio_file, trained_duration = build_trained_audio(cfg.get('whtraining', None), cfg['fname'])
+    logging.debug(f"Audio entrenado: {audio_file}, duración: {trained_duration}")
     result = model.transcribe(audio_file, language=cfg['whlanguage'])
 
     # Inicializar el pipeline de diarización de WhisperX
@@ -343,12 +378,28 @@ def whisper_task_work(cfg):
     with open(hname, "w", encoding="utf-8") as html, open(sname, "w", encoding="utf-8") as srt:
         html.write("<!-- New segment -->\n")
         last_ti = None
+        speakers_dict = {'Unknown': {'id':'Unknown',
+                                     'style': 'speaker-0'}}
+        nspeakers = 0
         for s in result['segments']:
-            start_time = float(s['start']) + offset_seconds
-            end_time = float(s['end'])+ offset_seconds
-            speaker = s.get('speaker', 'Unknown')
+            speaker_no_mapped = s.get('speaker', 'Unknown')
+            if speaker_no_mapped not in speakers_dict:
+                if nspeakers in cfg.get('speaker_mapping',{}):
+                    speakers_dict[speaker_no_mapped] = {'id': cfg['speaker_mapping'][nspeakers],
+                                                        'style': f"speaker-{nspeakers%10}"}
+                    logging.debug(f"Speaker {speaker_no_mapped} mapeado a {speakers_dict[speaker_no_mapped]}")
+                else:
+                    speakers_dict[speaker_no_mapped] = {'id': f"Speaker {nspeakers}", 
+                                                        'style': f"speaker-{nspeakers%10}"}
+                nspeakers += 1
+            if s['start'] < trained_duration:
+                logging.debug(f"Saltando segmento {s['start']} < {trained_duration} ")
+                continue
+            start_time = float(s['start']) + offset_seconds - trained_duration
+            end_time = float(s['end'])+ offset_seconds - trained_duration
+            speaker = speakers_dict.get(speaker_no_mapped)
             text = s['text']
-            text_with_speaker = f"[{speaker}]: {text}"
+            text_with_speaker = f"[{class_str(speaker['id'], speaker['style'])}]: {text}"
             write_srt_entry(srt, 
                             start_time, end_time, 
                             text_with_speaker)
@@ -387,14 +438,17 @@ def build_html_file(fdata):
     with open(fname_html, "w", encoding="utf-8") as html:             
         html.write(HTMLHEADER)
         config = configparser.ConfigParser()
-        with open (fname_meta, "r") as cf:
-            config.read_string("[global]\n" + cf.read())
-        hmsg = ""
-        rold = '\\;'
-        rnew = '\n</li><li>\n'
-        for key in config['global']:
-            hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold,rnew)}<br></li></ul>\n"
-        html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
+        try:
+            with open (fname_meta, "r") as cf:
+                config.read_string("[global]\n" + cf.read())
+            hmsg = ""
+            rold = '\\;'
+            rnew = '\n</li><li>\n'
+            for key in config['global']:
+                hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold,rnew)}<br></li></ul>\n"
+            html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
+        except:
+            logging.warning(f"No se ha podido leer el fichero de metadatos {fname_meta}")
         for hn in hnames:
             with open(hn, "r") as hnf:
                 html.write(hnf.read())
@@ -497,6 +551,36 @@ def split_podcast(pf, seconds):
                         ])
     return sorted(glob.glob(wildcard_mp3_files))
 
+def get_speaker_mapping(training_file):
+    if training_file is None:
+        logging.warning("No se ha especificado fichero de entrenamiento")
+        return {}
+    if not os.path.exists(training_file):
+        logging.error(f"El fichero de entrenamiento {training_file} no existe")
+        return {}
+    audio = ID3(training_file)
+    logging.debug(f"Metadatos de entrenamiento: {audio.pprint()}")
+    
+    # Buscar la clave COMM que contiene los hablantes
+    comm_key = next((key for key in audio.keys() if key.startswith("COMM")), None)
+
+    if not comm_key:
+        logging.error(f"El fichero de entrenamiento {training_file} no tiene metadatos de entrenamiento")
+        return {}
+
+    speaker_data = audio[comm_key].text[0]
+    
+    logging.debug(f"Metadatos de entrenamiento: {speaker_data}")
+    
+    try:
+        # Convertir texto a diccionario YAML
+        speaker_mapping = yaml.safe_load(speaker_data)
+        logging.info(f"Speaker mapping: {speaker_mapping}")
+        return speaker_mapping
+    except yaml.YAMLError as e:
+        logging.error("⚠️ Error al leer los metadatos YAML:", e)
+        return {}  
+
 def launch_whisper_tasks(args):
     global cpus, seconds, duration
     global procfnames
@@ -508,6 +592,9 @@ def launch_whisper_tasks(args):
         fname_meta = pf["meta"]
         create_meta_file(fname, fname_meta)
         mp3files =split_podcast(pf, seconds)
+        logging.debug(f"En launch_whisper_tasks: args.whtraining={args.whtraining}")
+        speaker_mapping = get_speaker_mapping(args.whtraining)
+        logging.debug(f"Mapeado de hablantes: {speaker_mapping}")
 
         results.append(
             (
@@ -526,10 +613,14 @@ def launch_whisper_tasks(args):
                     "mp3file": os.path.basename(fname),
                     "min_offset": args.min_offset,
                     "max_gap": args.max_gap,
+                    "whtraining": args.whtraining,
+                    "speaker_mapping": speaker_mapping
                     } for fenum in enumerate(mp3files)
                 ]
             )
         )
+        
+    logging.debug(f"Configuracioness: {results}")
 
     with ProcessPoolExecutor(cpus) as executor:
         tasks = []

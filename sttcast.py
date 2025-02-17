@@ -423,6 +423,7 @@ def whisper_task_work(cfg):
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
     logging.info(f"Terminado fragmento con whisper {hname}")
+    del diarization_pipeline
     return hname, sname, datetime.datetime.now() - stime
 
 

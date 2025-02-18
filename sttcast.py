@@ -399,6 +399,10 @@ def whisper_task_work(cfg):
             end_time = float(s['end'])+ offset_seconds - trained_duration
             speaker = speakers_dict.get(speaker_no_mapped)
             text = s['text']
+            
+            # Se contabiliza el tiempo de cada hablante 
+            speaker['time'] = speaker.get('time', 0.0) + (end_time - start_time)
+            
             text_with_speaker = f"[{class_str(speaker['id'], speaker['style'])}]: {text}"
             write_srt_entry(srt, 
                             start_time, end_time, 
@@ -420,6 +424,10 @@ def whisper_task_work(cfg):
             transcription += ("<br>" + text_with_speaker + " ")
 
         if last_ti is not None:
+            # Poner entre comentarios los tiempos de cada hablante
+            for speaker in speakers_dict:
+                if 'time' in speakers_dict[speaker]:
+                    transcription+=(f"\n<!-- {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
     logging.info(f"Terminado fragmento con whisper {hname}")

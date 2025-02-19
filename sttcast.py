@@ -358,7 +358,7 @@ def whisper_task_work(cfg):
     result = model.transcribe(audio_file, language=cfg['whlanguage'])
 
     # Inicializar el pipeline de diarización de WhisperX
-    logging.info(HUGGINGFACE_TOKEN)
+    # logging.info(HUGGINGFACE_TOKEN)
     diarization_pipeline = whisperx.DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
     diarization = diarization_pipeline(audio_file)
     result = whisperx.assign_word_speakers(diarization, result)
@@ -663,7 +663,7 @@ def configure_globals(args):
         load_dotenv(conf_file)
             
     HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-    logging.info(f"Token de Huggingface: {HUGGINGFACE_TOKEN}")
+    # logging.info(f"Token de Huggingface: {HUGGINGFACE_TOKEN}")
     
 
     for fname in args.fnames:

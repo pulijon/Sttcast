@@ -26,6 +26,7 @@ whisper_suffix="whisper"
 audio_suffix="audio"
 
 mp3_whisper_files=()
+trained_whisper_files=()
 html_whisper_files=()
 meta_whisper_files=()
 srt_whisper_files=()
@@ -59,6 +60,7 @@ do
 		fi
 
 		mp3_whisper_files+=("${prcdir}/${mp3}")
+		trained_whisper_files+=(${prcdir}/trained_${mp3})
 		html_whisper_files+=("${prcdir}/${html_whisper}")
 		audio_whisper_files+=("${prcdir}/${html_whisper_audio}")
 		meta_whisper_files+=("${prcdir}/${meta}")
@@ -72,8 +74,8 @@ if [ ${#mp3_whisper_files[*]} -gt 0 ]
 then
 	cpus=$(cat $NCPUS_FNAME | tr -d '\n')
 	echo Procesando con whisper ${mp3_whisper_files[*]}
-	echo  python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} ${mp3_whisper_files[*]}
-    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} ${mp3_whisper_files[*]}
+	echo  python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 30 ${mp3_whisper_files[*]}
+    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 30 ${mp3_whisper_files[*]}
 	echo Fin de la transcripción con whisper
 	echo Creación de etiquetas de audio para los ficheros whisper y obtención de resultados
 	for i in "${!mp3_whisper_files[@]}"
@@ -90,7 +92,7 @@ then
 		rm "${srt_whisper_files[$i]}"
 	done
 fi
-for f in  ${mp3_whisper_files[@]} ${srt_whisper_files[@]} ${training_file}	
+for f in  ${mp3_whisper_files[@]} ${srt_whisper_files[@]} ${trained_whisper_files[@]} ${training_file}	
 do
 	if [ -f $f ]
 	then

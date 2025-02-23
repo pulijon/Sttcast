@@ -30,6 +30,7 @@ WHMODEL = "small"
 WHDEVICE = "cuda"
 WHLANGUAGE = "es"
 WAVFRATE = 16000
+WHSUSPTIME = 60.0
 RWAVFRAMES = 4000
 SECONDS = 600
 HCONF = 0.95
@@ -139,6 +140,8 @@ def get_pars():
                         help=f"lenguaje a utilizar. Por defecto, {WHLANGUAGE}")
     parser.add_argument("--whtraining", type=str, default="training.mp3",
                         help=f"nombre del fichero de entrenamiento. Por defecto, 'training.mp3'")
+    parser.add_argument("--whsusptime", type=str, default=WHSUSPTIME,
+                        help=f"tiempo mínimo de intervención en el segmento. Por defecto, {WHSUSPTIME}")
     parser.add_argument("-a", "--audio-tags", action='store_true',
                         help=f"inclusión de audio tags")
     parser.add_argument("--html-suffix", type=str, default=HTMLSUFFIX,
@@ -339,7 +342,34 @@ def build_trained_audio(training_file, audio_file):
     logging.debug(f"Fichero de entrenamiento combinado: {trained_file}")
     return trained_file, training_duration
 
-    
+def substitute_speakers(hname, speakers):
+    """
+    Reemplaza los nombres de usuario en un archivo HTML y guarda el resultado en el mismo archivo.
+
+    Args:
+        hname (str): Nombre del archivo HTML de entrada y salida.
+        speakers (dict): Diccionario que mapea nombres de usuario a reemplazos.
+    """
+
+    logging.info(f"Reemplazando nombres de hablantes en {hname} - {speakers}")
+    try:
+        with open(hname, "r+", encoding="utf-8") as f:
+            content = f.read()
+            # logging.debug(content)
+
+            spk_pattern = r'(\[<span[^>]*>)([^<]+)(</span>\])'
+            for spk in speakers:
+                substitute = f"??? {speakers[spk]}"
+                spk_pattern = r'(\[<span[^>]*>)'+f"({spk})"+r'(</span>\])'
+                content = re.sub(spk_pattern,r'\1'+substitute+r'\3', content)
+            f.seek(0) # Go to the beginning of the file
+            f.write(content)
+            f.truncate() # Remove the rest of the file
+    except FileNotFoundError:
+        logging.error(f"Error: El archivo {hname} no fue encontrado.")
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        
 def whisper_task_work(cfg):
     global HUGGINGFACE_TOKEN
     
@@ -356,6 +386,7 @@ def whisper_task_work(cfg):
     audio_file, trained_duration = build_trained_audio(cfg.get('whtraining', None), cfg['fname'])
     logging.debug(f"Audio entrenado: {audio_file}, duración: {trained_duration}")
     result = model.transcribe(audio_file, language=cfg['whlanguage'])
+    whsusptime = cfg['whsusptime']
 
     # Inicializar el pipeline de diarización de WhisperX
     # logging.info(HUGGINGFACE_TOKEN)
@@ -378,9 +409,9 @@ def whisper_task_work(cfg):
     with open(hname, "w", encoding="utf-8") as html, open(sname, "w", encoding="utf-8") as srt:
         html.write("<!-- New segment -->\n")
         last_ti = None
-        speakers_dict = {'Unknown': {'id':'Unknown',
-                                     'style': 'speaker-0'}}
+        speakers_dict = {}
         nspeakers = 0
+        ntraining = len(cfg['speaker_mapping'].keys())
         for s in result['segments']:
             speaker_no_mapped = s.get('speaker', 'Unknown')
             if speaker_no_mapped not in speakers_dict:
@@ -389,7 +420,7 @@ def whisper_task_work(cfg):
                                                         'style': f"speaker-{nspeakers%10}"}
                     logging.debug(f"Speaker {speaker_no_mapped} mapeado a {speakers_dict[speaker_no_mapped]}")
                 else:
-                    speakers_dict[speaker_no_mapped] = {'id': f"Speaker {nspeakers}", 
+                    speakers_dict[speaker_no_mapped] = {'id': f"Unknown {nspeakers - ntraining + 1}", 
                                                         'style': f"speaker-{nspeakers%10}"}
                 nspeakers += 1
             if s['start'] < trained_duration:
@@ -403,7 +434,7 @@ def whisper_task_work(cfg):
             # Se contabiliza el tiempo de cada hablante 
             speaker['time'] = speaker.get('time', 0.0) + (end_time - start_time)
             
-            text_with_speaker = f"[{class_str(speaker['id'], speaker['style'])}]: {text}"
+            text_with_speaker = f"\n[{class_str(speaker['id'], speaker['style'])}]: {text}"
             write_srt_entry(srt, 
                             start_time, end_time, 
                             text_with_speaker)
@@ -422,14 +453,25 @@ def whisper_task_work(cfg):
                 logging.debug(f"Nuevo last_ti: {last_ti}")
                 transcription = ""
             transcription += ("<br>" + text_with_speaker + " ")
+       
 
         if last_ti is not None:
             # Poner entre comentarios los tiempos de cada hablante
+            nsusp = 0
+            strange_speakers = {}
             for speaker in speakers_dict:
                 if 'time' in speakers_dict[speaker]:
-                    transcription+=(f"\n<!-- {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
+                    if speakers_dict[speaker]['time'] < whsusptime:
+                        logging.warning(f"El hablante {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento")   
+                        nsusp += 1
+                        strange_speakers [speakers_dict[speaker]['id']] = nsusp
+                        transcription+= (f"\n<!-- ??? {nsusp} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
+                    else:
+                      transcription+=(f"\n<!-- {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
+
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
+    substitute_speakers(hname, strange_speakers)
     logging.info(f"Terminado fragmento con whisper {hname}")
     del diarization_pipeline
     return hname, sname, datetime.datetime.now() - stime
@@ -623,6 +665,7 @@ def launch_whisper_tasks(args):
                     "min_offset": args.min_offset,
                     "max_gap": args.max_gap,
                     "whtraining": args.whtraining,
+                    "whsusptime": float(args.whsusptime),
                     "speaker_mapping": speaker_mapping
                     } for fenum in enumerate(mp3files)
                 ]

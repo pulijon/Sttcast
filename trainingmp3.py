@@ -12,7 +12,7 @@ def load_config(yaml_file):
         return yaml.safe_load(file)
 
 def create_training_audio(config_file, output_file, silence_between_speakers, target_duration):
-    """ Genera un archivo MP3 concatenando los audios de hablantes con silencios entre ellos. """
+    """ Genera un archivo MP3 concatenando los audios de hablantes con silencios entre ellos y guarda los metadatos. """
     
     # Cargar la configuración desde el YAML
     audio_data = load_config(config_file)
@@ -23,10 +23,15 @@ def create_training_audio(config_file, output_file, silence_between_speakers, ta
     # Construir el audio concatenado
     final_audio = AudioSegment.empty()
     speaker_mapping = {}  # Diccionario para mapear X a nombres reales
-    
     speaker_index = 0  # Para asignar 0, 1, etc.
-    for speaker, files in audio_data.items():
-        logging.info(f"🔊 Procesando audios de {speaker}...")
+
+    for segment in audio_data:
+        if not "name" in audio_data[segment]:
+            logging.warning("⚠️ Advertencia: Segmento sin hablante, será omitido.")
+            continue
+        speaker = audio_data[segment]["name"]
+        files = audio_data[segment]["files"]
+        logging.info(f" Procesando audios del segmento {segment}- Speaker: {speaker}...")
 
         # Concatenar todos los archivos de este hablante sin espacios entre ellos
         speaker_audio = AudioSegment.empty()
@@ -45,6 +50,8 @@ def create_training_audio(config_file, output_file, silence_between_speakers, ta
 
         # Añadir silencio entre hablantes (excepto después del último)
         final_audio += silence_segment
+    final_audio += silence_segment  # Añadir un silencio final
+    final_audio += silence_segment  # Añadir un silencio final
 
     # Calcular la duración actual
     current_duration = len(final_audio)

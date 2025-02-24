@@ -8,7 +8,6 @@ There are open source projects as Vosk-Kaldi that may be of help in this task. *
 
 It is worth also mentioning OpenAI Whisper. It is a very interesting alternative although it is also more resource  consuming. It has been included as an option engine for **sttcast.py**
 
-
 # Requirements
 
 The requirements for **sttcast.py** are as follows:
@@ -28,8 +27,6 @@ pip install -r requirements.txt
 In Windows, `python` could be `py` depending on the installation and the activation script is in `.venv\Scripts`
 
 You can find [here](https://dev.to/shriekdj/how-to-create-and-activate-the-virtual-environment-for-python3-project-3g4l) detailed instructions to create and activate the virtual environment.
-
-
 
 # How does sttcast.py work
 
@@ -54,8 +51,6 @@ The tool **add_audio_tag.py** adds audio controls to a transcribed html without 
   ```bash
   pip install bs4
   ```
-
-
 Once all fragments have been transcribed, the last step is the integration of all of them in an unique html file.
 
 Metadata from mp3 is included in the title of the html
@@ -89,10 +84,9 @@ The following table, taken from [Whisper GitHub Repository](https://github.com/o
 
 There is [a video in YouTube](https://www.youtube.com/watch?v=l7TtUFJio2g) where you can view general instructions about how to install and use the application
 
-
 ## CLI
 
-**sttcast.py** is a python module that runs with the help of a 3.x interpreter. 
+**sttcast.py** is a Python module that runs with the help of a 3.x interpreter. 
 
 It is has a very simple CLI interface that is autodocumented in the help (option **-h** or **--help**).
 
@@ -101,9 +95,9 @@ You should consider the location of model files and mp3 files in RAM drives to g
 ```bash
 $ ./sttcast.py -h
 $ ./sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP] [-r RWAVFRAMES] [-w]
-                  [--whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}]
-                  [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE] [-a] [--html-suffix HTML_SUFFIX]
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP]
+                  [-r RWAVFRAMES] [-w] [--whmodel WHMODEL] [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE]
+                  [--whtraining WHTRAINING] [--whsusptime WHSUSPTIME] [-a] [--html-suffix HTML_SUFFIX]
                   [--min-offset MIN_OFFSET] [--max-gap MAX_GAP]
                   fnames [fnames ...]
 
@@ -128,19 +122,23 @@ options:
   -r RWAVFRAMES, --rwavframes RWAVFRAMES
                         número de tramas en cada lectura del wav. Por defecto, 4000
   -w, --whisper         utilización de motor whisper
-  --whmodel {tiny.en,tiny,base.en,base,small.en,small,medium.en,medium,large-v1,large-v2,large}
-                        modelo whisper a utilizar. Por defecto, small
+  --whmodel WHMODEL     modelo whisper a utilizar. Por defecto, small
   --whdevice {cuda,cpu}
                         aceleración a utilizar. Por defecto, cuda
   --whlanguage WHLANGUAGE
                         lenguaje a utilizar. Por defecto, es
+  --whtraining WHTRAINING
+                        nombre del fichero de entrenamiento. Por defecto, 'training.mp3'
+  --whsusptime WHSUSPTIME
+                        tiempo mínimo de intervención en el segmento. Por defecto, 60.0
   -a, --audio-tags      inclusión de audio tags
   --html-suffix HTML_SUFFIX
                         sufijo para el fichero HTML con el resultado. Por defecto '_result'
   --min-offset MIN_OFFSET
                         diferencia mínima entre inicios de marcas de tiempo. Por defecto 30
-  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del anterior. Por encima de esta
-                        diferencia, se pone una nueva marca de tiempo . Por defecto 0.8
+  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del anterior. Por encima de
+                        esta diferencia, se pone una nueva marca de tiempo . Por defecto 0.8
+
 
 ```
 
@@ -160,6 +158,8 @@ options:
                         Fichero resultado tras añadir los audio tags
 
 ```
+
+
 
 ## GUI
 
@@ -182,6 +182,105 @@ The whisper engine requires GPUs to avoid taking too much time. If you don't hav
 Automation creates an AWS EC2 machine in the Amazon Cloud, provisions it installing sttcast, upload the payload and download the results. And all with just two commands: one to create the resources in the cloud and perform the work, and another to destroy the resources.
 
 Commands are executed in a VM also created with one command.
+
+## Diarization
+
+The **Whisper/Pyannote pipeline** is used to identify speakers in audio files. **Pyannote** is an AI-powered project hosted on **HuggingFace** that performs **speaker diarization**, clustering segments of speech by speaker identity. Since Pyannote performs **clustering** rather than **identification**, it does not inherently assign real names to speakers.
+
+### HuggingFace Token Requirement
+To use Pyannote, you need to obtain a **HuggingFace read access token**. This token should be stored in the **HUGGINGFACE_TOKEN** environment variable for authentication.
+
+### Assigning Real Speaker Names
+Because Pyannote clusters voices instead of identifying them explicitly, the program overcomes this limitation by appending **recognized voices** to the audio file before processing. This allows the system to **match unidentified segments to the closest known voice cluster** and assign a corresponding speaker label.
+
+### Training Metadata Storage
+The **trainingmp3.py** utility generates a **training MP3 file** containing known speaker samples. The **speaker identifiers** are stored as metadata in this training file.
+
+### Speaker Identification Process
+The complete process follows these steps:
+
+1. **Generate identified audio samples**  
+   - Extract speaker samples and prepare training segments.  
+
+2. **Concatenate selected fragments into a single training MP3 file**  
+   - Configuration is defined in the **training.yml** file.  
+   - The **trainingmp3.py** module handles this task.  
+
+3. **Run sttcast with the specified training file**  
+   - The training MP3 file is used to improve speaker labeling.
+
+### Output and Analysis
+The generated **Whisper HTML files** label speech segments with speaker names and include final comments indicating the **total speaking time for each participant**.
+
+The **speakingtime.py** utility extracts this speaker time data and stores it in a **CSV file**, which can be analyzed using the **Jupyter Notebook speakingtimes.ipynb**.
+
+### Tools
+
+**trainingmp3.py** is a Python module that generates a mp3 file with identified voices which is used to correctly perform diarization
+
+```bash
+$python trainingmp3.py -h
+usage: trainingmp3.py [-h] [-c CONFIG] [-o OUTPUT] [-s SILENCE] [-t TIME]
+
+Genera un archivo de entrenamiento a partir de audios etiquetados en un YAML.
+
+options:
+  -h, --help            show this help message and exit
+  -c CONFIG, --config CONFIG
+                        Archivo YAML con la lista de hablantes y sus archivos de audio (Predeterminado: training.yml).
+  -o OUTPUT, --output OUTPUT
+                        Nombre del archivo de salida (MP3). Predeterminado: training.mp3.
+  -s SILENCE, --silence SILENCE
+                        Duración del silencio entre hablantes en segundos. (Predeterminado: 5s)
+  -t TIME, --time TIME  Duración total del fragmento en segundos. (Predeterminado: 600)
+```
+
+Example of configuration file:
+
+```yaml
+---
+F01:
+  name: Héctor Socas
+  files:
+    - Training/Coffee Break/Héctor Socas - 1.mp3
+    - Training/Coffee Break/Héctor Socas - 2.mp3
+F02:
+  name: Héctor Vives
+  files:
+    - Training/Coffee Break/Héctor Vives - 1.mp3
+    - Training/Coffee Break/Héctor Vives - 2.mp3
+F03:
+  name: Sara Robisco
+  files:
+    - Training/Coffee Break/Sara Robisco - 1.mp3
+    - Training/Coffee Break/Sara Robisco - 2.mp3
+F04:
+  name: Francis Villatoro
+  files:
+    - Training/Coffee Break/Francis Villatoro - 1.mp3
+F05: # Noisy environment
+  name: Héctor Socas
+  files:
+    - Training/Coffee Break/Héctor Socas - 3.mp3
+```
+
+
+**speakingtime.py** is a Python module that extracts the total speaking times of speakers from the Whisper HTML files generated by sttcast and saves them into a CSV file.
+
+```bash
+$ python speakingtime.py -h
+usage: speakingtime.py [-h] [-o OUTPUT] fnames [fnames ...]
+
+positional arguments:
+  fnames                Archivos con transcripciones de audio
+
+options:
+  -h, --help            show this help message and exit
+  -o OUTPUT, --output OUTPUT
+                        Nombre del archivo de salida
+```
+
+
 
 ## To Do
 

@@ -291,8 +291,14 @@ Many modifications can be made and will be made in the future.
 
 # Screenshots
 
-![](sttcast_example.png)
+![transcription with diarization](transcription_with_diarization.png)
 
-![comparation vosk - whisper](comparation_vosk_whisper.png)
+![speaking times](speaking_times.png)
 
-![example audio tag](example_audio_tag.png)
+<!-- ![](sttcast_example.png) -->
+
+![](sttcast-gui.png)
+
+<!-- ![comparation vosk - whisper](comparation_vosk_whisper.png)
+
+![example audio tag](example_audio_tag.png) -->

@@ -80,12 +80,13 @@ then
 	echo Creación de etiquetas de audio para los ficheros whisper y obtención de resultados
 	for i in "${!mp3_whisper_files[@]}"
 	do
-		cp "${html_whisper_files[$i]}" "${srcdir}"
 		cp "${meta_whisper_files[$i]}" "${srcdir}"
 		rm "${meta_whisper_files[$i]}"
 		cp "${srt_whisper_files[$i]}" "${srcdir}"
 		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
 		python ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
+		python ./showspeakers.py "${html_whisper_files[$i]}" "${audio_whisper_files[$i]}"
+    	cp "${html_whisper_files[$i]}" "${srcdir}"
 		cp "${audio_whisper_files[$i]}" "${srcdir}"
     	        rm "${html_whisper_files[$i]}"
 		rm "${audio_whisper_files[$i]}"

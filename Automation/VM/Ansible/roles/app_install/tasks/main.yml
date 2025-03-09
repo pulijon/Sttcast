@@ -21,20 +21,30 @@
       state: directory
       owner: ubuntu
     become: true
-  
-  - name: Add deadsnakes repo
-    apt_repository: 
-      repo: ppa:deadsnakes/ppa
-    become: true
  
+  - name: Wait until all apt/dpkg locks are released
+    shell: |
+      while fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1; do
+        echo "Waiting for all apt/dpkg locks to be released...";
+        sleep 10;
+      done
+      apt update
+    changed_when: false
+    become: true
+
+  # - name: Add deadsnakes repo
+  #   apt_repository: 
+  #     repo: ppa:deadsnakes/ppa
+  #   become: true
+
   - name: Install APT dependencies
     apt:
       name:
-      - python{{ python_version }}
+      # - python{{ python_version }}
       - awscli
       - ffmpeg
       state: present
-      update_cache: yes
+      update_cache: no
     become: true
 
   # - name: Download Spanish voice model for vosk
@@ -58,19 +68,10 @@
     pip:
       name:
         virtualenv
-      virtualenv_python: /usr/bin/python{{ python_version }}
+      # virtualenv_python: /usr/bin/python{{ python_version }}
 
   - name: Install Python modules
     pip:
-      name:
-      - pyyaml
-      - vosk
-      - wave
-      - ffmpeg-python
-      - bs4
-      - botocore
-      - boto3
-      - openai-whisper
-  #     # - git+{{ whisper_repo }}
+      requirements: "{{ app_dir }}/requirements.txt"
       virtualenv: "{{ app_dir }}/.venv"
-      virtualenv_python: "/usr/bin/python{{ python_version }}"
+      # virtualenv_python: "/usr/bin/python{{ python_version }}"

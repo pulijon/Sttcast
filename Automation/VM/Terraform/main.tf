@@ -29,6 +29,12 @@ variable "AWS_ACCESS_KEY_ID" {
   sensitive   = true
 }
 
+variable "HUGGINGFACE_TOKEN" {
+  description = "Huggingface token"
+  type        = string
+  sensitive   = true
+}
+
 variable "sttcast_ami" {
   description = "AMI for sttcast"
   type        = string
@@ -38,6 +44,8 @@ variable "sttcast_ami" {
   # default = "ami-0c540ca1e5211e422"
   # Instance Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20240624
   default     = "ami-0fa7c50f46a48ae63"
+  # "ImageLocation": "amazon/Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20250214"
+  # default = "ami-096594d81118689b4"
 }
 
 
@@ -229,12 +237,14 @@ resource "aws_spot_instance_request" "sttcast" {
     Name = "sttcast_machine"
   }
 
+
   provisioner "local-exec" {
     command = <<-EOF
        cd ${var.ansible_dir}
        echo ${self.public_ip} > inventory 
        ANSIBLE_HOST_KEY_CHECKING=false  ansible-playbook -vvv \
          -e 'ec2_instance_id=${self.id}' \
+         -e 'huggingface_token=${var.HUGGINGFACE_TOKEN}' \
          -u ${var.ec2_user} \
          -i inventory  \
          ${var.ansible_playbook} \
@@ -244,7 +254,7 @@ resource "aws_spot_instance_request" "sttcast" {
   } 
 
   root_block_device {
-    volume_size = 65
+    volume_size = 75  # Prvious image required 65
   }
 }
 

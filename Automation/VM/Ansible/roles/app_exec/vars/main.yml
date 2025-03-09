@@ -19,3 +19,5 @@ html_suffix: "whisper"
 mp3_extension: ".mp3"
 html_extension: "_{{ html_suffix }}.html"
 audio_extension: "_{{ html_suffix }}_audio.html"
+
+hft: "{{ huggingface_token }}"

@@ -56,6 +56,7 @@
   environment:
     PATH: "{{ app_dir }}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     VIRTUAL_ENV: "{{ app_dir }}/.venv"
+    HUGGINGFACE_TOKEN: "{{ hft }}"
   async: 72000 # 2 hours max
   poll: 0
   register: whisper_files_result

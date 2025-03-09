@@ -4,7 +4,8 @@
 # Repositories
 app_repo: https://github.com/pulijon/Sttcast.git
 whisper_repo: https://github.com/openai/whisper.git
-sttcast_version: HEAD
+# sttcast_version: HEAD
+sttcast_version: diarization
 
 # Vosk URL and models
 vosk_model_url: "https://alphacephei.com/vosk/models/vosk-model-es-0.42.zip"

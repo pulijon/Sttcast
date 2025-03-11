@@ -11,8 +11,10 @@ remote_payload_dir: "{{ app_dir }}/Payload"
 
 # Configure sttcast
 whmodel:    "small"
+whsusptime: "60"
+whtraining: "{{ remote_payload_dir }}/training.mp3"
 seconds:    "36000"
-cpus:       "6"
+cpus:       "3"
 min_offset: "60"
 max_gap:    "0.8"
 html_suffix: "whisper"

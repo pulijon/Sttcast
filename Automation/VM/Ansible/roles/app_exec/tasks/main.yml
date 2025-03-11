@@ -45,6 +45,8 @@
     --whisper
     --whmodel {{ whmodel }}
     --whdevice cuda
+    --whtraining {{ whtraining }}
+    --whsusptime {{ whsusptime }}
     --seconds {{ seconds }}
     --cpus {{ cpus }}
     --min-offset {{ min_offset }}

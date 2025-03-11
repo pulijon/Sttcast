@@ -19,4 +19,7 @@ nohup.out
 *.mp3
 *.wav
 Training/
+bb.bash
+sups_speakers.txt
+training_mapa.yaml
 

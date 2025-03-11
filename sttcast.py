@@ -389,7 +389,7 @@ def whisper_task_work(cfg):
     whsusptime = cfg['whsusptime']
 
     # Inicializar el pipeline de diarización de WhisperX
-    logging.info(HUGGINGFACE_TOKEN)
+    # logging.info(HUGGINGFACE_TOKEN)
     diarization_pipeline = whisperx.DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
     diarization = diarization_pipeline(audio_file)
     result = whisperx.assign_word_speakers(diarization, result)
@@ -698,6 +698,10 @@ def configure_globals(args):
     procfnames_unsorted = []
     html_suffix = "" if args.html_suffix == "" else "_" + args.html_suffix
     
+    # Obtener el path completo del fichero de entrenamiento 
+    if args.whtraining is not None:
+        args.whtraining = os.path.abspath(args.whtraining)
+    
     # Variables de entorno en .venv
     logging.info(f"Directorio de configuración: {CONF_DIR}")
     conf_files = glob.glob(os.path.join(CONF_DIR, "*.conf"))
@@ -706,7 +710,7 @@ def configure_globals(args):
         load_dotenv(conf_file)
             
     HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-    logging.info(f"Token de Huggingface: {HUGGINGFACE_TOKEN}")
+    # logging.info(f"Token de Huggingface: {HUGGINGFACE_TOKEN}")
     
 
     for fname in args.fnames:
@@ -717,10 +721,17 @@ def configure_globals(args):
                 for file in files:
                     if file.endswith(".mp3"):
                         full_path = os.path.join(root, file)
+                        if full_path == args.whtraining:
+                            logging.info(f"El fichero de entrenamiento {full_path} no se procesa")
+                            continue
+                        logging.info(f"Tratando fichero {full_path}")
                         fname_dict = create_fname_dict(full_path, html_suffix)
                         procfnames_unsorted.append(fname_dict)
         else:
             # Add file
+            if os.path.abspath(fname) == args.whtraining:
+                logging.info(f"El fichero de entrenamiento {fname} no se procesa")
+                continue
             logging.info(f"Tratando fichero {fname}")
             fname_dict = create_fname_dict(fname, html_suffix)
             procfnames_unsorted.append(fname_dict)

@@ -383,8 +383,8 @@ def whisper_task_work(cfg):
     # Solución a error pytorch - ver https://github.com/openai/whisper/discussions/1068
     # result = model.transcribe(audio_file, language=cfg['whlanguage'], fp16=False)
     logging.debug(f"Construyendo el fichero de audio entrenado con {cfg.get('whtraining', None)}")
-    audio_file, trained_duration = build_trained_audio(cfg.get('whtraining', None), cfg['fname'])
-    logging.debug(f"Audio entrenado: {audio_file}, duración: {trained_duration}")
+    audio_file, training_duration = build_trained_audio(cfg.get('whtraining', None), cfg['fname'])
+    logging.debug(f"Audio entrenado: {audio_file}, duración de fragmento de entrenamiento: {training_duration}")
     result = model.transcribe(audio_file, language=cfg['whlanguage'])
     whsusptime = cfg['whsusptime']
 
@@ -423,16 +423,18 @@ def whisper_task_work(cfg):
                     speakers_dict[speaker_no_mapped] = {'id': f"Unknown {nspeakers - ntraining + 1}", 
                                                         'style': f"speaker-{nspeakers%10}"}
                 nspeakers += 1
-            if s['start'] < trained_duration:
-                logging.debug(f"Saltando segmento {s['start']} < {trained_duration} ")
+            if s['start'] < training_duration:
+                logging.debug(f"Saltando segmento {s['start']} < {training_duration} ")
                 continue
-            start_time = float(s['start']) + offset_seconds - trained_duration
-            end_time = float(s['end'])+ offset_seconds - trained_duration
+            start_time = float(s['start']) + offset_seconds - training_duration
+            end_time = float(s['end'])+ offset_seconds - training_duration
             speaker = speakers_dict.get(speaker_no_mapped)
             text = s['text']
             
             # Se contabiliza el tiempo de cada hablante 
-            speaker['time'] = speaker.get('time', 0.0) + (end_time - start_time)
+            time_to_add = end_time - start_time
+            logging.debug(f"Speaker {speaker['id']} ha hablado {time_to_add} en el segmento")
+            speaker['time'] = speaker.get('time', 0.0) + time_to_add
             
             text_with_speaker = f"\n[{class_str(speaker['id'], speaker['style'])}]: {text}"
             write_srt_entry(srt, 
@@ -441,16 +443,16 @@ def whisper_task_work(cfg):
             new_ti = TimeInterval(start_time, end_time)
             gap = new_ti.gap(last_ti)
             offset = new_ti.offset(last_ti)
-            logging.debug(f"gap = {gap} - offset = {offset}")
+            # logging.debug(f"gap = {gap} - offset = {offset}")
             if (last_ti != None) and (gap < max_gap) and (offset < min_offset) :
                 last_ti.extend(new_ti)
-                logging.debug(f"Alargando last_ti: {last_ti}")
+                # logging.debug(f"Alargando last_ti: {last_ti}")
             else:
                 if last_ti != None:
                     write_transcription(html, transcription, last_ti, 
                                         cfg['audio_tags'], cfg['mp3file'])
                 last_ti = new_ti
-                logging.debug(f"Nuevo last_ti: {last_ti}")
+                # logging.debug(f"Nuevo last_ti: {last_ti}")
                 transcription = ""
             transcription += ("<br>" + text_with_speaker + " ")
        
@@ -459,6 +461,7 @@ def whisper_task_work(cfg):
             # Poner entre comentarios los tiempos de cada hablante
             nsusp = 0
             strange_speakers = {}
+            logging.debug(f'Justo antes de poner comentarios finales, speakers_dict: {speakers_dict}')
             for speaker in speakers_dict:
                 if 'time' in speakers_dict[speaker]:
                     if speakers_dict[speaker]['time'] < whsusptime:

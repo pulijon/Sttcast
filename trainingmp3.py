@@ -116,8 +116,8 @@ def parse_arguments():
     )
     
     parser.add_argument(
-        "-t", "--time", type=int, default=600,
-        help="Duración total del fragmento en segundos. (Predeterminado: 600)"
+        "-t", "--time", type=int, default=10,
+        help="Duración total del fragmento en segundos. (Predeterminado: 10)"
     )
     
     return parser.parse_args()

@@ -20,6 +20,11 @@ else
     whlang=$2
 fi
 prcdir=/mnt/ram/whisper_$whlang
+if [ -d $prcdir ]
+then
+	echo "Directory $prcdir already exists, removing it"
+	rm -rf $prcdir
+fi
 mkdir -p $prcdir
 
 whisper_suffix="whisper"

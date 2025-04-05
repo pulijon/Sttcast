@@ -23,6 +23,11 @@ audio_vosk_files=()
 meta_vosk_files=()
 srt_vosk_files=()
 
+if [ -d $prcdir ]
+then
+	echo "Directory $prcdir already exists, removing it"
+	rm -rf $prcdir
+fi
 mkdir -p $prcdir
 
 oldIFS=$IFS
@@ -63,7 +68,7 @@ then
 	echo python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix}_${vlang} ${mp3_vosk_files[*]}
 	python ./sttcast.py --seconds $seconds --cpus $cpus  --html-suffix ${vosk_suffix}_${vlang} ${mp3_vosk_files[*]}
 	echo Fin de la transcripción con vosk
-	echo Creación de etiquetas de audio para los ficheros vosk y obtención de resultados
+	echo Creación de etiquetas de audio para los fiche0ros vosk y obtención de resultados
 	for i in "${!mp3_vosk_files[@]}"
 	do
 		cp "${html_vosk_files[$i]}" "${srcdir}"

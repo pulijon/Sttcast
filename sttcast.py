@@ -342,7 +342,7 @@ def build_trained_audio(training_file, audio_file):
     logging.debug(f"Fichero de entrenamiento combinado: {trained_file}")
     return trained_file, training_duration
 
-def substitute_speakers(hname, speakers):
+def substitute_speakers(hname, speakers, normal_speakers):
     """
     Reemplaza los nombres de usuario en un archivo HTML y guarda el resultado en el mismo archivo.
 
@@ -359,6 +359,9 @@ def substitute_speakers(hname, speakers):
 
             spk_pattern = r'(\[<span[^>]*>)([^<]+)(</span>\])'
             for spk in speakers:
+                if spk in normal_speakers:
+                    # Si el hablante está en la lista de hablantes normales, no se cambia
+                    continue
                 substitute = f"??? {speakers[spk]}"
                 spk_pattern = r'(\[<span[^>]*>)'+f"({spk})"+r'(</span>\])'
                 content = re.sub(spk_pattern,r'\1'+substitute+r'\3', content)
@@ -461,6 +464,8 @@ def whisper_task_work(cfg):
             # Poner entre comentarios los tiempos de cada hablante
             nsusp = 0
             strange_speakers = {}
+            # Los hablantes que han hablado más del tiempo mínimo entrarán en normal_speakers
+            normal_speakers = set()
             logging.debug(f'Justo antes de poner comentarios finales, speakers_dict: {speakers_dict}')
             for speaker in speakers_dict:
                 if 'time' in speakers_dict[speaker]:
@@ -471,10 +476,11 @@ def whisper_task_work(cfg):
                         transcription+= (f"\n<!-- ??? {nsusp} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
                     else:
                       transcription+=(f"\n<!-- {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
+                      normal_speakers.add(speakers_dict[speaker]['id'])
 
             write_transcription(html, transcription, last_ti, 
                                 cfg['audio_tags'], cfg['mp3file'])
-    substitute_speakers(hname, strange_speakers)
+    substitute_speakers(hname, strange_speakers, normal_speakers)
     logging.info(f"Terminado fragmento con whisper {hname}")
     del diarization_pipeline
     return hname, sname, datetime.datetime.now() - stime
@@ -686,10 +692,37 @@ def launch_whisper_tasks(args):
 
     return results
  
-def get_mp3_duration(f):
-    probe = ffmpeg.probe(f)
-    duration = float(probe['format']['duration'])
-    return duration  
+# def get_mp3_duration(f):
+#     probe = ffmpeg.probe(f)
+#     duration = float(probe['format']['duration'])
+#     return duration  
+import os
+import ffmpeg._probe
+import subprocess
+
+def get_mp3_duration(filepath):
+    """
+    Devuelve la duración de un archivo MP3 en segundos (float).
+    Si hay error, devuelve None.
+    """
+    try:
+        # Expandir ruta con ~
+        path = os.path.expanduser(filepath)
+
+        # Usar ffprobe para obtener info
+        info = ffmpeg._probe.probe(path)
+        duration = float(info['format']['duration'])
+        return duration
+
+    except ffmpeg.Error as e:
+        print(f"[ffmpeg error] {e.stderr.decode().strip()}" if e.stderr else str(e))
+    except subprocess.CalledProcessError as e:
+        print(f"[subprocess error] {e}")
+    except Exception as e:
+        print(f"[unexpected error] {e}")
+
+    return None
+
 
 def configure_globals(args):
     global cpus, seconds

@@ -12,7 +12,7 @@ terraform.tfstate*
 .vscode/
 NoGit/
 /Automation/VM/Ansible/inventory
-.venv/
+.venv*/
 nohup.out
 .env/
 *.btr

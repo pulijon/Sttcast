@@ -50,7 +50,8 @@ def update_transcript_file(transcript_file, summary_content):
         existing_summary = soup.find('span', id='topic-summary')
         # Crear un nuevo elemento para el resumen
         summary_soup = BeautifulSoup(summary_content, 'html.parser')
-        logging.info(f"Resumen encontrado: {summary_soup}")
+        logging.info(f"Resumen encontrado")
+        logging.debug(f"Resumen: {summary_soup}")
 
         if existing_summary:
             # Reemplazar el resumen existente
@@ -79,7 +80,11 @@ def update_transcript_file(transcript_file, summary_content):
 
 def find_matching_transcripts(ep_id, transcript_dir):
     """Encuentra todos los archivos de transcripción que coinciden con el ID del episodio."""
-    pattern = os.path.join(transcript_dir, f"{ep_id}_*.*html")
+    pattern = os.path.join(transcript_dir, f"{ep_id}_[wv]*.*html")
+    # Hacer un log de tipo debug para mostrar los ficheros encontrados
+    logging.debug(f"Buscando archivos de transcripción con patrón: {pattern}")
+    files = glob.glob(pattern)
+    logging.debug(f"Archivos encontrados: {files}")
     return glob.glob(pattern)
 
 

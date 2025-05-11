@@ -401,7 +401,7 @@ def whisper_task_work(cfg):
     min_offset = cfg["min_offset"]
     max_gap = cfg["max_gap"]
 
-    logging.debug(result)
+    # logging.debug(result)
     os.remove(cfg['fname'])
 
     hname = cfg["hname"]
@@ -415,6 +415,9 @@ def whisper_task_work(cfg):
         speakers_dict = {}
         nspeakers = 0
         ntraining = len(cfg['speaker_mapping'].keys())
+        in_training = True
+        last_speaker = "Ninguno"
+        training_warning = False
         for s in result['segments']:
             speaker_no_mapped = s.get('speaker', 'Unknown')
             if speaker_no_mapped not in speakers_dict:
@@ -422,13 +425,39 @@ def whisper_task_work(cfg):
                     speakers_dict[speaker_no_mapped] = {'id': cfg['speaker_mapping'][nspeakers],
                                                         'style': f"speaker-{nspeakers%10}"}
                     logging.debug(f"Speaker {speaker_no_mapped} mapeado a {speakers_dict[speaker_no_mapped]}")
+                    last_speaker = speaker_no_mapped
                 else:
                     speakers_dict[speaker_no_mapped] = {'id': f"Unknown {nspeakers - ntraining + 1}", 
                                                         'style': f"speaker-{nspeakers%10}"}
                 nspeakers += 1
+            elif in_training and (speaker_no_mapped != last_speaker):
+                # Si el hablante ya ha sido mapeado y estamos en el periodo de entrenamiento, 
+                # el mp3 de entrenamiento no sirve. Esta comprobación no detecta si dos hablantes
+                # sucesivos en el fichero de entranamiento son el mismo. Para que pudiéramos saber
+                # dónde está el problema, habría que comparar tiempos con entrenamiento
+                logging.warning(f"Podría haber problemas nspeakers = {nspeakers}. En entrenamiento, {speaker_no_mapped} ya mapeado a {speakers_dict[speaker_no_mapped]}, last_speaker = {last_speaker}")             
             if s['start'] < training_duration:
                 logging.debug(f"Saltando segmento {s['start']} < {training_duration} ")
                 continue
+            # Cuando se alcanza el periodo de entrenamiento, el número de speakers debe 
+            # ser el mismo que el del entrenamiento
+            if in_training:
+                # Si el número de speakers es distinto al del entrenamiento, se lanza una advertencia
+                training_warning = training_warning  or (not(nspeakers == ntraining))
+                if nspeakers < ntraining:
+                    logging.error(f"El número de hablantes ({nspeakers}) es menor que el del entrenamiento tras el entrenamiento ({ntraining})")
+                    logging.error(f"Es casi seguro que dos hablantes del conjunto de entrenamiento han sido mapeados a uno solo")
+                    # raise RuntimeError(f"El número de hablantes ({nspeakers}) es menor que el del entrenamiento tras el entrenamiento ({ntraining})")
+                    # return hname, sname, datetime.datetime.now() - stime
+                    # break
+                if nspeakers > ntraining:
+                    logging.error(f"El número de hablantes ({nspeakers}) es mayor que el del entrenamiento tras el entrenamiento ({ntraining})")
+                    logging.error(f"Es casi seguro que un hablante del conjunto de entrenamiento ha sido mapeado a dos")
+                    # raise RuntimeError(f"El número de hablantes ({nspeakers}) es mayor que el del entrenamiento tras el entrenamiento ({ntraining})")
+                    # return hname, sname, datetime.datetime.now() - stime
+                    # break
+                
+            in_training = False
             start_time = float(s['start']) + offset_seconds - training_duration
             end_time = float(s['end'])+ offset_seconds - training_duration
             speaker = speakers_dict.get(speaker_no_mapped)
@@ -467,6 +496,8 @@ def whisper_task_work(cfg):
             # Los hablantes que han hablado más del tiempo mínimo entrarán en normal_speakers
             normal_speakers = set()
             logging.debug(f'Justo antes de poner comentarios finales, speakers_dict: {speakers_dict}')
+            if training_warning:
+                transcription += f"\n<!-- WARNING: El número de hablantes real del conjunto de entrenamiento es distinto del teórico (ver logs) -->"
             for speaker in speakers_dict:
                 if 'time' in speakers_dict[speaker]:
                     if speakers_dict[speaker]['time'] < whsusptime:

@@ -72,7 +72,16 @@ El resultado debe ser como el ejemplo:
 
 El resumen debe ser un texto escrito en el estilo de los artículos técnicos y puede incluir, si se detectan, los papers que se comentan. Su extensión debe ser de uno a cuatro párrafos. 
 
-Cuando hables de los participantes en la tertulia, utiliza la palabra "contertulios". No incluyas etiquetas HTML adicionales fuera del bloque span.
+Cuando hables de los participantes en la tertulia, utiliza la palabra "contertulios" o "participantes".
+
+La identidad de los participantes se puede deducir de la transcripción. Por ejemplo, en el párrafo siguiente, quien habla es Héctor Socas, cuyo nombre está al principio, entre corchetes.
+
+[<span class="speaker-0">Héctor Socas</span>]:  Gracias a Marian, a Weston, a Andrés, a Javier Licandro, a Darwich, a Manolo Vázquez, a Alfred, a José Alberto, a Nayra, a Maya, a Juan Antonio Belmonte. Gracias a todos los con tertulios que han pasado, a José Rra. <br/>
+
+
+Intenta poner, cuando sea relevante, la contribución de cada uno de los participantes. 
+
+No incluyas etiquetas HTML adicionales fuera del bloque span.
 
 Transcripción:
 

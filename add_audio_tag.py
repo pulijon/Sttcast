@@ -43,7 +43,7 @@ def main():
         tbm = m.group('tbm').zfill(2)
         tbs = m.group('tbs').zfill(2)
         tbstr = f"{tbh}:{tbm}:{tbs}"
-        new_tag = soup.new_tag("audio", controls=None, src=f'{mp3_file_base}#t={tbstr}')
+        new_tag = soup.new_tag("audio", controls=None, preload="none", src=f'{mp3_file_base}#t={tbstr}')
         ts.append(new_tag)
     
     with open(html_audio_file,"w") as fp:

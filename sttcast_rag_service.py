@@ -8,6 +8,7 @@ from typing import List
 from bs4 import BeautifulSoup
 from openai import OpenAI
 from dotenv import load_dotenv
+import json
 import uvicorn
 
 MODEL="gpt-4o-mini"
@@ -45,11 +46,21 @@ def summarize_episode(ep: EpisodeInput) -> EpisodeOutput:
     if not openai:
         raise ValueError("OpenAI client is not initialized.")
     transcript_text = extract_text_from_html(ep.transcription)
+    logging.debug("Extraído texto de la transcripción")
 
     prompt = f"""
-Extrae los principales temas tratados en esta transcripción de un podcast. Devuelve la respuesta en formato HTML en un bloque span con id="topic-summary". 
+Por favor, devuelve un objeto válido JSON, no lo empaquetes en un bloque de código ni de texto.
 
-Dentro de este bloque, deberá haber una lista de los asuntos tratados, precedidos del epígrafe "Asuntos tratados"y un resumen del episodio, precedidos del epígrafe "Resumen". El resumen debe ser de unas veinte líneas. Los asuntos tratados se incluirán en un bloque span con id "tslist" y el resumen en un span con id "tstext", de forma que, a posteriori se puedan aplicar estilos.
+
+Extrae los principales temas tratados en esta transcripción de un podcast. Devuelve la respuesta en un fichero JSON con campos para cada idioma:
+
+"es": resumen en español, "en": resumen en inglés
+
+Los resúmenes son textos en formato HTMKL. En el caso del resumen en español, el texto debe estar en español y en el caso del resumen en inglés, el texto debe estar en inglés.
+
+Cada uno de los resúmenes debe teber un bloque span con id="topic-summary". 
+
+Dentro de este bloque, deberá haber una lista de los asuntos tratados, precedidos del epígrafe "Asuntos tratados" (en inglés, la traducción que corresponda) y un resumen del episodio, precedidos del epígrafe "Resumen". El resumen debe ser de unas veinte líneas. Los asuntos tratados se incluirán en un bloque span con id "tslist" y el resumen en un span con id "tstext", de forma que, a posteriori se puedan aplicar estilos.
 
 El resultado debe ser como el ejemplo:
 
@@ -78,7 +89,6 @@ La identidad de los participantes se puede deducir de la transcripción. Por eje
 
 [<span class="speaker-0">Héctor Socas</span>]:  Gracias a Marian, a Weston, a Andrés, a Javier Licandro, a Darwich, a Manolo Vázquez, a Alfred, a José Alberto, a Nayra, a Maya, a Juan Antonio Belmonte. Gracias a todos los con tertulios que han pasado, a José Rra. <br/>
 
-
 Intenta poner, cuando sea relevante, la contribución de cada uno de los participantes. 
 
 No incluyas etiquetas HTML adicionales fuera del bloque span.
@@ -93,13 +103,14 @@ Transcripción:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.1,
     )
+    logging.debug("Respuesta de OpenAI recibida")
 
-    summary_html = response.choices[0].message.content.strip()
+    summary_json = response.choices[0].message.content.strip()
     usage = response.usage  # tokens
 
     return EpisodeOutput(
             ep_id=ep.ep_id,
-            summary=summary_html,
+            summary=json.dumps(summary_json),
             tokens_prompt=usage.prompt_tokens,
             tokens_completion=usage.completion_tokens,
             tokens_total=usage.total_tokens,
@@ -109,6 +120,7 @@ Transcripción:
 @app.post("/summarize", response_model=List[EpisodeOutput])
 def summarize(episodes: List[EpisodeInput]):
     try:
+        logging.debug(f"Received {len(episodes)} episodes for summarization: {[ep.ep_id for ep in episodes]}")
         return [summarize_episode(ep) for ep in episodes]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

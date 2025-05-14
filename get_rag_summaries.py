@@ -54,13 +54,20 @@ def save_summaries(output_dir, summaries):
             writer.writerow(["ep_id", "tokens_prompt", "tokens_completion", "tokens_total", "estimated_cost_usd", "fecha_procesado"])
 
         for item in summaries:
+            logging.debug(f"Tratando respusta: {item}")
             ep_id = item["ep_id"]
-            summary_file = os.path.join(output_dir, f"{ep_id}_summary.html")
+            summary_file = os.path.join(output_dir, f"{ep_id}_summary.json")
             stats_file = os.path.join(output_dir, f"{ep_id}_stats.json")
+            summary_json = item['summary']
+            if summary_json.startswith('"') and summary_json.endswith('"'):
+                summary_json = summary_json[1:-1]
+            summary_json = summary_json.encode("utf-8").decode("unicode_escape")
+            summary = json.loads(summary_json)
+            logging.debug(f"Parseado de JSON: {summary}")
 
-            # Guardar resumen HTML
+            # Guardar resumen JSON
             with open(summary_file, "w", encoding="utf-8") as f:
-                f.write(item["summary"])
+                json.dump(summary, f, indent=2, ensure_ascii=False)
 
             # Guardar estadísticas en JSON
             with open(stats_file, "w", encoding="utf-8") as f:
@@ -80,22 +87,22 @@ def main():
     """Función principal que configura el registro, carga las transcripciones y envía solicitudes al servicio de resúmenes.
     """
     parser = argparse.ArgumentParser(description="Obtener resúmenes RAG de transcripciones de podcast")
-    parser.add_argument("-i", "--input", required=True, help="Directorio de entrada con transcripciones HTML")
-    parser.add_argument("-o", "--output", required=True, help="Directorio de salida para resúmenes HTML")
+    parser.add_argument("-t", "--transcriptions", required=True, help="Directorio de entrada con transcripciones HTML")
+    parser.add_argument("-s", "--summaries", required=True, help="Directorio de salida para resúmenes HTML")
     parser.add_argument("--url", default="http://localhost:5500/summarize", help="URL del servicio de resúmenes")
     args = parser.parse_args()
 
-    logging.info(f"📝 Cargando transcripciones desde {args.input}")
+    logging.info(f"📝 Cargando transcripciones desde {args.transcriptions}")
 
     logging.info("📡 Enviando transcripciones al servicio de resúmenes...")
     MAX_FILES_IN_QUERY = 6
-    for block in load_transcriptions(args.input, MAX_FILES_IN_QUERY):
+    for block in load_transcriptions(args.transcriptions, MAX_FILES_IN_QUERY):
         logging.info(f"📦 Enviando bloque de {len(block)} episodios...: {[b['ep_id'] for b in block]}")
         try:
             response = requests.post(args.url, json=block)
             response.raise_for_status()
             summaries = response.json()
-            save_summaries(args.output, summaries)
+            save_summaries(args.summaries, summaries)
         except requests.RequestException as e:
             logging.error("❌ Error al enviar bloque: %s", e)
         logging.info("✅ Proceso completado")

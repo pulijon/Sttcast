@@ -10,6 +10,7 @@ import re
 import argparse
 import glob
 from bs4 import BeautifulSoup
+import json
 
 
 def extract_ep_id(filename):
@@ -19,12 +20,27 @@ def extract_ep_id(filename):
         return match.group(1)
     return None
 
+def get_lang(filename):
+    """Extrae el idioma del nombre del archivo."""
+    match = re.search(r'.*_(..)\.html', os.path.basename(filename))
+    if match:
+        return match.group(1)
+    return None
 
-def get_summary_content(summary_file):
+
+
+def get_summary_content(summary_file, lang):
     """Extrae el contenido del resumen del archivo."""
     try:
-        with open(summary_file, 'r', encoding='utf-8') as file:
-            soup = BeautifulSoup(file, 'html.parser')
+        with open(summary_file) as file:
+            # El fichero está en formato JSON. hay que extraer la parte que 
+            # corresponde al idioma indicado
+            json_content = json.load(file)
+            if lang not in json_content:
+                logging.warning(f"No se encontró el idioma {lang} en {summary_file}")
+                return None
+            html_content =  json_content[lang]
+            soup = BeautifulSoup(html_content, 'html.parser')
             summary_span = soup.find('span', id='topic-summary')
             if summary_span:
                 return str(summary_span)
@@ -90,7 +106,7 @@ def find_matching_transcripts(ep_id, transcript_dir):
 
 def process_files(summary_dir, transcript_dir):
     """Procesa todos los archivos de resumen y actualiza los archivos de transcripción correspondientes."""
-    summary_files = glob.glob(os.path.join(summary_dir, "ep*.html"))
+    summary_files = glob.glob(os.path.join(summary_dir, "*summary.json"))
     
     for summary_file in summary_files:
         ep_id = extract_ep_id(summary_file)
@@ -99,13 +115,7 @@ def process_files(summary_dir, transcript_dir):
             continue
         
         logging.info(f"Procesando resumen para episodio {ep_id}")
-        
-        # Obtener el contenido del resumen
-        summary_content = get_summary_content(summary_file)
-        if not summary_content:
-            logging.warning(f"No se encontró el resumen en {summary_file}")
-            continue
-        
+
         # Encontrar archivos de transcripción correspondientes
         transcript_files = find_matching_transcripts(ep_id, transcript_dir)
         if not transcript_files:
@@ -114,6 +124,12 @@ def process_files(summary_dir, transcript_dir):
         
         # Actualizar cada archivo de transcripción
         for transcript_file in transcript_files:
+            lang = get_lang(transcript_file)
+            # Obtener el contenido del resumen
+            summary_content = get_summary_content(summary_file, lang)
+            if not summary_content:
+                logging.warning(f"No se encontró el resumen en {summary_file}")
+                continue
             logging.info(f"Actualizando {transcript_file}")
             update_transcript_file(transcript_file, summary_content)
 

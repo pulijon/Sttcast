@@ -469,9 +469,10 @@ def whisper_task_work(cfg):
             speaker['time'] = speaker.get('time', 0.0) + time_to_add
             
             text_with_speaker = f"\n[{class_str(speaker['id'], speaker['style'])}]: {text}"
+            text_with_speaker_srt = f"\n[{speaker['id']}]: {text}"
             write_srt_entry(srt, 
                             start_time, end_time, 
-                            text_with_speaker)
+                            text_with_speaker_srt)
             new_ti = TimeInterval(start_time, end_time)
             gap = new_ti.gap(last_ti)
             offset = new_ti.offset(last_ti)

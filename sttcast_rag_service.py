@@ -68,9 +68,9 @@ El resultado debe ser como el ejemplo:
     <span id="tslist">
     <p>Asuntos tratados:</p>
     <ul>
-        <li>Asunto 1</li>
-        <li>Asunto 2</li>
-        <li>Asunto 3</li>
+        <li>Asunto 1 - Tiempo de inicio</li>
+        <li>Asunto 2 - Tiempo de inicio</li>
+        <li>Asunto 3 - Tiempo de inicio</li>
     </ul>
     </span>
     <span id="tstext">
@@ -80,6 +80,8 @@ El resultado debe ser como el ejemplo:
     <p>Párrafo 3 del resumen</p>
     </span>
 </span>
+
+El tiempo de inicio de cada asunto es el tiempo, en formato HH:MM:SS en el que empieza el asunto, que se puede extraer de la transcripción. No tiene por qué ser exacto, pero sí aproximado. 
 
 El resumen debe ser un texto escrito en el estilo de los artículos técnicos y puede incluir, si se detectan, los papers que se comentan. Su extensión debe ser de uno a cuatro párrafos. 
 

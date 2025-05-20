@@ -11,7 +11,21 @@ import argparse
 import glob
 from bs4 import BeautifulSoup
 import json
+from datetime import datetime
 
+# Expresiones regulares
+RE_TIMESTAMP = re.compile(r"(\d{2}:\d{2}:\d{2})")
+RE_RANGE   = re.compile(r"\[(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]")
+
+def to_seconds(ts: str) -> float:
+    """Pasa 'HH:MM:SS(.ms)' a segundos como float."""
+    fmt = "%H:%M:%S" if "." not in ts else "%H:%M:%S.%f"
+    dt = datetime.strptime(ts, fmt)
+    return dt.hour*3600 + dt.minute*60 + dt.second + (dt.microsecond/1e6)
+
+def make_id(ts: str) -> str:
+    """Crea un id seguro a partir de 'HH:MM:SS' -> 'time-00-08-30'."""
+    return "time-" + ts.replace(":", "-")
 
 def extract_ep_id(filename):
     """Extrae el ID del episodio del nombre del archivo."""
@@ -50,6 +64,69 @@ def get_summary_content(summary_file, lang):
         logging.error(f"Error al procesar el archivo de resumen {summary_file}: {e}")
         return None
 
+def linkify (soup):
+    """
+    Añade enlaces a los timestamps en el contenido HTML.
+    
+    Args:
+        soup (BeautifulSoup): Contenido HTML parseado.
+    """
+    def put_link(li, aid):
+        """
+        Envuelve el contenido de <li> en un enlace a un timestamp.
+        
+        Args:
+            li (Tag): Elemento <li> a modificar.
+            aid (str): ID del timestamp al que enlazar.
+        """
+        if li.find("a"):
+            return
+        a = soup.new_tag("a", href=f"#{aid}")
+        a.string = li.get_text(strip=True)
+        li.string.replace_with(a)
+        
+
+    # 1) Recorrer cada <span class="time">
+    time_spans = []
+    for span in soup.find_all("span", class_="time"):
+        m = RE_RANGE.search(span.get_text())
+        if not m:
+            logging.debug(f"Patrón de tiempo no válido: {span.get_text()}")
+            continue
+        t_start, t_end = m.groups()
+        sec_start = to_seconds(t_start)
+        sec_end   = to_seconds(t_end)
+        anchor_id = make_id(t_start.split(".")[0])
+        span["id"] = anchor_id
+        time_spans.append((sec_start, sec_end, anchor_id))
+
+    # 2) Recorrer los <li> del resumen
+    for li in soup.select("span#topic-summary ul li"):
+        txt = li.get_text(strip=True)
+        logging.debug(f"Tratando {txt}")
+        m2 = RE_TIMESTAMP.search(txt)
+        if not m2:
+            logging.debug(f"Patrón de tiempo en lista de topos no encontrado: {txt}")
+            continue
+        ts = m2.group(1)  # 'HH:MM:SS'
+        sec = to_seconds(ts)
+        logging.debug(f"ts = {ts} sec = {sec}")
+        # buscar el rango que lo contiene
+        prev_aid = None
+        linked = False
+        for sec_start, _, aid in time_spans:
+            if sec_start > sec:
+                if prev_aid is None:
+                    prev_aid = aid
+                put_link(li, prev_aid)
+                # envolver el contenido de li en <a>
+                linked = True
+                break
+            prev_aid = aid
+        if not linked:
+            put_link (li, prev_aid)
+    return soup
+
 
 def update_transcript_file(transcript_file, summary_content):
     """
@@ -67,7 +144,7 @@ def update_transcript_file(transcript_file, summary_content):
         # Crear un nuevo elemento para el resumen
         summary_soup = BeautifulSoup(summary_content, 'html.parser')
         logging.info(f"Resumen encontrado")
-        logging.debug(f"Resumen: {summary_soup}")
+        # logging.debug(f"Resumen: {summary_soup}")
 
         if existing_summary:
             # Reemplazar el resumen existente
@@ -83,6 +160,7 @@ def update_transcript_file(transcript_file, summary_content):
             else:
                 logging.warning(f"No se encontró el título en {transcript_file}")
                 return False
+        soup = linkify(soup)
         
         # Guardar el archivo actualizado
         with open(transcript_file, 'w', encoding='utf-8') as file:

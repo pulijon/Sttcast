@@ -1,8 +1,9 @@
-from util import logcfg
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"..", "tools")))
 import logging
 import requests
 import json
-import logging
 
 # Configuración
 HTML_FILE = "ep507_A_whisper_audio_es.html"

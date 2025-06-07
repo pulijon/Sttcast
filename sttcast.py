@@ -1,6 +1,6 @@
 #! /usr/bin/python3
 
-from util import logcfg
+from tools.logs import logcfg
 import logging
 import whisperx
 from vosk import Model, KaldiRecognizer
@@ -424,7 +424,7 @@ def whisper_task_work(cfg):
                 if nspeakers in cfg.get('speaker_mapping',{}):
                     speakers_dict[speaker_no_mapped] = {'id': cfg['speaker_mapping'][nspeakers],
                                                         'style': f"speaker-{nspeakers%10}"}
-                    logging.debug(f"Speaker {speaker_no_mapped} mapeado a {speakers_dict[speaker_no_mapped]}")
+                    logging.debug(f"[{nspeakers +1}] Speaker {speaker_no_mapped} mapeado a {speakers_dict[speaker_no_mapped]}")
                     last_speaker = speaker_no_mapped
                 else:
                     speakers_dict[speaker_no_mapped] = {'id': f"Unknown {nspeakers - ntraining + 1}", 

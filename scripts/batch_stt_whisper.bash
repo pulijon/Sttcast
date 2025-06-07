@@ -11,7 +11,7 @@
 # Source directory is passed as parameter
 # If a second parameter is provided it is the whisper language (es by default)
 
-NCPUS_FNAME='whispercpus.txt'
+NCPUS_FNAME='scripts/whispercpus.txt'
 TRAINING_FILE='training.mp3'
 srcdir=$1
 if [ -z "$2" ]; then
@@ -90,7 +90,7 @@ then
 		cp "${srt_whisper_files[$i]}" "${srcdir}"
 		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
 		python ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
-		python ./showspeakers.py "${html_whisper_files[$i]}" "${audio_whisper_files[$i]}"
+		python ./diarization/showspeakers.py "${html_whisper_files[$i]}" "${audio_whisper_files[$i]}"
     	cp "${html_whisper_files[$i]}" "${srcdir}"
 		cp "${audio_whisper_files[$i]}" "${srcdir}"
     	        rm "${html_whisper_files[$i]}"

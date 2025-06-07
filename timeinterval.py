@@ -1,4 +1,4 @@
-from util import logcfg
+from tools.logs import logcfg
 import logging
 from datetime import timedelta
 

@@ -3,9 +3,11 @@
 Script para insertar resúmenes en archivos de transcripción HTML.
 """
 
-from util import logcfg
-import logging
+import sys
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"..", "tools")))
+from logs import logcfg
+import logging
 import re
 import argparse
 import glob
@@ -15,6 +17,7 @@ from datetime import datetime
 
 # Expresiones regulares
 RE_TIMESTAMP = re.compile(r"(\d{2}:\d{2}:\d{2})")
+# RE_TIMESTAMP = re.compile(r"- (\d+(\.\d+)?) ")
 RE_RANGE   = re.compile(r"\[(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*-\s*(\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]")
 
 def to_seconds(ts: str) -> float:
@@ -94,8 +97,12 @@ def linkify (soup):
             logging.debug(f"Patrón de tiempo no válido: {span.get_text()}")
             continue
         t_start, t_end = m.groups()
-        sec_start = to_seconds(t_start)
-        sec_end   = to_seconds(t_end)
+        try:
+            sec_start = to_seconds(t_start)
+            sec_end   = to_seconds(t_end)
+        except Exception as e:
+            logging.error(f"Error al convertir el tiempo: {e}")
+            continue
         anchor_id = make_id(t_start.split(".")[0])
         span["id"] = anchor_id
         time_spans.append((sec_start, sec_end, anchor_id))
@@ -108,8 +115,9 @@ def linkify (soup):
         if not m2:
             logging.debug(f"Patrón de tiempo en lista de topos no encontrado: {txt}")
             continue
-        ts = m2.group(1)  # 'HH:MM:SS'
+        ts = m2.group(1)  # cantidad de segundos
         sec = to_seconds(ts)
+        # sec = int(ts)
         logging.debug(f"ts = {ts} sec = {sec}")
         # buscar el rango que lo contiene
         prev_aid = None

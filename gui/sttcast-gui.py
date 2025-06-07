@@ -4,7 +4,7 @@ import os
 from sttcastargs import SttcastArgs
 from sttcast import start_stt_process
 import logging
-from util import logcfg, enable_logs
+from tools.logs import logcfg, enable_logs
 import whisper
 import threading
 import multiprocessing as mp

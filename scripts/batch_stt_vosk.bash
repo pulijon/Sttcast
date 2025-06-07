@@ -10,7 +10,8 @@
 #
 # Source directory is passed as parameter
 
-NCPUS_FNAME='voskcpus.txt'
+NCPUS_FNAME='scripts/voskcpus.txt'
+SECONDS_FNAME='scripts/seconds.txt'
 srcdir=$1
 prcdir=/mnt/ram/vosk
 vosk_suffix="vosk"
@@ -61,7 +62,7 @@ IFS=$oldIFS
 if [ ${#mp3_vosk_files[*]} -gt 0 ]
 then
 	cpus=$(cat $NCPUS_FNAME | tr -d '\n')
-	seconds=$(cat seconds.txt | tr -d '\n')
+	seconds=$(cat $SECONDS_FNAME | tr -d '\n')
 	echo Procesando con vosk ${mp3_vosk_files[*]}
 	echo Trabajando con $cpus CPUs y $seconds segundos
 	echo "${mp3_vosk_files[*]}"

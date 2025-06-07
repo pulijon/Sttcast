@@ -16,3 +16,7 @@ fastapi
 openai
 pydantic
 uvicorn
+pysrt
+pandas
+faiss-cpu
+tqdm

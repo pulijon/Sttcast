@@ -6,7 +6,7 @@ import datetime
 import os
 import sys
 import argparse
-from util import logcfg
+from tools.logs import logcfg
 import logging
 
 def get_pars():

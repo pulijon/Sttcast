@@ -57,7 +57,7 @@ def addsegments(request: AddSegmentsRequest):
         raise HTTPException(status_code=500, detail="Error al añadir el episodio a la base de datos")
     # Llamar al servicio RAG para obtener los vectores de los segmentos
     ints = db.get_ints(with_embeddings=False, epname=request.epname)
-    db.close()
+    logging.info(f"Se han encontrado {len(ints)} segmentos para el episodio {request.epname}")
 
     segments = [
         {
@@ -79,6 +79,8 @@ def addsegments(request: AddSegmentsRequest):
         raise HTTPException(status_code=response.status_code, detail=response.text)
     rjson = response.json()
     vectors = rjson.get("embeddings")
+    prompt_tokens = rjson.get("prompt_tokens", 0)
+    total_tokens = rjson.get("total_tokens", 0)
     if not isinstance(vectors, list) or not all(isinstance(v, list) for v in vectors):
         raise HTTPException(status_code=500, detail="El formato de los vectores devueltos por el servicio RAG no es válido")
     if len(vectors) != len(segments):
@@ -92,6 +94,16 @@ def addsegments(request: AddSegmentsRequest):
         raise HTTPException(status_code=500, detail="Los vectores devueltos por el servicio RAG no tienen la dimensión adecuada")
   
     index.add_with_ids(vectors, np.array(ids, dtype=np.int64))
+    logging.info(f"len(ids): {len(ids)}, len(vectors): {len(vectors)}, index.d: {index.d}, vectors.shape: {vectors.shape}")
+    
+    for id, emb in zip(ids, vectors):
+        db.update_embedding(id, emb.tobytes(), prompt_tokens, total_tokens)
+    db.commit()
+        
+    ints = db.get_ints(with_embeddings=False, epname=request.epname)
+    logging.info(f"Tras la actualización, quedan {len(ints)} segmentos sin embedding en la base de datos para el episodio {request.epname}")
+
+    db.close()
        
 
 @app.post("/getcontext")

@@ -1,3 +1,4 @@
+![](screenshots/rag_with_web_if.png)
 # Rationale for sttcast.py
 
 STT (Speech To Text) technology is becoming increasyngly popular. Virtual assistants as Alexa, Siri, Cortana or Google are able to understand voice commands and operate accordingly.
@@ -358,21 +359,40 @@ options:
 
 ```
 
+## Relevant searches with RAG
+### What is RAG?
+
+Retrieval-Augmented Generation (RAG) is a technology that combines the ability to retrieve information from large databases with natural language generation models. With RAG, a system can search for relevant fragments within a document corpus and generate rich, precise, and contextualized answers to user questions based on those fragments.
+
+### Storage of Transcriptions
+
+Segments from transcriptions are stored both in a relational database (for structured management and conventional queries) and in a vector database (to enable efficient semantic searches using embeddings).
+
+### Project Structure
+
+The project is organized into three main components:
+
+**sttcast_rag_service**: Implemented with FastAPI, this service enables both the generation of embeddings from transcript fragments and automatic answering of questions about the content, combining vector retrieval and natural language generation.
+
+**context_server**: This service queries both the relational and vector databases to provide the necessary context for answering user questions, supplying the most relevant fragments from the transcriptions.
+
+**Web client**: A web application that leverages both context_server and sttcast_rag_service to provide detailed answers based on user queries. Answers also include direct references to podcast episodes, allowing users to easily access the relevant paragraphs within each episode.
+
 
 ## To Do
 
 Many modifications can be made and will be made in the future.
 
 * In **sttcast**, the number of **CPUs** can be configured (in **Automation**, this is done with the ```app_exec role``` variables). Each file is divided into that number of pieces and assigned to a Python process. It would be much more intelligent to divide the work to be done (several MP3s) into subsets of similar sizes and start a sttcast process with each subset with the number of **CPUs** equal to 1. This way, time would be optimized, and potential boundary issues between pieces could be avoided. **(Done 2024-07-06)**
-* Take advantage of diarization and the RAG service to implement a complete system for searching relevant information from collections of podcasts
+* Take advantage of diarization and the RAG service to implement a complete system for searching relevant information from collections of podcasts **(Done 2025-06-07)**
 
 # Screenshots
 
-![transcription with summary](transcription_with_summary.png)
+![transcription with summary](screenshots/transcription_with_summary.png)
 
-![transcription with diarization](transcription_with_diarization.png)
+![transcription with diarization](screenshots/transcription_with_diarization.png)
 
-![speaking times](speaking_times.png)
+![speaking times](screenshots/transcription/speaking_times.png)
 
 <!-- ![](sttcast_example.png) -->
 

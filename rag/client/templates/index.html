@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultas relevantes en Podcasts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .prose span {
+            color: #0284c7;
+            background: #e0f2fe;
+            font-weight: 500;
+            border-radius: 0.2em;
+            padding: 0 0.2em;
+        }
+        .prose p {
+            margin-bottom: 1em;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center">
+    <main class="w-full max-w-2xl mt-8 bg-white rounded-xl shadow p-8">
+        <h1 class="text-2xl font-bold mb-6 text-center">Consultas relevantes en Podcasts</h1>
+
+
+        <!-- Formulario -->
+        <form id="askForm" class="space-y-6">
+            <div>
+                <label for="question" class="block mb-2 font-medium text-gray-700">
+                    Escribe tu pregunta:
+                </label>
+                
+                <textarea id="question" name="question" rows="4" required
+                    class="w-full border border-gray-300 rounded-lg p-3 resize-vertical focus:ring focus:ring-blue-200 focus:border-blue-400 transition"></textarea>
+                <button type="button" id="micBtn" title="Hablar pregunta" class="rounded-full bg-blue-200 p-2">
+                    <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 18v2m0 0a4 4 0 01-4-4H8a4 4 0 004-4v-2a4 4 0 014 4h0a4 4 0 01-4 4zm0 0V18" />
+                        <circle cx="12" cy="10" r="4"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex flex-col items-start space-y-2">
+                <label for="language" class="font-medium text-gray-700">Idioma de respuesta:</label>
+                <select id="language" name="language" class="border border-gray-300 rounded-lg p-2 w-40">
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+            <button type="submit"
+                class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 mt-4 hover:bg-blue-700 transition">
+                Consultar
+            </button>
+        </form>
+
+        <!-- Zona de resultados -->
+        <section id="results" class="mt-10 hidden">
+            <div class="mb-6">
+                <h2 class="text-xl font-semibold mb-2" id="result-title">Resultado</h2>
+                <!-- <div id="searchResult" class="whitespace-pre-line text-gray-800 bg-blue-50 rounded-lg p-4"></div> -->
+                <div id="searchResult" class="prose prose-blue max-w-none bg-blue-50 text-gray-900 rounded-lg p-4"></div>
+            </div>
+            <div>
+                <h2 class="text-xl font-semibold mb-2">Referencias</h2>
+                <table class="min-w-full text-left bg-white rounded-lg border border-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 border-b font-bold">Contertulio</th>
+                            <th class="px-4 py-2 border-b font-bold">Descripción</th>
+                            <th class="px-4 py-2 border-b font-bold">Audio</th>
+                            <th class="px-4 py-2 border-b font-bold">Tiempo (mm:ss)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="refsTable"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Mensaje de error -->
+        <div id="errorMsg" class="mt-8 text-red-700 font-semibold hidden"></div>
+    </main>
+
+    <!-- Simulación de fragmentos con ids de tiempo -->
+    <!-- Puedes eliminar esto si ya los tienes en la página -->
+    <div class="hidden">
+        <span class="time" id="time-00-01-10"></span>
+        <span class="time" id="time-00-02-05"></span>
+        <span class="time" id="time-00-03-15"></span>
+        <span class="time" id="time-00-04-10"></span>
+    </div>
+
+    <script>
+        const askForm = document.getElementById('askForm');
+        const questionInput = document.getElementById('question');
+        const languageSelect = document.getElementById('language');
+        const resultsSection = document.getElementById('results');
+        const searchResult = document.getElementById('searchResult');
+        const refsTable = document.getElementById('refsTable');
+        const errorMsg = document.getElementById('errorMsg');
+
+        let lastData = null;
+
+        languageSelect.addEventListener('change', () => {
+            if (lastData) {
+                showResults(lastData, languageSelect.value);
+            }
+        });
+
+        askForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorMsg.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            searchResult.innerHTML = '';
+            refsTable.innerHTML = '';
+
+            const question = questionInput.value.trim();
+            const language = languageSelect.value;
+
+            if (!question) {
+                errorMsg.textContent = 'Por favor, introduce una pregunta.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            askForm.querySelector('button[type=submit]').disabled = true;
+            askForm.querySelector('button[type=submit]').textContent = 'Consultando...';
+
+            try {
+                const response = await fetch("/api/ask", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({question, language})
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(()=>{});
+                    throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+                }
+                const data = await response.json();
+                lastData = data;
+                showResults(data, language);
+
+            } catch (error) {
+                errorMsg.textContent = error.message || "No se pudo completar la consulta";
+                errorMsg.classList.remove('hidden');
+            } finally {
+                askForm.querySelector('button[type=submit]').disabled = false;
+                askForm.querySelector('button[type=submit]').textContent = 'Consultar';
+            }
+        });
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.round(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+function showResults(data, lang) {
+    console.log("Datos a mostrar:", data, lang);
+
+    searchResult.innerHTML = data.response[lang] || "No hay respuesta para este idioma.";
+
+    refsTable.innerHTML = '';
+    if (data.references && data.references.length > 0) {
+        data.references.forEach(ref => {
+            const linkText = ref.file;
+            let linkUrl = (ref.hyperlink && ref.hyperlink[lang]) ? ref.hyperlink[lang] : '';
+            let linkHtml = linkUrl
+                ? `<a class="text-blue-600 underline" href="${linkUrl}" target="_blank">${linkText}</a>`
+                : `<span class="text-gray-400">${linkText}</span>`;
+            refsTable.innerHTML += `
+                <tr>
+                    <td class="px-4 py-2 border-b">${ref.tag || ""}</td>
+                    <td class="px-4 py-2 border-b">${ref.label && ref.label[lang] ? ref.label[lang] : ""}</td>
+                    <td class="px-4 py-2 border-b">${linkHtml}</td>
+                    <td class="px-4 py-2 border-b">${formatTime(ref.time)}</td>
+                </tr>
+            `;
+        });
+    } else {
+        refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">No hay referencias.</td></tr>`;
+    }
+    // Asegúrate de mostrar los resultados
+    resultsSection.classList.remove('hidden');
+}
+const micBtn = document.getElementById('micBtn');
+let recognizing = false;
+let recognition;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = languageSelect.value; // Idioma actual
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    // Cambia el idioma cuando el usuario cambie el select
+    languageSelect.addEventListener('change', () => {
+        if (recognition) recognition.lang = languageSelect.value;
+    });
+
+    micBtn.addEventListener('click', () => {
+        if (!recognizing) {
+            recognition.lang = languageSelect.value;
+            recognition.start();
+            micBtn.classList.add('bg-green-200');
+        } else {
+            recognition.stop();
+            micBtn.classList.remove('bg-green-200');
+        }
+    });
+
+    recognition.onstart = () => recognizing = true;
+    recognition.onend = () => {
+        recognizing = false;
+        micBtn.classList.remove('bg-green-200');
+    };
+
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        questionInput.value = transcript;
+        questionInput.focus();
+    };
+
+    recognition.onerror = (event) => {
+        recognizing = false;
+        micBtn.classList.remove('bg-green-200');
+        alert('No se pudo captar tu voz. Intenta de nuevo.');
+    };
+} else {
+    micBtn.disabled = true;
+    micBtn.title = "El navegador no soporta reconocimiento de voz";
+}
+</script>
+</body>
+</html>

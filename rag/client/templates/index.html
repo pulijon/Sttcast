@@ -107,6 +107,10 @@
         const searchResult = document.getElementById('searchResult');
         const refsTable = document.getElementById('refsTable');
         const errorMsg = document.getElementById('errorMsg');
+        const langMap = {
+                        "es": "es-ES",
+                        "en": "en-US",
+                        };
 
         let lastData = null;
 
@@ -199,19 +203,20 @@ let recognition;
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition = new SpeechRecognition();
-    recognition.lang = languageSelect.value; // Idioma actual
-    recognition.interimResults = false;
+    recognition.lang = langMap[languageSelect.value]; // Idioma actual
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     // Cambia el idioma cuando el usuario cambie el select
     languageSelect.addEventListener('change', () => {
-        if (recognition) recognition.lang = languageSelect.value;
+        if (recognition) recognition.lang = langMap[languageSelect.value];
     });
 
     micBtn.addEventListener('click', () => {
         if (!recognizing) {
-            recognition.lang = languageSelect.value;
+            recognition.lang = langMap[languageSelect.value];
             recognition.start();
+            recognition.continuous = true; // Permite múltiples resultados
             micBtn.classList.add('bg-green-200');
         } else {
             recognition.stop();

@@ -1,0 +1,237 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    margin: 20px;
+    background: #f8f9fa;
+    color: #333;
+}
+
+.title {
+    border: 3px solid green;
+    color: black;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 12px;
+    padding: 24px;
+    margin: 20px 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.title::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #28a745, #20c997, #17a2b8);
+}
+
+/* Estilo para el ID del episodio */
+#epid {
+    font-size: 2.2em;
+    font-weight: 700;
+    color: #28a745;
+    text-align: center;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+    letter-spacing: -0.5px;
+}
+
+/* Estilo para el resumen de participantes */
+#speaker-summary {
+    display: block;
+    background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+    border: 1px solid #d4edda;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+#speaker-summary p {
+    margin: 0 0 12px 0;
+    font-weight: 600;
+    color: #155724;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+}
+
+#speaker-summary p::before {
+    content: '🎙️';
+    margin-right: 8px;
+    font-size: 1.2em;
+}
+
+#speaker-summary ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+}
+
+#speaker-summary li {
+    background: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 4px solid #28a745;
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#speaker-summary li:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.15);
+}
+
+/* Estilo para la lista de temas */
+#tslist {
+    display: block;
+    background: linear-gradient(135deg, #e3f2fd 0%, #f1f8ff 100%);
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+#tslist p {
+    margin: 0 0 12px 0;
+    font-weight: 600;
+    color: #0d47a1;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+}
+
+#tslist p::before {
+    content: '📝';
+    margin-right: 8px;
+    font-size: 1.2em;
+}
+
+#tslist ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+}
+
+#tslist li {
+    background: white;
+    border-radius: 6px;
+    border-left: 4px solid #2196f3;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#tslist li:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.15);
+}
+
+#tslist a {
+    display: block;
+    padding: 10px 12px;
+    text-decoration: none;
+    color: #1565c0;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+#tslist a:hover {
+    color: #0d47a1;
+    background: rgba(33, 150, 243, 0.05);
+}
+
+/* Estilo para el resumen de texto */
+#tstext {
+    display: block;
+    background: linear-gradient(135deg, #fff3e0 0%, #faf7f2 100%);
+    border: 1px solid #ffcc80;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0 0 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+#tstext > p:first-child {
+    margin: 0 0 12px 0;
+    font-weight: 600;
+    color: #e65100;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+}
+
+#tstext > p:first-child::before {
+    content: '📄';
+    margin-right: 8px;
+    font-size: 1.2em;
+}
+
+
+
+/* Responsive design */
+@media (max-width: 768px) {
+    h2 {
+        font-size: 1.3em;
+        line-height: 1.3;
+        margin-bottom: 0.5em
+    }
+
+    .title {
+        padding: 16px;
+        margin: 10px 0;
+    }
+    
+    #epid div {
+        font-size: 1.4em;
+    }
+    
+    #speaker-summary ul,
+    #tslist ul {
+        gap: 4px;
+    }
+    
+    #speaker-summary li,
+    #tslist li {
+        padding: 6px 8px;
+        font-size: 0.9em;
+    }
+    
+    #tstext > p:last-child {
+        padding: 12px;
+        font-size: 0.9em;
+    }
+}
+
+.medium{
+color: orange;
+}
+.low{
+color: red;
+}
+.high{
+color: green;
+}
+.time{
+color: blue;
+}
+.speaker-0 { color: #1f77b4; } /* Azul */
+.speaker-1 { color: #ff7f0e; } /* Naranja */
+.speaker-2 { color: #2ca02c; } /* Verde */
+.speaker-3 { color: #d62728; } /* Rojo */
+.speaker-4 { color: #9467bd; } /* Morado */
+.speaker-5 { color: #8c564b; } /* Marrón */
+.speaker-6 { color: #e377c2; } /* Rosa */
+.speaker-7 { color: #7f7f7f; } /* Gris */
+.speaker-8 { color: #bcbd22; } /* Amarillo */
+.speaker-9 { color: #17becf; } /* Cian */

@@ -1,6 +1,7 @@
 #! /usr/bin/python3
 
 from tools.logs import logcfg
+from tools.envvars import load_env_vars_from_directory
 import logging
 import whisperx
 from vosk import Model, KaldiRecognizer
@@ -23,6 +24,9 @@ from pyannote.audio import Pipeline
 import yaml
 from mutagen.id3 import ID3
 from pydub import AudioSegment
+from bs4 import BeautifulSoup
+from jinja2 import Environment, FileSystemLoader
+from dateestimation import DateEstimation
 
 # MODEL = "/usr/src/vosk-models/es/vosk-model-es-0.42"
 MODEL = "/mnt/ram/es/vosk-model-es-0.42"
@@ -40,6 +44,9 @@ OVERLAPTIME = 2
 MINOFFSET = 30
 MAXGAP = 0.8
 HTMLSUFFIX = ""
+DEFAULT_PODCAST_CAL_FILE="calfile"
+DEFAULT_PODCAST_PREFIX="ep"
+DEFAULT_PODCAST_TEMPLATES= "templates"
 
 # Variables globales reutilizables con distintos motores
 cpus = max(os.cpu_count() - 2, 1)
@@ -53,51 +60,16 @@ CONF_DIR = os.path.join(os.path.dirname(__file__), ".env")
 HUGGINGFACE_TOKEN = ""
 
 
-
-HTMLHEADER = """<html>
-
-<head>
-  <style>
-    .medium{
-        color: orange;
-    }
-    .low{
-        color: red;
-    }
-    .high{
-        color: green;
-    }
-    .time{
-        color: blue;
-    }
-    .title{
-        border: 3px solid green;
-        color: black;
-    }
-        .speaker-0 { color: #1f77b4; } /* Azul */
-    .speaker-1 { color: #ff7f0e; } /* Naranja */
-    .speaker-2 { color: #2ca02c; } /* Verde */
-    .speaker-3 { color: #d62728; } /* Rojo */
-    .speaker-4 { color: #9467bd; } /* Morado */
-    .speaker-5 { color: #8c564b; } /* Marrón */
-    .speaker-6 { color: #e377c2; } /* Rosa */
-    .speaker-7 { color: #7f7f7f; } /* Gris */
-    .speaker-8 { color: #bcbd22; } /* Amarillo */
-    .speaker-9 { color: #17becf; } /* Cian */
-  </style>
-
-</head>
-<body>
-"""
-
-HTMLFOOTER = """
-</body>
-</html>
-"""
-
-
 def class_str(st, cl):
     return f'<span class="{cl}">{st}</span>'
+
+def bs4_class_str(soup, st, cl):
+    """
+    Crea un elemento span con la clase especificada y el texto dado.
+    """
+    span = soup.new_tag("span", **{"class": cl})
+    span.string = str(st)
+    return span
 
 # def time_str(st,end):
 #     return class_str(f"[{datetime.timedelta(seconds=float(st))} - "
@@ -111,6 +83,11 @@ def audio_tag_str(mp3file, seconds):
 
 
 def get_pars():
+    load_env_vars_from_directory(os.path.join(os.path.dirname(__file__),'.env'))
+    cal_file = os.getenv('PODCAST_CAL_FILE', DEFAULT_PODCAST_CAL_FILE)
+    prefix = os.getenv('PODCAST_PREFIX', DEFAULT_PODCAST_PREFIX)
+    podcast_templates = os.getenv('PODCAST_TEMPLATES', DEFAULT_PODCAST_TEMPLATES)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("fnames", type=str, nargs='+',
                         help=f"archivos de audio o directorios a transcribir")
@@ -151,6 +128,13 @@ def get_pars():
     parser.add_argument("--max-gap", type=float, default=MAXGAP, 
                         help=f"diferencia máxima entre el inicio de un segmento y el final del anterior." 
                              f" Por encima de esta diferencia, se pone una nueva marca de tiempo . Por defecto {MAXGAP}")
+    parser.add_argument("-p", "--prefix", type=str, default=prefix,
+                        help=f"prefijo para los ficheros de salida. Por defecto {prefix}")
+    parser.add_argument("--calendar", type=str, default=cal_file,
+                        help=f"Calendario de episodios en formato CSV. Por defecto {cal_file}")
+    parser.add_argument("-t", "--templates", type=str, default=podcast_templates,
+                    help=f"Plantillas para los podcasts. Por defecto {podcast_templates}")
+
     return parser.parse_args()
 
 def create_meta_file(fname, fname_meta):
@@ -192,13 +176,22 @@ def add_result_to_transcription(transcription, result, lconf, mconf, hconf):
         transcription += " "
     return transcription
 
-def write_transcription(html, transcription, ti, audio_tag, mp3file):
-    html.write("\n<p>\n")
-    html.write(f"{class_str(ti, 'time')}<br>\n")
+    
+def bs4_write_transcription(soup, transcription, ti, audio_tag, mp3file):
+    """
+    Escribe la transcripción en el objeto BeautifulSoup.
+    """
+    p = soup.new_tag("p")
+    p.append(bs4_class_str(soup, ti, "time"))
     if audio_tag:
-        html.write(audio_tag_str(mp3file, ti.start))
-    html.write(transcription)
-    html.write("\n</p>\n")
+        audio_tag = soup.new_tag("audio", controls="", preload="none", src=f"{mp3file}#t={seconds_str(ti.start, with_dec=False)}")
+        p.append(audio_tag)
+    p.append(soup.new_tag("br"))
+    transcription_span = soup.new_tag("span")
+    frag = BeautifulSoup(transcription, "html.parser")
+    transcription_span.append(frag)
+    p.append(transcription_span)
+    soup.append(p)
 
 def write_srt_entry(srt, start_time, end_time, str):
     srt.write("\n<>\n") # Aquí irá el múmero de párrafo
@@ -246,8 +239,10 @@ def vosk_task_work(cfg):
             os.remove(sname)
 
         logging.info(f"Comenzando fragmento con vosk {hname}")
+        sh = BeautifulSoup("", "html.parser")
         with open(hname, "w") as html, open(sname, "w", encoding="utf-8") as srt:
             html.write("<!-- New segment -->\n")
+            sh.append(sh.new_tag("comment", "New segment"))
             last_ti = None
             while left_frames > 0:
                 # No hace falta leer rwavframes frames si no quedan tantas por leer
@@ -279,8 +274,8 @@ def vosk_task_work(cfg):
                         logging.debug(f"Alargando last_ti: {last_ti}")
                     else:
                         if last_ti != None:
-                            write_transcription(html, transcription, last_ti, 
-                                                cfg['audio_tags'], cfg['mp3file'])
+                            bs4_write_transcription(sh, transcription, last_ti,
+                                                    cfg['audio_tags'], cfg['mp3file'])
 
                         last_ti = new_ti
                         logging.debug(f"Nuevo last_ti: {last_ti}")
@@ -311,8 +306,8 @@ def vosk_task_work(cfg):
                         logging.debug(f"Alargando last_ti: {last_ti}")
                     else:
                         if last_ti != None:
-                            write_transcription(html, transcription, last_ti, 
-                                                cfg['audio_tags'], cfg['mp3file'])
+                            bs4_write_transcription(sh, transcription, last_ti,
+                                                    cfg['audio_tags'], cfg['mp3file'])
                         last_ti = new_ti
                         logging.debug(f"Nuevo last_ti: {last_ti}")
                         transcription = ""
@@ -320,10 +315,11 @@ def vosk_task_work(cfg):
                                                 cfg['lconf'], cfg['mconf'], cfg['hconf'])                   
 
             if last_ti is not None:
-                write_transcription(html, transcription, last_ti, 
-                                    cfg['audio_tags'], cfg['mp3file'])
+                bs4_write_transcription(sh, transcription, last_ti,
+                                        cfg['audio_tags'], cfg['mp3file'])
         logging.info(f"Terminado fragmento con vosk {hname}")
-
+        with open(hname, "w", encoding="utf-8") as f:
+            f.write(sh.prettify())
     return hname, sname, datetime.datetime.now() - stime
 
 def build_trained_audio(training_file, audio_file):
@@ -342,36 +338,31 @@ def build_trained_audio(training_file, audio_file):
     logging.debug(f"Fichero de entrenamiento combinado: {trained_file}")
     return trained_file, training_duration
 
-def substitute_speakers(hname, speakers, normal_speakers):
+def bs4_substitute_speakers(hs: BeautifulSoup, speakers: dict, normal_speakers: list):
     """
-    Reemplaza los nombres de usuario en un archivo HTML y guarda el resultado en el mismo archivo.
+    Reemplaza nombres de hablantes en spans cuya clase coincida con speaker-\d+,
+    y añade una clase auxiliar 'speaker-tagged' antes de modificar el contenido.
 
     Args:
-        hname (str): Nombre del archivo HTML de entrada y salida.
-        speakers (dict): Diccionario que mapea nombres de usuario a reemplazos.
+        hs (BeautifulSoup): Documento HTML como objeto BeautifulSoup.
+        speakers (dict): Diccionario que mapea nombres originales a pseudónimos.
+        normal_speakers (list): Lista de hablantes que no deben modificarse.
     """
-
-    logging.info(f"Reemplazando nombres de hablantes en {hname} - {speakers}")
+    logging.info(f"Reemplazando nombres de hablantes - {speakers}")
+    
     try:
-        with open(hname, "r+", encoding="utf-8") as f:
-            content = f.read()
-            # logging.debug(content)
+        # Buscar todos los span que tengan clase speaker-0, speaker-1, etc.
+        for span in hs.find_all("span", class_=lambda x: x and any(re.match(r"speaker-\d+", c) for c in x if isinstance(c, str))):
+            nombre = span.get_text(strip=True)
 
-            spk_pattern = r'(\[<span[^>]*>)([^<]+)(</span>\])'
-            for spk in speakers:
-                if spk in normal_speakers:
-                    # Si el hablante está en la lista de hablantes normales, no se cambia
-                    continue
-                substitute = f"??? {speakers[spk]}"
-                spk_pattern = r'(\[<span[^>]*>)'+f"({spk})"+r'(</span>\])'
-                content = re.sub(spk_pattern,r'\1'+substitute+r'\3', content)
-            f.seek(0) # Go to the beginning of the file
-            f.write(content)
-            f.truncate() # Remove the rest of the file
-    except FileNotFoundError:
-        logging.error(f"Error: El archivo {hname} no fue encontrado.")
+            # Si el nombre del hablante está en el diccionario de speakers
+            # y no está en la lista de hablantes normales, se reemplaza
+            if nombre in speakers and nombre not in normal_speakers:
+                nuevo = f"??? {speakers[nombre]}"
+                span.string.replace_with(nuevo)
+
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logging.error(f"Error al reemplazar hablantes: {e}")
         
 def whisper_task_work(cfg):
     global HUGGINGFACE_TOKEN
@@ -408,9 +399,11 @@ def whisper_task_work(cfg):
     sname = cfg["sname"]
     if os.path.exists(hname):
         os.remove(hname)
+    sh = BeautifulSoup("", "html.parser")
     logging.info(f"Comenzando fragmento con whisper {hname}")
     with open(hname, "w", encoding="utf-8") as html, open(sname, "w", encoding="utf-8") as srt:
-        html.write("<!-- New segment -->\n")
+        # html.write("<!-- New segment -->\n")
+        sh.append(sh.new_tag("comment", "New segment"))
         last_ti = None
         speakers_dict = {}
         nspeakers = 0
@@ -482,8 +475,8 @@ def whisper_task_work(cfg):
                 # logging.debug(f"Alargando last_ti: {last_ti}")
             else:
                 if last_ti != None:
-                    write_transcription(html, transcription, last_ti, 
-                                        cfg['audio_tags'], cfg['mp3file'])
+                    bs4_write_transcription(sh, transcription, last_ti,
+                                            cfg['audio_tags'], cfg['mp3file'])
                 last_ti = new_ti
                 # logging.debug(f"Nuevo last_ti: {last_ti}")
                 transcription = ""
@@ -510,13 +503,40 @@ def whisper_task_work(cfg):
                       transcription+=(f"\n<!-- {speakers_dict[speaker]['id']} ha hablado {seconds_str(speakers_dict[speaker]['time'])} en el segmento -->")
                       normal_speakers.add(speakers_dict[speaker]['id'])
 
-            write_transcription(html, transcription, last_ti, 
-                                cfg['audio_tags'], cfg['mp3file'])
-    substitute_speakers(hname, strange_speakers, normal_speakers)
+            bs4_write_transcription(sh, transcription, last_ti,
+                                    cfg['audio_tags'], cfg['mp3file'])
+    bs4_substitute_speakers(sh, strange_speakers, normal_speakers)
     logging.info(f"Terminado fragmento con whisper {hname}")
+    with open(hname, "w", encoding="utf-8") as f:
+        f.write(sh.prettify())
     del diarization_pipeline
     return hname, sname, datetime.datetime.now() - stime
+    # return sh, hname, sname, datetime.datetime.now() - stime
 
+
+def get_metadata(fname_meta):
+    """
+    Obtiene los metadatos de un fichero de metadatos ffmpeg
+    """
+    hmsg = ""
+    if not os.path.exists(fname_meta):
+        logging.error(f"El fichero de metadatos {fname_meta} no existe")
+    else:
+        config = configparser.ConfigParser()
+        try:
+            with open(fname_meta, "r") as f:
+                config.read_string("[global]\n" + f.read())
+            rold = '\\;'
+            rnew = '\n</li><li>\n'
+            for key in config['global']:
+                hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold,rnew)}<br></li></ul>\n"
+        except configparser.Error as e:
+            logging.error(f"Error al leer el fichero de metadatos {fname_meta}: {e}")
+    return hmsg
+
+def get_epnumber(epname, prefix):
+    epnumber_regex = re.compile(rf"{prefix}(\d+).*")
+    return int(re.search(epnumber_regex, epname).group(1))
 
 def build_html_file(fdata):
     pf = fdata[0]
@@ -527,25 +547,34 @@ def build_html_file(fdata):
     if os.path.exists(fname_html):
         os.remove(fname_html)
         
-    with open(fname_html, "w", encoding="utf-8") as html:             
-        html.write(HTMLHEADER)
-        config = configparser.ConfigParser()
-        try:
-            with open (fname_meta, "r") as cf:
-                config.read_string("[global]\n" + cf.read())
-            hmsg = ""
-            rold = '\\;'
-            rnew = '\n</li><li>\n'
-            for key in config['global']:
-                hmsg += f"{key}:<br>\n<ul><li>{config.get('global', key).replace(rold,rnew)}<br></li></ul>\n"
-            html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
-        except:
-            logging.warning(f"No se ha podido leer el fichero de metadatos {fname_meta}")
-        for hn in hnames:
-            with open(hn, "r") as hnf:
-                html.write(hnf.read())
-            os.remove(hn)
-        html.write(HTMLFOOTER)
+    # with open(fname_html, "w", encoding="utf-8") as html:             
+    #     html.write(HTMLHEADER)
+    #     hmsg = get_metadata(fname_meta)
+    #     html.write(f'<h2 class="title"><br>{hmsg} </h2>\n')
+    #     for hn in hnames:
+    #         with open(hn, "r") as hnf:
+    #             html.write(hnf.read())
+    #         os.remove(hn)
+    #     html.write(HTMLFOOTER)
+    env = Environment(loader=FileSystemLoader(pf['templates']))
+    html_template = env.get_template("podcast.html")
+    de = DateEstimation(pf['calendar'])
+    epnumber = get_epnumber(pf["root"], pf["prefix"])
+    epdate = de.estimate_date_from_epnumber(epnumber).strftime("%Y-%m-%d")
+    epname = os.path.basename(pf["root"])
+    vars = {
+        "epname": epname,
+        "epdate": epdate
+    }
+    html_content = html_template.render(vars)
+    soup = BeautifulSoup(html_content, "html.parser")
+    for hn in hnames:
+        with open(hn, "r", encoding="utf-8") as hnf:
+            frag = BeautifulSoup(hnf.read(), "html.parser")
+            soup.body.append(frag)
+        os.remove(hn)
+    with open(fname_html, "w", encoding="utf-8") as f:
+       f.write(soup.prettify())
 
 def replace_with_numbers(match):
     replace_with_numbers.counter += 1
@@ -707,7 +736,7 @@ def launch_whisper_tasks(args):
                     "max_gap": args.max_gap,
                     "whtraining": args.whtraining,
                     "whsusptime": float(args.whsusptime),
-                    "speaker_mapping": speaker_mapping
+                    "speaker_mapping": speaker_mapping,
                     } for fenum in enumerate(mp3files)
                 ]
             )
@@ -793,7 +822,7 @@ def configure_globals(args):
                             logging.info(f"El fichero de entrenamiento {full_path} no se procesa")
                             continue
                         logging.info(f"Tratando fichero {full_path}")
-                        fname_dict = create_fname_dict(full_path, html_suffix)
+                        fname_dict = create_fname_dict(full_path, html_suffix, args.prefix, args.calendar, args.templates)
                         procfnames_unsorted.append(fname_dict)
         else:
             # Add file
@@ -801,7 +830,7 @@ def configure_globals(args):
                 logging.info(f"El fichero de entrenamiento {fname} no se procesa")
                 continue
             logging.info(f"Tratando fichero {fname}")
-            fname_dict = create_fname_dict(fname, html_suffix)
+            fname_dict = create_fname_dict(fname, html_suffix, args.prefix, args.calendar, args.templates)
             procfnames_unsorted.append(fname_dict)
 
     logging.info(f"Se van a procesar {len(procfnames_unsorted)} ficheros con un total de {sum([pf['duration'] for pf in procfnames_unsorted])} segundos")
@@ -812,7 +841,7 @@ def configure_globals(args):
                         reverse = True)
     logging.debug(f"Ficheros van a procesarse en orden: {[(pf['name'], get_mp3_duration(pf['name'])) for pf in procfnames]}")
 
-def create_fname_dict(fname, html_suffix):
+def create_fname_dict(fname, html_suffix, prefix, calendar, templates):
     fname_dict = {}
     fname_dict["name"] = fname
     fname_root, fname_extension = os.path.splitext(fname)
@@ -823,6 +852,9 @@ def create_fname_dict(fname, html_suffix):
     fname_dict["wav"] = fname_root + ".wav"
     fname_dict['srt'] = fname_root + html_suffix + ".srt"
     fname_dict["duration"] = get_mp3_duration(fname)
+    fname_dict['prefix'] = prefix
+    fname_dict['calendar'] = calendar
+    fname_dict['templates'] = templates
     return fname_dict
 
 def start_stt_process(args):

@@ -418,12 +418,6 @@ options:
                         Directorio donde se encuentran los archivos de transcripción
 
 ```
-
-## Relevant searches with RAG
-### What is RAG?
-
-Retrieval-Augmented Generation (RAG) is a technology that combines the ability to retrieve information from large databases with natural language generation models. With RAG, a system can search for relevant fragments within a document corpus and generate rich, precise, and contextualized answers to user questions based on those fragments.
-
 ### Storage of Transcriptions
 
 Segments from transcriptions are stored both in a relational database (for structured management and conventional queries) and in a vector database (to enable efficient semantic searches using embeddings).

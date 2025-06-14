@@ -159,6 +159,66 @@ options:
                         Fichero resultado tras añadir los audio tags
 
 ```
+## Configuration by environment variables
+Environment variables are used to allow the storage of configuration parameters that depend on the specific installation. These environment variables can be written in plain text files located under the .env directory.
+
+These variables are read using the [Python dotenv module](https://pypi.org/project/python-dotenv/). The documentation specifies the format to be used. Below I share the configuration items I use, omitting the content of those that cannot be disclosed to third parties:
+
+.env/db.env
+```bash
+# Relational database to store fragments and embeddings
+STTCAST_DB_FILE = "/home/jmrobles/Podcasts/Coffee Break/DB/coffeebreak.db"
+```
+
+.env/faiss.env
+```bash
+# Configuraton for FAISS vector database to store embeddings
+STTCAST_FAISS_FILE = "/home/jmrobles/Podcasts/Coffee Break/DB/int_index_v2.faiss"
+STTCAST_RELEVANT_FRAGMENTS = 100
+```
+
+.env/openai.env
+```bash
+# OpenAI API access key and models for queries and embeddings
+OPENAI_API_KEY=*****
+OPENAI_GPT_MODEL="gpt-4o-mini"
+OPENAI_EMBEDDINGS_MODEL="text-embedding-3-small"
+```
+
+.env/podcast.env
+```bash
+# Configuration for the Podcast Collection
+# Calendar in CSV format
+PODCAST_CAL_FILE="/home/jmrobles/Podcasts/Coffee Break/DB/cbcal.csv"
+PODCAST_PREFIX="ep"
+PODCAST_WORKDIR="/home/jmrobles/Podcasts/Coffee Break/"
+# Directory for HTML files to render results
+PODCAST_TEMPLATES="/home/jmrobles/Podcasts/Coffee Break/templates"
+```
+
+.env/rag_client.env
+```bash
+# Configuration for RAG client (web application)
+RAG_CLIENT_HOST = 0.0.0.0
+RAG_CLIENT_PORT = 8004
+RAG_CLIENT_STT_LANG = es-ES
+RAG_MP3_DIR = "/home/jmrobles/Podcasts/Coffee Break/Archivo"
+```
+
+.env/rag_server.env
+```bash
+# Server and port for RAG server (web application)
+RAG_SERVER_HOST="0.0.0.0"
+RAG_SERVER_PORT=5500
+```
+
+.env/huggingface.conf
+```bash
+# Access token for Hugging Face (used with pyannote)
+HUGGINGFACE_TOKEN = *****
+```
+
+
 
 
 

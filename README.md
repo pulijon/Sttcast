@@ -394,7 +394,7 @@ Many modifications can be made and will be made in the future.
 
 ![transcription with diarization](screenshots/transcription_with_diarization.png)
 
-![speaking times](screenshots/transcription/speaking_times.png)
+![speaking times](screenshots/speaking_times.png)
 
 <!-- ![](sttcast_example.png) -->
 

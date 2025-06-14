@@ -390,13 +390,15 @@ Many modifications can be made and will be made in the future.
 
 ![transcription with summary](screenshots/transcription_with_summary.png)
 
+![S3 static web](screenshots/s3_web.png)
+
 ![transcription with diarization](screenshots/transcription_with_diarization.png)
 
 ![speaking times](screenshots/transcription/speaking_times.png)
 
 <!-- ![](sttcast_example.png) -->
 
-![](sttcast-gui.png)
+![GUI](screenshots/sttcast-gui.png)
 
 <!-- ![comparation vosk - whisper](comparation_vosk_whisper.png)
 

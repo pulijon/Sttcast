@@ -200,51 +200,105 @@ const micBtn = document.getElementById('micBtn');
 let recognizing = false;
 let recognition;
 
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+function createRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = langMap[languageSelect.value]; // Idioma actual
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
+    const recog = new SpeechRecognition();
+    recog.lang = langMap[languageSelect.value];
+    recog.interimResults = true;
+    recog.maxAlternatives = 1;
+    recog.continuous = false; // Solo un resultado por click
+    return recog;
+}
 
-    // Cambia el idioma cuando el usuario cambie el select
-    languageSelect.addEventListener('change', () => {
-        if (recognition) recognition.lang = langMap[languageSelect.value];
-    });
+function startRecognition() {
+    if (recognizing && recognition) {
+        recognition.abort(); // Cierra si ya está escuchando
+        recognizing = false;
+        micBtn.classList.remove('bg-green-200');
+    }
+    recognition = createRecognition();
 
-    micBtn.addEventListener('click', () => {
-        if (!recognizing) {
-            recognition.lang = langMap[languageSelect.value];
-            recognition.start();
-            recognition.continuous = true; // Permite múltiples resultados
-            micBtn.classList.add('bg-green-200');
-        } else {
-            recognition.stop();
-            micBtn.classList.remove('bg-green-200');
-        }
-    });
-
-    recognition.onstart = () => recognizing = true;
+    recognition.onstart = () => {
+        recognizing = true;
+        micBtn.classList.add('bg-green-200');
+    };
     recognition.onend = () => {
         recognizing = false;
         micBtn.classList.remove('bg-green-200');
     };
-
+    recognition.onerror = (event) => {
+        recognizing = false;
+        micBtn.classList.remove('bg-green-200');
+        alert('No se pudo captar tu voz. Intenta de nuevo.');
+    };
     recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         questionInput.value = transcript;
         questionInput.focus();
     };
 
-    recognition.onerror = (event) => {
-        recognizing = false;
-        micBtn.classList.remove('bg-green-200');
-        alert('No se pudo captar tu voz. Intenta de nuevo.');
-    };
+    recognition.lang = langMap[languageSelect.value];
+    recognition.start();
+}
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    micBtn.addEventListener('click', () => {
+        startRecognition();
+    });
+
+    languageSelect.addEventListener('change', () => {
+        if (recognition) recognition.lang = langMap[languageSelect.value];
+    });
 } else {
     micBtn.disabled = true;
     micBtn.title = "El navegador no soporta reconocimiento de voz";
 }
+
+// if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+//     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+//     recognition = new SpeechRecognition();
+//     recognition.lang = langMap[languageSelect.value]; // Idioma actual
+//     recognition.interimResults = true;
+//     recognition.maxAlternatives = 1;
+
+//     // Cambia el idioma cuando el usuario cambie el select
+//     languageSelect.addEventListener('change', () => {
+//         if (recognition) recognition.lang = langMap[languageSelect.value];
+//     });
+
+//     micBtn.addEventListener('click', () => {
+//         if (!recognizing) {
+//             recognition.lang = langMap[languageSelect.value];
+//             recognition.start();
+//             recognition.continuous = true; // Permite múltiples resultados
+//             micBtn.classList.add('bg-green-200');
+//         } else {
+//             recognition.stop();
+//             micBtn.classList.remove('bg-green-200');
+//         }
+//     });
+
+//     recognition.onstart = () => recognizing = true;
+//     recognition.onend = () => {
+//         recognizing = false;
+//         micBtn.classList.remove('bg-green-200');
+//     };
+
+//     recognition.onresult = (event) => {
+//         const transcript = event.results[0][0].transcript;
+//         questionInput.value = transcript;
+//         questionInput.focus();
+//     };
+
+//     recognition.onerror = (event) => {
+//         recognizing = false;
+//         micBtn.classList.remove('bg-green-200');
+//         alert('No se pudo captar tu voz. Intenta de nuevo.');
+//     };
+// } else {
+//     micBtn.disabled = true;
+//     micBtn.title = "El navegador no soporta reconocimiento de voz";
+// }
 </script>
 </body>
 </html>

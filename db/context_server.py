@@ -3,7 +3,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../tools")))
 from logs import logcfg
 import logging
-from logs import logcfg
 from envvars import load_env_vars_from_directory
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -40,7 +39,7 @@ app = FastAPI()
 
 @app.post("/addsegments")
 def addsegments(request: AddSegmentsRequest):
-    global index, db_file, rag_server_url
+    global index, db_file, rag_server_url, index_file
     db = SttcastDB(db_file, create_if_not_exists=False)
     if db is None:
         raise FileNotFoundError(f"El fichero de base de datos {db_file} no ha podido ser leído")
@@ -89,12 +88,35 @@ def addsegments(request: AddSegmentsRequest):
     vectors = np.array(vectors, dtype=np.float32)
     if vectors.ndim != 2 or vectors.shape[0] != len(segments):
         raise HTTPException(status_code=500, detail="Los vectores devueltos por el servicio RAG no tienen la forma adecuada")
+    
+    # -----------------------------------------------------------------------------------
+    # Si no hay índice FAISS, lo creamos
+        
+    if index is None:
+        dim = vectors.shape[1]
+        # Creamos un índice L2 plano; si quieres inner-product, usa IndexFlatIP
+        flat_index = faiss.IndexFlatL2(dim)
+        # Añadimos capacidad de IDs removibles
+        index = faiss.IndexIDMap2(flat_index)
+        logging.info(f"Índice FAISS creado con dimensión = {dim}")
+    # -----------------------------------------------------------------------------------
+
+    # Comprobación de dimensión
+    if vectors.shape[1] != index.d:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dimensión de vectores incorrecta: esperando {index.d}, recibido {vectors.shape[1]}"
+        )
+    
     # Añadir los vectores al índice FAISS
     if vectors.shape[1] != index.d:
         raise HTTPException(status_code=500, detail="Los vectores devueltos por el servicio RAG no tienen la dimensión adecuada")
   
     index.add_with_ids(vectors, np.array(ids, dtype=np.int64))
     logging.info(f"len(ids): {len(ids)}, len(vectors): {len(vectors)}, index.d: {index.d}, vectors.shape: {vectors.shape}")
+    # Guardar el índice FAISS en disco
+    faiss.write_index(index, index_file)
+    logging.info(f"Índice FAISS guardado en {index_file}")
     
     for id, emb in zip(ids, vectors):
         db.update_embedding(id, emb.tobytes(), prompt_tokens, total_tokens)
@@ -158,12 +180,11 @@ if __name__ == "__main__":
     # if db is None:
     #     raise FileNotFoundError(f"El fichero de base de datos {db_file} no ha podido ser leído")
     index_file = os.getenv("STTCAST_FAISS_FILE")
-    if not os.path.exists(index_file):
-        raise FileNotFoundError(f"El fichero de índice FAISS {index_file} no existe")
-    index = faiss.read_index(index_file)
-    if index is None:   
-        raise FileNotFoundError(f"El fichero de índice FAISS {index_file} no ha podido ser leídoe")
-    
+    if os.path.exists(index_file):
+        index = faiss.read_index(index_file)
+    else:
+        index = None
+ 
     rag_server_host = os.getenv("RAG_SERVER_HOST", "localhost")
     rag_server_port = int(os.getenv("RAG_SERVER_PORT", "5500"))
     rag_server_url = f"http://{rag_server_host}:{rag_server_port}"

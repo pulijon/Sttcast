@@ -79,8 +79,8 @@ if [ ${#mp3_whisper_files[*]} -gt 0 ]
 then
 	cpus=$(cat $NCPUS_FNAME | tr -d '\n')
 	echo Procesando con whisper ${mp3_whisper_files[*]}
-	echo  python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 60 ${mp3_whisper_files[*]}
-    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 60 ${mp3_whisper_files[*]}
+	echo  python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 30 ${mp3_whisper_files[*]}
+    python ./sttcast.py --seconds 15000 --whisper --whmodel small --whlanguage ${whlang} --cpus $cpus --html-suffix ${whisper_suffix}_${whlang} --whtraining ${training_file} --whsusptime 30 ${mp3_whisper_files[*]}
 	echo Fin de la transcripción con whisper
 	echo Creación de etiquetas de audio para los ficheros whisper y obtención de resultados
 	for i in "${!mp3_whisper_files[@]}"

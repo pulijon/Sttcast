@@ -40,7 +40,7 @@ app = FastAPI()
 @app.post("/addsegments")
 def addsegments(request: AddSegmentsRequest):
     global index, db_file, rag_server_url, index_file
-    db = SttcastDB(db_file, create_if_not_exists=False)
+    db = SttcastDB(db_file, create_if_not_exists=True)
     if db is None:
         raise FileNotFoundError(f"El fichero de base de datos {db_file} no ha podido ser leído")
     id  = db.get_episode_id(request.epname)
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     load_env_vars_from_directory(directory=env_dir)
     db_file = os.getenv("STTCAST_DB_FILE", "sttcast.db")
     if not os.path.exists(db_file):
-        raise FileNotFoundError(f"El fichero de base de datos {db_file} no existe")
+       logging.warning(f"El fichero de base de datos {db_file} no existe")
     # db = SttcastDB(db_file, create_if_not_exists=False)
     # if db is None:
     #     raise FileNotFoundError(f"El fichero de base de datos {db_file} no ha podido ser leído")

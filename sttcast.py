@@ -181,6 +181,10 @@ def bs4_write_transcription(soup, transcription, ti, audio_tag, mp3file):
     """
     Escribe la transcripción en el objeto BeautifulSoup.
     """
+    if not transcription or len(transcription.strip()) == 0:
+        logging.debug(f"No hay transcripción para {ti} - audio_tag={audio_tag} - mp3file={mp3file}")
+        return
+    logging.debug(f"Escribiendo transcripción en {ti} - audio_tag={audio_tag} - mp3file={mp3file} - Transcripción: {transcription}")
     p = soup.new_tag("p")
     p.append(bs4_class_str(soup, ti, "time"))
     if audio_tag:
@@ -188,8 +192,9 @@ def bs4_write_transcription(soup, transcription, ti, audio_tag, mp3file):
         p.append(audio_tag)
     p.append(soup.new_tag("br"))
     transcription_span = soup.new_tag("span")
-    frag = BeautifulSoup(transcription, "html.parser")
-    transcription_span.append(frag)
+    frag = BeautifulSoup(f"<div>{transcription}</div>", "html.parser")
+    for node in frag.contents:
+        transcription_span.append(node)
     p.append(transcription_span)
     soup.append(p)
 

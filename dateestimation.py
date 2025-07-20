@@ -106,6 +106,10 @@ class DateEstimation:
         
         # Cálculo de la fecha teórica del último episodio
         last_episode = self.df.loc[self.df.index.max()]
+        # Si hay varios episodios, se toma el último
+        if isinstance(last_episode, pd.Series):
+            logging.warning("Hay varios episodios con el mismo número máximo, se toma el último.")
+            last_episode = last_episode[-1]
         # Calculamos el valor absoluto entre el día de la semana del último episodio y el día de la semana más frecuente
         diff_weekday = self.most_common_weekday - last_episode['weekday']
         last_theoretical_date = last_episode['date'] + pd.DateOffset(days=diff_weekday)

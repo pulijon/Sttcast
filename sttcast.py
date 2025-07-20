@@ -565,7 +565,11 @@ def build_html_file(fdata):
     html_template = env.get_template("podcast.html")
     de = DateEstimation(pf['calendar'])
     epnumber = get_epnumber(pf["root"], pf["prefix"])
-    epdate = de.estimate_date_from_epnumber(epnumber).strftime("%Y-%m-%d")
+    try:
+        epdate = de.estimate_date_from_epnumber(epnumber).strftime("%Y-%m-%d")
+    except Exception as e:
+        logging.error(f"Error al estimar la fecha del episodio {epnumber}: {e}")
+        epdate = "Desconocida"
     epname = os.path.basename(pf["root"])
     vars = {
         "epname": epname,

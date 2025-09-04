@@ -64,6 +64,8 @@ def save_summaries(output_dir, summaries):
             summary_json = item['summary']
             if summary_json.startswith('"') and summary_json.endswith('"'):
                 summary_json = summary_json[1:-1]
+            # Sustituir tres backslashes por uno
+            summary_json = summary_json.replace('\\\\\\', '\\')
             summary_json = summary_json.encode("utf-8").decode("unicode_escape")
             summary = json.loads(summary_json)
             logging.debug(f"Parseado de JSON: {summary}")
@@ -89,18 +91,22 @@ def save_summaries(output_dir, summaries):
 def main():
     """Función principal que configura el registro, carga las transcripciones y envía solicitudes al servicio de resúmenes.
     """
+    DEFAULT_MAX_FILES = 6
     parser = argparse.ArgumentParser(description="Obtener resúmenes RAG de transcripciones de podcast")
     parser.add_argument("-t", "--transcriptions", required=True, help="Directorio de entrada con transcripciones HTML")
     parser.add_argument("-s", "--summaries", required=True, help="Directorio de salida para resúmenes HTML")
     parser.add_argument("--url", default="http://localhost:5500/summarize", help="URL del servicio de resúmenes")
+    parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help="Número máximo de archivos a enviar en un bloque")
     args = parser.parse_args()
 
     logging.info(f"📝 Cargando transcripciones desde {args.transcriptions}")
 
     logging.info("📡 Enviando transcripciones al servicio de resúmenes...")
-    MAX_FILES_IN_QUERY = 6
-    for block in load_transcriptions(args.transcriptions, MAX_FILES_IN_QUERY):
+    for block in load_transcriptions(args.transcriptions, args.max_files):
         logging.info(f"📦 Enviando bloque de {len(block)} episodios...: {[b['ep_id'] for b in block]}")
+        # Salvar block como JSON para depuración
+        with open(f"debug_block_{block[0]['ep_id']}.json", "w", encoding="utf-8") as f:
+            json.dump(block, f, indent=2, ensure_ascii=False)
         try:
             response = requests.post(args.url, json=block)
             response.raise_for_status()

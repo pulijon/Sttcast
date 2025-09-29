@@ -11,99 +11,8 @@
     <meta name="robots" content="index, follow">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .prose span {
-            color: #0284c7;
-            background: #e0f2fe;
-            font-weight: 500;
-            border-radius: 0.2em;
-            padding: 0 0.2em;
-        }
-        .prose p {
-            margin-bottom: 1em;
-        }
-        /* Mejoras de accesibilidad */
-        .focus-visible {
-            outline: 2px solid #3b82f6;
-            outline-offset: 2px;
-        }
-        
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
-        }
-        
-        /* Contraste mejorado */
-        .high-contrast {
-            background-color: #000;
-            color: #fff;
-        }
-        
-        /* Banner de cookies */
-        .cookie-banner {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 1rem;
-            z-index: 1000;
-            transform: translateY(100%);
-            transition: transform 0.3s ease;
-        }
-        
-        .cookie-banner.show {
-            transform: translateY(0);
-        }
-        
-        /* Indicador de carga accesible */
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* Modo alto contraste */
-        @media (prefers-contrast: high) {
-            body {
-                background-color: #000;
-                color: #fff;
-            }
-            
-            .bg-white {
-                background-color: #000 !important;
-                color: #fff !important;
-                border: 2px solid #fff;
-            }
-        }
-        
-        /* Respeto a las preferencias de movimiento reducido */
-        @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="static/css/client_rag.css">
+
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center">
 
@@ -159,118 +68,257 @@
         </div>
     </div>
 
-    <main class="w-full max-w-2xl mt-8 bg-white rounded-xl shadow p-8">
+    <main class="w-full max-w-4xl mt-8 bg-white rounded-xl shadow p-8" id="main-content">
 
-            <!-- Logo/PNG antes del título -->
+        <!-- Logo/PNG antes del título -->
         <div class="flex justify-center mb-4">
             <img src="static/images/sttcast-logo.png"
                 alt="Sttcast logo"
                 class="h-16 w-16 rounded-full shadow"
                 loading="lazy">
         </div>
-        <h1 class="text-2xl font-bold mb-6 text-center">Consultas relevantes en la colección de podcasts de Coffee Break</h1>
+        <h1 class="text-2xl font-bold mb-6 text-center">Sistema de consultas en la colección de podcasts de Coffee Break</h1>
 
-
-         <!-- Formulario mejorado para accesibilidad -->
-        <form id="askForm" class="space-y-6" role="form" aria-label="Formulario de consulta">
-            <div>
-                <label for="question" class="block mb-2 font-medium text-gray-700">
-                    Escribe tu pregunta:
-                    <span class="text-red-500" aria-label="Campo obligatorio">*</span>
-                </label>
+        <!-- Formulario de selección inicial -->
+        <section id="queryTypeSelection" class="mb-8">
+            <form id="queryTypeForm" class="space-y-6" role="form" aria-label="Selección del tipo de consulta">
+                <fieldset>
+                    <legend class="text-lg font-medium text-gray-700 mb-4">¿Qué tipo de consulta deseas realizar?</legend>
+                    <div class="space-y-3">
+                        <label class="flex items-start space-x-3 cursor-pointer">
+                            <input type="radio" name="queryType" value="topics" checked
+                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                            <div>
+                                <span class="text-base font-medium text-gray-700">Consultas sobre temas tratados</span>
+                                <p class="text-sm text-gray-600">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
+                            </div>
+                        </label>
+                        <label class="flex items-start space-x-3 cursor-pointer">
+                            <input type="radio" name="queryType" value="speakers" 
+                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                            <div>
+                                <span class="text-base font-medium text-gray-700">Análisis de intervinientes</span>
+                                <p class="text-sm text-gray-600">Analiza estadísticas y patrones de participación de los contertulios</p>
+                            </div>
+                        </label>
+                    </div>
+                </fieldset>
                 
-                <textarea id="question" 
-                         name="question" 
-                         rows="4" 
-                         required
-                         aria-describedby="question-help"
-                         class="w-full border border-gray-300 rounded-lg p-3 resize-vertical focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
-                         placeholder="Introduce tu pregunta sobre los podcasts de Coffee Break..."></textarea>
-                
-                <div id="question-help" class="text-sm text-gray-600 mt-1">
-                    Describe lo que quieres saber sobre los podcasts de Coffee Break. Puedes utilizar la voz con el botón de micrófono.
-                </div>
-                
-                <div class="flex items-center mt-2">
-                    <button type="button" 
-                            id="micBtn" 
-                            aria-label="Usar reconocimiento de voz para escribir la pregunta"
-                            title="Pregunta por voz" 
-                            class="rounded-full bg-blue-200 p-2 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M12 18v2m0 0a4 4 0 01-4-4H8a4 4 0 004-4v-2a4 4 0 014 4h0a4 4 0 01-4 4zm0 0V18" />
-                            <circle cx="12" cy="10" r="4"/>
-                        </svg>
-                    </button>
-                    <span id="micStatus" class="ml-2 text-sm text-gray-600" aria-live="polite"></span>
-                </div>
-            </div>
-            
-            <fieldset>
-                <legend class="font-medium text-gray-700 mb-2">Idioma de respuesta:</legend>
-                <select id="language" 
-                        name="language" 
-                        aria-describedby="language-help"
-                        class="border border-gray-300 rounded-lg p-2 w-40 focus:ring-2 focus:ring-blue-200 focus:border-blue-400">
-                    <option value="es">Español</option>
-                    <option value="en">English</option>
-                </select>
-                <div id="language-help" class="text-sm text-gray-600 mt-1">
-                    Selecciona el idioma en que quieres recibir la respuesta
-                </div>
-            </fieldset>
-            
-            <button type="submit"
-                    aria-describedby="submit-help"
-                    class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 mt-4 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                <span id="submitText">Consultar</span>
-                <span id="loadingSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
-            </button>
-            <div id="submit-help" class="text-sm text-gray-600">
-                Presiona Enter o haz clic para enviar tu consulta
-            </div>
-        </form>
-
-        <!-- Zona de resultados mejorada -->
-        <section id="results" class="mt-10 hidden" role="region" aria-labelledby="results-title">
-            <div class="mb-6">
-                <h2 id="results-title" class="text-xl font-semibold mb-2">Resultado</h2>
-                <div id="searchResult" 
-                     class="prose prose-blue max-w-none bg-blue-50 text-gray-900 rounded-lg p-4"
-                     role="region"
-                     aria-live="polite"
-                     aria-label="Resultado de la consulta"></div>
-            </div>
-            
-            <div>
-                <h2 class="text-xl font-semibold mb-2">Referencias</h2>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-left bg-white rounded-lg border border-gray-200" 
-                           role="table"
-                           aria-label="Tabla de referencias de audio">
-                        <thead>
-                            <tr>
-                                <th scope="col" class="px-4 py-2 border-b font-bold">Contertulio</th>
-                                <th scope="col" class="px-4 py-2 border-b font-bold">Descripción</th>
-                                <th scope="col" class="px-4 py-2 border-b font-bold">Audio</th>
-                                <th scope="col" class="px-4 py-2 border-b font-bold">Tiempo (mm:ss)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="refsTable"></tbody>
-                    </table>
-                </div>
-            </div>
+                <button type="submit"
+                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition">
+                    Continuar
+                </button>
+            </form>
         </section>
 
-        <!-- Mensaje de error mejorado -->
-        <div id="errorMsg" 
-             class="mt-8 text-red-700 font-semibold hidden" 
-             role="alert" 
-             aria-live="assertive"></div>
+        <!-- Formulario de consultas por temas (original) -->
+        <section id="topicsForm" class="hidden">
+            <div class="mb-4">
+                <button type="button" id="backToSelection" 
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                    ← Volver a selección de tipo de consulta
+                </button>
+            </div>
+            
+            <h2 class="text-xl font-semibold mb-4">Consultas sobre temas tratados</h2>
+            
+            <!-- Formulario mejorado para accesibilidad -->
+            <form id="askForm" class="space-y-6" role="form" aria-label="Formulario de consulta">
+                <div>
+                    <label for="question" class="block mb-2 font-medium text-gray-700">
+                        Escribe tu pregunta:
+                        <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                    </label>
+                    
+                    <textarea id="question" 
+                             name="question" 
+                             rows="4" 
+                             required
+                             aria-describedby="question-help"
+                             class="w-full border border-gray-300 rounded-lg p-3 resize-vertical focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                             placeholder="Introduce tu pregunta sobre los podcasts de Coffee Break..."></textarea>
+                    
+                    <div id="question-help" class="text-sm text-gray-600 mt-1">
+                        Describe lo que quieres saber sobre los podcasts de Coffee Break. Puedes utilizar la voz con el botón de micrófono.
+                    </div>
+                    
+                    <div class="flex items-center mt-2">
+                        <button type="button" 
+                                id="micBtn" 
+                                aria-label="Usar reconocimiento de voz para escribir la pregunta"
+                                title="Pregunta por voz" 
+                                class="rounded-full bg-blue-200 p-2 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 18v2m0 0a4 4 0 01-4-4H8a4 4 0 004-4v-2a4 4 0 014 4h0a4 4 0 01-4 4zm0 0V18" />
+                                <circle cx="12" cy="10" r="4"/>
+                            </svg>
+                        </button>
+                        <span id="micStatus" class="ml-2 text-sm text-gray-600" aria-live="polite"></span>
+                    </div>
+                </div>
+                
+                <fieldset>
+                    <legend class="font-medium text-gray-700 mb-2">Idioma de respuesta:</legend>
+                    <select id="language" 
+                            name="language" 
+                            aria-describedby="language-help"
+                            class="border border-gray-300 rounded-lg p-2 w-40 focus:ring-2 focus:ring-blue-200 focus:border-blue-400">
+                        <option value="es">Español</option>
+                        <option value="en">English</option>
+                    </select>
+                    <div id="language-help" class="text-sm text-gray-600 mt-1">
+                        Selecciona el idioma en que quieres recibir la respuesta
+                    </div>
+                </fieldset>
+                
+                <button type="submit"
+                        aria-describedby="submit-help"
+                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 mt-4 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                    <span id="submitText">Consultar</span>
+                    <span id="loadingSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
+                </button>
+                <div id="submit-help" class="text-sm text-gray-600">
+                    Presiona Enter o haz clic para enviar tu consulta
+                </div>
+            </form>
+
+            <!-- Zona de resultados mejorada -->
+            <section id="results" class="mt-10 hidden" role="region" aria-labelledby="results-title">
+                <div class="mb-6">
+                    <h3 id="results-title" class="text-xl font-semibold mb-2">Resultado</h3>
+                    <div id="searchResult" 
+                         class="prose prose-blue max-w-none bg-blue-50 text-gray-900 rounded-lg p-4"
+                         role="region"
+                         aria-live="polite"
+                         aria-label="Resultado de la consulta"></div>
+                </div>
+                
+                <div>
+                    <h3 class="text-xl font-semibold mb-2">Referencias</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-left bg-white rounded-lg border border-gray-200" 
+                               role="table"
+                               aria-label="Tabla de referencias de audio">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold">Contertulio</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold">Descripción</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold">Audio</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold">Tiempo (mm:ss)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="refsTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mensaje de error mejorado -->
+            <div id="errorMsg" 
+                 class="mt-8 text-red-700 font-semibold hidden" 
+                 role="alert" 
+                 aria-live="assertive"></div>
+        </section>
+
+        <!-- Formulario de análisis de intervinientes -->
+        <section id="speakersForm" class="hidden">
+            <div class="mb-4">
+                <button type="button" id="backToSelectionSpeakers" 
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                    ← Volver a selección de tipo de consulta
+                </button>
+            </div>
+            
+            <h2 class="text-xl font-semibold mb-4">Análisis de intervinientes</h2>
+            
+            <form id="speakersAnalysisForm" class="space-y-6" role="form" aria-label="Formulario de análisis de intervinientes">
+                <!-- Selector de fechas -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="startDate" class="block mb-2 font-medium text-gray-700">
+                            Fecha de inicio:
+                            <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                        </label>
+                        <input type="date" 
+                               id="startDate" 
+                               name="startDate" 
+                               required
+                               aria-describedby="start-date-help"
+                               class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition">
+                        <div id="start-date-help" class="text-sm text-gray-600 mt-1">
+                            Selecciona la fecha de inicio del período a analizar
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="endDate" class="block mb-2 font-medium text-gray-700">
+                            Fecha de fin:
+                            <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                        </label>
+                        <input type="date" 
+                               id="endDate" 
+                               name="endDate" 
+                               required
+                               aria-describedby="end-date-help"
+                               class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition">
+                        <div id="end-date-help" class="text-sm text-gray-600 mt-1">
+                            Selecciona la fecha de fin del período a analizar
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selector múltiple de intervinientes -->
+                <div>
+                    <label for="speakers" class="block mb-2 font-medium text-gray-700">
+                        Seleccionar intervinientes:
+                        <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                    </label>
+                    <select id="speakers" 
+                            name="speakers" 
+                            multiple
+                            required
+                            aria-describedby="speakers-help"
+                            class="w-full border border-gray-300 rounded-lg p-3 h-32 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                            disabled>
+                        <option value="" disabled>Selecciona primero las fechas para cargar los intervinientes</option>
+                    </select>
+                    <div id="speakers-help" class="text-sm text-gray-600 mt-1">
+                        Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples intervinientes. Los intervinientes se cargarán al seleccionar las fechas.
+                    </div>
+                    <div id="speakersLoading" class="text-sm text-blue-600 mt-1 hidden">
+                        <span class="loading-spinner"></span>
+                        Cargando intervinientes...
+                    </div>
+                </div>
+
+                <button type="submit"
+                        id="analyzeSpeakersBtn"
+                        disabled
+                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                    <span id="analyzeText">Generar análisis</span>
+                    <span id="analyzeSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
+                </button>
+            </form>
+
+            <!-- Zona de gráficas -->
+            <section id="chartsSection" class="mt-10 hidden" role="region" aria-labelledby="charts-title">
+                <h3 id="charts-title" class="text-xl font-semibold mb-4">Análisis de intervinientes</h3>
+                <div id="chartsContainer" class="space-y-6">
+                    <!-- Las gráficas se insertarán aquí dinámicamente -->
+                </div>
+            </section>
+
+            <!-- Mensaje de error para análisis de intervinientes -->
+            <div id="speakersErrorMsg" 
+                 class="mt-8 text-red-700 font-semibold hidden" 
+                 role="alert" 
+                 aria-live="assertive"></div>
+        </section>
     </main>
 
-    <!-- Footer con información legal -->
+
+<!-- Footer con información legal -->
     <footer class="w-full max-w-2xl mt-8 text-center text-sm text-gray-600" role="contentinfo">
         <div class="bg-white rounded-xl shadow p-4">
             <div class="flex flex-wrap justify-center gap-4 mb-4">
@@ -297,318 +345,6 @@
         </div>
     </footer>
 
-    <script>
-        // Variables globales
-        const askForm = document.getElementById('askForm');
-        const questionInput = document.getElementById('question');
-        const languageSelect = document.getElementById('language');
-        const resultsSection = document.getElementById('results');
-        const searchResult = document.getElementById('searchResult');
-        const refsTable = document.getElementById('refsTable');
-        const errorMsg = document.getElementById('errorMsg');
-        const submitBtn = askForm.querySelector('button[type=submit]');
-        const submitText = document.getElementById('submitText');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const micBtn = document.getElementById('micBtn');
-        const micStatus = document.getElementById('micStatus');
-        const langMap = {
-                        "es": "es-ES",
-                        "en": "en-US",
-                        };
-
-        let lastData = null;
-        let recognizing = false;
-        let recognition;
-        let fontSize = 16;
-        let highContrast = false;
-
-        // Gestión de cookies
-        function initCookies() {
-            const cookieConsent = localStorage.getItem('cookieConsent');
-            if (!cookieConsent) {
-                document.getElementById('cookieBanner').classList.add('show');
-            }
-        }
-
-        document.getElementById('acceptCookies').addEventListener('click', () => {
-            localStorage.setItem('cookieConsent', 'accepted');
-            document.getElementById('cookieBanner').classList.remove('show');
-        });
-
-        document.getElementById('rejectCookies').addEventListener('click', () => {
-            localStorage.setItem('cookieConsent', 'rejected');
-            document.getElementById('cookieBanner').classList.remove('show');
-        });
-
-        document.getElementById('configureCookies').addEventListener('click', () => {
-            showCookieConfig();
-        });
-
-        // Funciones de accesibilidad
-        document.getElementById('increaseFontSize').addEventListener('click', () => {
-            fontSize = Math.min(fontSize + 2, 24);
-            document.body.style.fontSize = fontSize + 'px';
-        });
-
-        document.getElementById('decreaseFontSize').addEventListener('click', () => {
-            fontSize = Math.max(fontSize - 2, 12);
-            document.body.style.fontSize = fontSize + 'px';
-        });
-
-        document.getElementById('toggleContrast').addEventListener('click', () => {
-            highContrast = !highContrast;
-            document.body.classList.toggle('high-contrast', highContrast);
-        });
-
-        // Funciones de información legal
-        function showPrivacyPolicy() {
-            alert('Política de Privacidad:\n\nEsta aplicación procesa sus consultas para proporcionar respuestas relevantes. Los datos se procesan de acuerdo con el RGPD y la LOPDGDD. Para más información, contacte con el responsable del tratamiento.');
-        }
-
-        function showLegalNotice() {
-            alert('Aviso Legal:\n\nEsta web pertenece a José Miguel Robles Román. Uso sujeto a términos y condiciones. Para dudas legales, contacte con el administrador. - José Miguel Robles Román - NIF: 11735610-K - e-mail: webmaster@awebaos.org');
-        }
-
-        function showCookiePolicy() {
-            alert('Política de Cookies:\n\nUtilizamos cookies técnicas necesarias para el funcionamiento de la web y cookies de análisis para mejorar la experiencia. Puede configurar sus preferencias en cualquier momento.');
-        }
-
-        function showAccessibilityInfo() {
-            alert('Información de Accesibilidad:\n\nEsta web cumple con las Pautas WCAG 2.1 nivel AA. Dispone de controles de accesibilidad, navegación por teclado y compatibilidad con lectores de pantalla. Para reportar problemas de accesibilidad, contacte con soporte.');
-        }
-
-        function showCookieConfig() {
-            alert('Configuración de Cookies:\n\nCookies técnicas: Necesarias (no se pueden desactivar)\nCookies de análisis: Pueden activarse/desactivarse\nCookies de personalización: Pueden activarse/desactivarse');
-        }
-
-        languageSelect.addEventListener('change', () => {
-            if (lastData) {
-                showResults(lastData, languageSelect.value);
-            }
-        });
-
-        // Envío del formulario
-        askForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            // Occultar mensajes anteriores
-            errorMsg.classList.add('hidden');
-            resultsSection.classList.add('hidden');
-            searchResult.innerHTML = '';
-            refsTable.innerHTML = '';
-
-            const question = questionInput.value.trim();
-            const language = languageSelect.value;
-
-            if (!question) {
-                errorMsg.textContent = 'Por favor, introduce una pregunta.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            // Mostrar estado de carga
-            setLoadingState(true);
-
-            try {
-                const response = await fetch("/api/ask", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({question, language})
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(()=>{});
-                    throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
-                }
-                const data = await response.json();
-                lastData = data;
-                showResults(data, language);
-
-            } catch (error) {
-                errorMsg.textContent = error.message || "No se pudo completar la consulta";
-                errorMsg.classList.remove('hidden');
-            } finally {
-                askForm.querySelector('button[type=submit]').disabled = false;
-                askForm.querySelector('button[type=submit]').textContent = 'Consultar';
-            }
-        });
-
-
-        function setLoadingState(loading) {
-            submitBtn.disabled = loading;
-            if (loading) {
-                submitText.textContent = 'Consultando...';
-                loadingSpinner.classList.remove('hidden');
-                submitBtn.setAttribute('aria-busy', 'true');
-            } else {
-                submitText.textContent = 'Consultar';
-                loadingSpinner.classList.add('hidden');
-                submitBtn.setAttribute('aria-busy', 'false');
-            }
-        }
-
-        function showError(message) {
-            errorMsg.textContent = message;
-            errorMsg.classList.remove('hidden');
-            errorMsg.focus();
-        }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.round(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-function showResults(data, lang) {
-    console.log("Datos a mostrar:", data, lang);
-
-    searchResult.innerHTML = data.response[lang] || "No hay respuesta para este idioma.";
-
-    refsTable.innerHTML = '';
-    if (data.references && data.references.length > 0) {
-        data.references.forEach(ref => {
-            const linkText = ref.file;
-            let linkUrl = (ref.hyperlink && ref.hyperlink[lang]) ? ref.hyperlink[lang] : '';
-            let linkHtml = linkUrl
-                ? `<a class="text-blue-600 underline" href="${linkUrl}" target="_blank">${linkText}</a>`
-                : `<span class="text-gray-400">${linkText}</span>`;
-            refsTable.innerHTML += `
-                <tr>
-                    <td class="px-4 py-2 border-b">${ref.tag || ""}</td>
-                    <td class="px-4 py-2 border-b">${ref.label && ref.label[lang] ? ref.label[lang] : ""}</td>
-                    <td class="px-4 py-2 border-b">${linkHtml}</td>
-                    <td class="px-4 py-2 border-b">${formatTime(ref.time)}</td>
-                </tr>
-            `;
-        });
-    } else {
-        refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">No hay referencias.</td></tr>`;
-    }
-
-    resultsSection.classList.remove('hidden');
-    // Anunciar que los resultados están listos
-    setTimeout(() => {
-        searchResult.focus();
-    }, 100);
-}
-
-
-function createRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        return null;
-    }
-    const recog = new SpeechRecognition();
-    recog.lang = langMap[languageSelect.value];
-    recog.interimResults = true;
-    recog.maxAlternatives = 1;
-    recog.continuous = false; // Solo un resultado por click
-    return recog;
-}
-
-function startRecognition() {
-    if (recognizing && recognition) {
-        recognition.abort(); // Cierra si ya está escuchando
-        recognizing = false;
-        micBtn.classList.remove('bg-green-200');
-        micStatus.textContent = '';
-        return;
-    }
-    recognition = createRecognition();
-    if (!recognition) {
-        showError('El reconocimiento de voz no está disponible en este navegador');
-        return;
-}
-
-
-    recognition.onstart = () => {
-        recognizing = true;
-        micBtn.classList.add('bg-green-200');
-        micBtn.setAttribute('aria-pressed', 'true');
-        micStatus.textContent = 'Escuchando...';
-    };
-    
-    recognition.onend = () => {
-        recognizing = false;
-        micBtn.classList.remove('bg-green-200');
-        micBtn.setAttribute('aria-pressed', 'false');
-        micStatus.textContent = '';
-    };
-    
-    recognition.onerror = (event) => {
-        recognizing = false;
-        micBtn.classList.remove('bg-green-200');
-        micBtn.setAttribute('aria-pressed', 'false');
-        micStatus.textContent = '';
-        
-        let errorMessage = 'Error en el reconocimiento de voz';
-        switch(event.error) {
-            case 'not-allowed':
-                errorMessage = 'Acceso al micrófono denegado. Por favor, permite el acceso en la configuración del navegador.';
-                break;
-            case 'no-speech':
-                errorMessage = 'No se detectó ningún discurso. Intenta hablar más cerca del micrófono.';
-                break;
-            case 'network':
-                errorMessage = 'Error de red. Verifica tu conexión a internet.';
-                break;
-        }
-        showError(errorMessage);
-    };
-    
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        questionInput.value = transcript;
-        questionInput.focus();
-        micStatus.textContent = `Texto detectado: "${transcript}"`;
-    };
-
-    recognition.lang = langMap[languageSelect.value];
-    recognition.start();
-}
-
-// Configurar reconocimiento de voz
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    micBtn.addEventListener('click', startRecognition);
-    micBtn.setAttribute('aria-pressed', 'false');
-    
-    languageSelect.addEventListener('change', () => {
-        if (recognition) {
-            recognition.lang = langMap[languageSelect.value];
-        }
-    });
-} else {
-    micBtn.disabled = true;
-    micBtn.title = "El navegador no soporta reconocimiento de voz";
-    micBtn.setAttribute('aria-label', 'Reconocimiento de voz no disponible');
-}
-
-// Navegación por teclado mejorada
-document.addEventListener('keydown', (e) => {
-    // Ctrl + Enter para enviar formulario
-    if (e.ctrlKey && e.key === 'Enter' && document.activeElement === questionInput) {
-        askForm.dispatchEvent(new Event('submit'));
-    }
-    
-    // Escape para cerrar banner de cookies
-    if (e.key === 'Escape' && document.getElementById('cookieBanner').classList.contains('show')) {
-        document.getElementById('cookieBanner').classList.remove('show');
-    }
-});
-
-// Inicialización
-document.addEventListener('DOMContentLoaded', () => {
-    initCookies();
-    questionInput.focus();
-});
-
-// Mejoras de rendimiento y SEO
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('SW registered'))
-            .catch(error => console.log('SW registration failed'));
-    });
-}
-</script>
-</body>
+    <script src="static/js/client_rag.js"></script>
+  
 </html>

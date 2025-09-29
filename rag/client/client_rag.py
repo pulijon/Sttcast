@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../../tools")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../../db")))
 from logs import logcfg
 from envvars import load_env_vars_from_directory
 
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import List
 import requests
 from datetime import datetime
 from urllib.parse import urljoin
@@ -38,6 +40,7 @@ get_context_path = "/getcontext"
 get_context_url = urljoin(context_server_url, get_context_path)
 logging.info(f"Context server URL: {get_context_url}")
 app.get_context_url = get_context_url
+app.context_server_url = context_server_url
 
 rag_server_host = os.getenv('RAG_SERVER_HOST')
 rag_server_port = int(os.getenv('RAG_SERVER_PORT'))
@@ -90,6 +93,11 @@ class AskRequest(BaseModel):
 async def index(request: Request):
     """Página principal"""
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/nuevoindex", response_class=HTMLResponse)
+async def nuevo_index(request: Request):
+    """Página de nuevo índice"""
+    return templates.TemplateResponse("nuevoindex.html", {"request": request})
 
 @app.post("/api/ask")
 async def ask_question(payload: AskRequest):
@@ -185,6 +193,41 @@ async def ask_question(payload: AskRequest):
         raise HTTPException(status_code=503, detail="Error de conexión con el servicio web")
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error en la petición: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+# Función que pregunta al endpoint de context server gen_stats para obtener estadísticas generales
+# a partir de dos fechas
+class GenStatsRequest(BaseModel):
+    fromdate: str = None
+    todate: str = None
+@app.post("/api/gen_stats")
+async def get_gen_stats(request: GenStatsRequest):
+    logging.info(f"/api/gen_stats called with fromdate={request.fromdate}, todate={request.todate}")
+    logging.info(f"Llamando a {app.context_server_url}api/gen_stats con {request.dict()}")
+    try:
+        response = requests.post(f"{app.context_server_url}/api/gen_stats", json=request.dict())
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+# Función que pregunta al endpoint de context server speaker_stats para obtener estadísticas de una lista de hablantes
+# a partir de dos fechas
+class SpeakerStatsRequest(BaseModel):
+    tags: List[str]
+    fromdate: str = None
+    todate: str = None
+@app.post("/api/speaker_stats")
+async def get_speaker_stats(request: SpeakerStatsRequest):
+    logging.info(f"/api/speaker_stats called with {request}")
+    logging.info(f"Llamando a {app.context_server_url}api/speaker_stats con {request.dict()}")
+    try:
+        response = requests.post(f"{app.context_server_url}api/speaker_stats", json=request.dict())
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+        return response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 

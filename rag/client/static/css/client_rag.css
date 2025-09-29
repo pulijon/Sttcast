@@ -1,4 +1,5 @@
 /* Estilos personalizados para el Asistente de Preguntas */
+/* Versión optimizada para aprovechamiento del ancho del navegador */
 
 /* Variables CSS */
 :root {
@@ -17,6 +18,50 @@
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --container-padding: 2rem;
+}
+
+/* Contenedor principal con ancho adaptativo */
+.container {
+    width: 100%;
+    margin: 0 auto;
+    padding-left: var(--container-padding);
+    padding-right: var(--container-padding);
+}
+
+/* Tablets */
+@media (min-width: 768px) {
+    .container {
+        max-width: 95%;
+    }
+}
+
+/* Escritorio pequeño */
+@media (min-width: 1024px) {
+    .container {
+        max-width: 1400px;
+    }
+}
+
+/* Escritorio mediano */
+@media (min-width: 1440px) {
+    .container {
+        max-width: 1600px;
+    }
+}
+
+/* Escritorio grande */
+@media (min-width: 1920px) {
+    .container {
+        max-width: 1800px;
+    }
+}
+
+/* Pantallas ultra anchas */
+@media (min-width: 2560px) {
+    .container {
+        max-width: 2200px;
+    }
 }
 
 /* Estilos de sombra personalizados */
@@ -94,6 +139,7 @@
 .prose {
     color: var(--gray-700);
     line-height: 1.7;
+    max-width: 100%;
 }
 
 .prose h1,
@@ -173,6 +219,54 @@
     padding: 0;
 }
 
+.prose span {
+    color: #0284c7;
+    background: #e0f2fe;
+    font-weight: 500;
+    border-radius: 0.2em;
+    padding: 0 0.2em;
+}
+
+/* Grid adaptativo para contenido en columnas */
+.content-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    width: 100%;
+}
+
+/* Grid de 2 columnas para pantallas grandes */
+.two-column-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 1024px) {
+    .two-column-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Grid de 3 columnas para pantallas muy grandes */
+.three-column-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .three-column-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .three-column-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
 /* Estilos para referencias */
 .reference-item {
     display: block;
@@ -205,6 +299,25 @@
     word-break: break-all;
 }
 
+/* Lista de referencias en grid */
+.references-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .references-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .references-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
 /* Animaciones de entrada */
 @keyframes fadeInUp {
     from {
@@ -234,11 +347,10 @@
     animation: fadeIn 0.4s ease-out;
 }
 
-/* Estilos responsive */
+/* Estilos responsive mejorados */
 @media (max-width: 768px) {
-    .container {
-        padding-left: 1rem;
-        padding-right: 1rem;
+    :root {
+        --container-padding: 1rem;
     }
     
     .card-shadow {
@@ -268,6 +380,11 @@ select:focus,
 button:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
 }
 
 /* Estilos para scrollbar personalizada */
@@ -300,35 +417,10 @@ button:focus {
     75% { transform: translateX(5px); }
 }
 
-/* Mejoras de accesibilidad */
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
-    
-    .spinner {
-        animation: none;
-        border-top-color: var(--primary-color);
-    }
-}
-
-/* Estilos de alto contraste */
-@media (prefers-contrast: high) {
-    .card-shadow {
-        border: 2px solid var(--gray-300);
-    }
-    
-    .btn-primary {
-        border: 2px solid var(--primary-color);
-    }
-    
-    .reference-item {
-        border: 2px solid var(--gray-300);
-    }
+/* Clase para elementos de pantalla completa */
+.full-width {
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
 }
 
 /* Transiciones suaves para elementos interactivos */
@@ -336,7 +428,7 @@ button:focus {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Estilos para tooltip (si se implementa) */
+/* Estilos para tooltip */
 .tooltip {
     position: relative;
     display: inline-block;
@@ -363,4 +455,125 @@ button:focus {
 .tooltip:hover .tooltiptext {
     visibility: visible;
     opacity: 1;
+}
+
+/* Banner de cookies */
+.cookie-banner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 1rem;
+    z-index: 1000;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+}
+
+.cookie-banner.show {
+    transform: translateY(0);
+}
+
+/* Indicador de carga accesible */
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #3498db;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+/* Accesibilidad */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Mejoras de accesibilidad para movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    
+    .spinner,
+    .loading-spinner {
+        animation: none;
+        border-top-color: var(--primary-color);
+    }
+}
+
+/* Modo alto contraste */
+@media (prefers-contrast: high) {
+    body {
+        background-color: #000;
+        color: #fff;
+    }
+    
+    .card-shadow {
+        border: 2px solid var(--gray-300);
+    }
+    
+    .btn-primary {
+        border: 2px solid var(--primary-color);
+    }
+    
+    .reference-item {
+        border: 2px solid var(--gray-300);
+    }
+    
+    .bg-white {
+        background-color: #000 !important;
+        color: #fff !important;
+        border: 2px solid #fff;
+    }
+}
+
+.high-contrast {
+    background-color: #000;
+    color: #fff;
+}
+
+/* Utilidades adicionales para layouts flexibles */
+.flex-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}
+
+.flex-item {
+    flex: 1 1 300px;
+}
+
+/* Layout de panel dividido */
+.split-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 1024px) {
+    .split-panel {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+@media (min-width: 1440px) {
+    .split-panel {
+        grid-template-columns: 3fr 2fr;
+    }
 }

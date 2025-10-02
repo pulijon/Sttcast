@@ -566,7 +566,7 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
 	data.stats.forEach(speaker => {
         speaker.episodes = speaker.episodes.map(ep => ({
               ...ep,
-              link: `<a href="transcripts/${ep.name}_whisper_es.html">${ep.name}</a>`
+              link: `<a href="transcripts/${ep.name}_whisper_audio_es.html">${ep.name}</a>`
            }));
         });
 

@@ -562,8 +562,15 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
         console.log('[speakersAnalysis] Datos recibidos:', data);
         
         // Mostrar las gráficas con los datos obtenidos
+	// Inclusión de campo link en episodes
+	data.stats.forEach(speaker => {
+        speaker.episodes = speaker.episodes.map(ep => ({
+              ...ep,
+              link: `<a href="transcripts/${ep.name}_whisper_es.html">${ep.name}</a>`
+           }));
+        });
+
         displaySpeakersCharts(data);
-        
         // Mostrar la sección de gráficas
         document.getElementById('chartsSection').classList.remove('hidden');
         
@@ -683,90 +690,90 @@ function displaySpeakersCharts(data) {
 }
 
 // Función auxiliar para crear gráficas de barras
-function createBarChart(title, data, yLabel, color) {
-    const chartDiv = document.createElement('div');
-    chartDiv.className = 'bg-white p-6 rounded-lg border shadow-sm overflow-visible';
-    
-    const chartTitle = document.createElement('h4');
-    chartTitle.className = 'text-lg font-semibold mb-4 text-gray-800';
-    chartTitle.textContent = title;
-    chartDiv.appendChild(chartTitle);
-    
-    const canvas = document.createElement('canvas');
-    canvas.className = 'w-full'
-    // canvas.className = 'w-[85%]'
-    chartDiv.appendChild(canvas);
-    
-    // Crear gráfica usando Canvas API (implementación básica)
-    setTimeout(() => {
-        const containerWidth = chartDiv.offsetWidth - 48; // Restar padding
-        canvas.width = containerWidth;
-        canvas.height = Math.max(400, data.length * 50); // Altura dinámica para barras horizontales
-
-        // Crear gráfica usando Canvas API con barras horizontales
-        const ctx = canvas.getContext('2d');
-        const padding = 80;
-        const chartWidth = canvas.width - 2 * padding;
-        const chartHeight = canvas.height - 2 * padding;
-
-        if (data.length === 0) {
-            ctx.fillStyle = '#6B7280';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('No hay datos para mostrar', canvas.width / 2, canvas.height / 2);
-            return;
-        }
-
-        const maxValue = Math.max(...data.map(d => d.value));
-        const barHeight = (chartHeight / data.length) * 0.7;
-        const barSpacing = (chartHeight / data.length) * 0.3;
-        
-        // Ordenar datos de mayor a menor
-        data.sort((a, b) => b.value - a.value);
-        
-        // Dibujar barras horizontales
-        data.forEach((item, index) => {
-            const barWidth = (item.value / maxValue) * chartWidth * 0.9;
-            const x = padding;
-            const y = padding + index * (barHeight + barSpacing) + barSpacing / 2;
-
-            // Barra
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, barWidth, barHeight);
-
-            // Valor al final de la barra
-            ctx.fillStyle = '#374151';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(item.value.toString(), x + barWidth + 5, y + barHeight / 2 + 4);
-
-            // Etiqueta del eje Y (nombres a la izquierda)
-            ctx.textAlign = 'right';
-            ctx.fillText(item.name, padding - 10, y + barHeight / 2 + 4);
-        });
-
-        // Eje X (horizontal en la parte inferior)
-        ctx.strokeStyle = '#D1D5DB';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(padding, canvas.height - padding);
-        ctx.lineTo(canvas.width - padding, canvas.height - padding);
-        ctx.stroke();
-
-        // Eje Y (vertical a la izquierda)
-        ctx.beginPath();
-        ctx.moveTo(padding, padding);
-        ctx.lineTo(padding, canvas.height - padding);
-        ctx.stroke();
-
-        // Etiqueta eje X (abajo)
-        ctx.fillStyle = '#6B7280';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(yLabel, canvas.width / 2, canvas.height - padding + 40);
-    }, 100);
-    return chartDiv;
-}
+// function createBarChart(title, data, yLabel, color) {
+//     const chartDiv = document.createElement('div');
+//     chartDiv.className = 'bg-white p-6 rounded-lg border shadow-sm overflow-visible';
+//     
+//     const chartTitle = document.createElement('h4');
+//     chartTitle.className = 'text-lg font-semibold mb-4 text-gray-800';
+//     chartTitle.textContent = title;
+//     chartDiv.appendChild(chartTitle);
+//     
+//     const canvas = document.createElement('canvas');
+//     canvas.className = 'w-full'
+//     // canvas.className = 'w-[85%]'
+//     chartDiv.appendChild(canvas);
+//     
+//     // Crear gráfica usando Canvas API (implementación básica)
+//     setTimeout(() => {
+//         const containerWidth = chartDiv.offsetWidth - 48; // Restar padding
+//         canvas.width = containerWidth;
+//         canvas.height = Math.max(400, data.length * 50); // Altura dinámica para barras horizontales
+// 
+//         // Crear gráfica usando Canvas API con barras horizontales
+//         const ctx = canvas.getContext('2d');
+//         const padding = 80;
+//         const chartWidth = canvas.width - 2 * padding;
+//         const chartHeight = canvas.height - 2 * padding;
+// 
+//         if (data.length === 0) {
+//             ctx.fillStyle = '#6B7280';
+//             ctx.font = '16px Arial';
+//             ctx.textAlign = 'center';
+//             ctx.fillText('No hay datos para mostrar', canvas.width / 2, canvas.height / 2);
+//             return;
+//         }
+// 
+//         const maxValue = Math.max(...data.map(d => d.value));
+//         const barHeight = (chartHeight / data.length) * 0.7;
+//         const barSpacing = (chartHeight / data.length) * 0.3;
+//         
+//         // Ordenar datos de mayor a menor
+//         data.sort((a, b) => b.value - a.value);
+//         
+//         // Dibujar barras horizontales
+//         data.forEach((item, index) => {
+//             const barWidth = (item.value / maxValue) * chartWidth * 0.9;
+//             const x = padding;
+//             const y = padding + index * (barHeight + barSpacing) + barSpacing / 2;
+// 
+//             // Barra
+//             ctx.fillStyle = color;
+//             ctx.fillRect(x, y, barWidth, barHeight);
+// 
+//             // Valor al final de la barra
+//             ctx.fillStyle = '#374151';
+//             ctx.font = '12px Arial';
+//             ctx.textAlign = 'left';
+//             ctx.fillText(item.value.toString(), x + barWidth + 5, y + barHeight / 2 + 4);
+// 
+//             // Etiqueta del eje Y (nombres a la izquierda)
+//             ctx.textAlign = 'right';
+//             ctx.fillText(item.name, padding - 10, y + barHeight / 2 + 4);
+//         });
+// 
+//         // Eje X (horizontal en la parte inferior)
+//         ctx.strokeStyle = '#D1D5DB';
+//         ctx.lineWidth = 1;
+//         ctx.beginPath();
+//         ctx.moveTo(padding, canvas.height - padding);
+//         ctx.lineTo(canvas.width - padding, canvas.height - padding);
+//         ctx.stroke();
+// 
+//         // Eje Y (vertical a la izquierda)
+//         ctx.beginPath();
+//         ctx.moveTo(padding, padding);
+//         ctx.lineTo(padding, canvas.height - padding);
+//         ctx.stroke();
+// 
+//         // Etiqueta eje X (abajo)
+//         ctx.fillStyle = '#6B7280';
+//         ctx.font = '14px Arial';
+//         ctx.textAlign = 'center';
+//         ctx.fillText(yLabel, canvas.width / 2, canvas.height - padding + 40);
+//     }, 100);
+//     return chartDiv;
+// }
 
 function createBarChart(title, data, yLabel, color) {
     const chartDiv = document.createElement('div');
@@ -1095,7 +1102,7 @@ function createSpeakerEpisodesTable(speaker) {
             : 0;
         console.log(`Episodio: ${episode.name}, Duración: ${episode.duration}, Total episodio: ${episode.total_episode_duration}, %: ${percentage}`);   
         row.innerHTML = `
-            <td class="py-2 px-3">${episode.name}</td>
+            <td class="py-2 px-3 text-blue-600 hover:text-blue-800 hover:underline">${episode.link}</td>
             <td class="py-2 px-3">${new Date(episode.date).toLocaleDateString()}</td>
             <td class="py-2 px-3 text-right">${Math.round(episode.duration / 60 * 100) / 100}</td>
             <td class="py-2 px-3 text-right">${percentage}%</td>

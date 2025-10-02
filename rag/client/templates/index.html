@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultas relevantes en la colección de podcasts de Coffee Break</title>
+    <title>Consultas relevantes en la colección de podcasts de {{ podcast_name }}</title>
     <link rel="icon" type="image/x-icon" href="static/images/favicon_sttcast.ico">
 
-    <meta name="description" content="Realiza consultas inteligentes en la colección de podcasts de Coffee Break. Busca información específica con referencias y timestamps.">
+    <meta name="description" content="Realiza consultas inteligentes en la colección de podcasts de {{ podcast_name }}. Busca información específica con referencias y timestamps.">
     <meta name="author" content="José Miguel Robles Román">
     <meta name="robots" content="index, follow">
 
@@ -77,7 +77,7 @@
                 class="h-16 w-16 rounded-full shadow"
                 loading="lazy">
         </div>
-        <h1 class="text-2xl font-bold mb-6 text-center">Sistema de consultas en la colección de podcasts de Coffee Break</h1>
+        <h1 class="text-2xl font-bold mb-6 text-center">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
 
         <!-- Formulario de selección inicial -->
         <section id="queryTypeSelection" class="mb-8">
@@ -136,10 +136,10 @@
                              required
                              aria-describedby="question-help"
                              class="w-full border border-gray-300 rounded-lg p-3 resize-vertical focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
-                             placeholder="Introduce tu pregunta sobre los podcasts de Coffee Break..."></textarea>
+                             placeholder="Introduce tu pregunta sobre los podcasts de {{ podcast_name }}..."></textarea>
                     
                     <div id="question-help" class="text-sm text-gray-600 mt-1">
-                        Describe lo que quieres saber sobre los podcasts de Coffee Break. Puedes utilizar la voz con el botón de micrófono.
+                        Describe lo que quieres saber sobre los podcasts de {{ podcast_name }}. Puedes utilizar la voz con el botón de micrófono.
                     </div>
                     
                     <div class="flex items-center mt-2">

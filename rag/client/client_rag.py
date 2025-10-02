@@ -21,7 +21,6 @@ from findtime import find_nearest_time_id
 
 
 # Configuración desde variables de entorno
-API_URL = os.getenv('API_URL', 'http://localhost:8080/api/questions')
 FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
 
@@ -53,6 +52,10 @@ app.relsearch_url = relsearch_url
 rag_mp3_dir = os.getenv('RAG_MP3_DIR')
 app.rag_mp3_dir = rag_mp3_dir
 logging.info(f"RAG MP3 directory: {rag_mp3_dir}")
+
+podcast_name = os.getenv('PODCAST_NAME')
+app.podcast_name = podcast_name
+logging.info(f"Podcast Name: {podcast_name}")
 
 templates = Jinja2Templates(directory="templates")
 
@@ -92,12 +95,11 @@ class AskRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Página principal"""
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/nuevoindex", response_class=HTMLResponse)
-async def nuevo_index(request: Request):
-    """Página de nuevo índice"""
-    return templates.TemplateResponse("nuevoindex.html", {"request": request})
+    return templates.TemplateResponse("index.html", 
+                                    {
+                                     "request": request,
+                                     "podcast_name": app.podcast_name
+                                    })
 
 @app.post("/api/ask")
 async def ask_question(payload: AskRequest):
@@ -238,7 +240,7 @@ async def health_check():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "config": {
-            "api_url": API_URL,
+            "api_url": context_server_url,
             "files_base_url": FILES_BASE_URL,
             "timeout": WEB_SERVICE_TIMEOUT
         }

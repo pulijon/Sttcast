@@ -1,6 +1,7 @@
+setuptools
+wheel
 pyyaml
 vosk
-wave
 ffmpeg-python
 bs4
 botocore

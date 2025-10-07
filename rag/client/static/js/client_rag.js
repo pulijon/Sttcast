@@ -179,50 +179,65 @@ askForm.addEventListener('submit', async (e) => {
     searchResult.innerHTML = '';
     refsTable.innerHTML = '';
 
-    const question = questionInput.value.trim();
-    const language = languageSelect.value;
+        const question = questionInput.value.trim();
+        const language = languageSelect.value;
 
-    if (!question) {
-        errorMsg.textContent = 'Por favor, introduce una pregunta.';
-        errorMsg.classList.remove('hidden');
-        return;
-    }
-
-    // Mostrar estado de carga
-    setLoadingState(true);
-
-    try {
-        const response = await fetch("/api/ask", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({question, language})
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(()=>{});
-            throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+        if (!question) {
+            errorMsg.textContent = 'Por favor, introduce una pregunta.';
+            errorMsg.classList.remove('hidden');
+            return;
         }
-        const data = await response.json();
-        lastData = data;
-        showResults(data, language);
 
-    } catch (error) {
-        errorMsg.textContent = error.message || "No se pudo completar la consulta";
-        errorMsg.classList.remove('hidden');
-    } finally {
-        askForm.querySelector('button[type=submit]').disabled = false;
-        askForm.querySelector('button[type=submit]').textContent = 'Consultar';
-    }
-});
+        // Mostrar estado de carga
+        setLoadingState(true);
+
+        // Prevenir que se active el protector de pantalla durante la consulta
+        let wakeLock = null;
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        } catch (err) {
+            console.log('Wake Lock no disponible:', err);
+        }
+
+        try {
+            const response = await fetch("/api/ask", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({question, language})
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(()=>{});
+                throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+            }
+            const data = await response.json();
+            lastData = data;
+            showResults(data, language);
+
+        } catch (error) {
+            errorMsg.textContent = error.message || "No se pudo completar la consulta";
+            errorMsg.classList.remove('hidden');
+        } finally {
+            // Liberar el wake lock
+            if (wakeLock) {
+                wakeLock.release();
+            }
+            
+            askForm.querySelector('button[type=submit]').disabled = false;
+            askForm.querySelector('button[type=submit]').textContent = 'Consultar';
+        }
+    });
 
 
-function setLoadingState(loading) {
-    submitBtn.disabled = loading;
-    if (loading) {
-        submitText.textContent = 'Consultando...';
-        loadingSpinner.classList.remove('hidden');
-        submitBtn.setAttribute('aria-busy', 'true');
-    } else {
-        submitText.textContent = 'Consultar';
+    function setLoadingState(loading) {
+        submitBtn.disabled = loading;
+        if (loading) {
+            submitText.textContent = 'Consultando...';
+            loadingSpinner.classList.remove('hidden');
+            submitBtn.setAttribute('aria-busy', 'true');
+        } else {
+            submitText.textContent = 'Consultar';
         loadingSpinner.classList.add('hidden');
         submitBtn.setAttribute('aria-busy', 'false');
     }

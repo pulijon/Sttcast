@@ -104,9 +104,6 @@ def main():
     logging.info("📡 Enviando transcripciones al servicio de resúmenes...")
     for block in load_transcriptions(args.transcriptions, args.max_files):
         logging.info(f"📦 Enviando bloque de {len(block)} episodios...: {[b['ep_id'] for b in block]}")
-        # Salvar block como JSON para depuración
-        with open(f"debug_block_{block[0]['ep_id']}.json", "w", encoding="utf-8") as f:
-            json.dump(block, f, indent=2, ensure_ascii=False)
         try:
             response = requests.post(args.url, json=block)
             response.raise_for_status()

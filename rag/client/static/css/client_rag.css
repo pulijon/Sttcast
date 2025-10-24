@@ -18,7 +18,7 @@
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    --container-padding: 2rem;
+    --container-padding: 1rem; /* Reducido desde 2rem */
 }
 
 /* Contenedor principal con ancho adaptativo */
@@ -32,35 +32,39 @@
 /* Tablets */
 @media (min-width: 768px) {
     .container {
-        max-width: 95%;
+        max-width: 98%; /* Aumentado desde 95% */
+    }
+    
+    :root {
+        --container-padding: 1.5rem; /* Menos padding en tablets */
     }
 }
 
 /* Escritorio pequeño */
 @media (min-width: 1024px) {
     .container {
-        max-width: 1400px;
+        max-width: 1500px; /* Aumentado desde 1400px */
     }
 }
 
 /* Escritorio mediano */
 @media (min-width: 1440px) {
     .container {
-        max-width: 1600px;
+        max-width: 1700px; /* Aumentado desde 1600px */
     }
 }
 
 /* Escritorio grande */
 @media (min-width: 1920px) {
     .container {
-        max-width: 1800px;
+        max-width: 1900px; /* Aumentado desde 1800px */
     }
 }
 
 /* Pantallas ultra anchas */
 @media (min-width: 2560px) {
     .container {
-        max-width: 2200px;
+        max-width: 2400px; /* Aumentado desde 2200px */
     }
 }
 
@@ -225,6 +229,37 @@
     font-weight: 500;
     border-radius: 0.2em;
     padding: 0 0.2em;
+}
+
+/* Estilos para hiperenlaces en las respuestas */
+.prose a {
+    color: var(--primary-color);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 2px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.prose a:hover {
+    color: #1d4ed8;
+    text-decoration-color: #1d4ed8;
+    background-color: rgba(37, 99, 235, 0.1);
+    padding: 0.1em 0.2em;
+    border-radius: 3px;
+}
+
+.prose a:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+    background-color: rgba(37, 99, 235, 0.1);
+    padding: 0.1em 0.2em;
+    border-radius: 3px;
+}
+
+.prose a:visited {
+    color: var(--secondary-color);
+    text-decoration-color: var(--secondary-color);
 }
 
 /* Grid adaptativo para contenido en columnas */
@@ -575,5 +610,200 @@ button:focus {
 @media (min-width: 1440px) {
     .split-panel {
         grid-template-columns: 3fr 2fr;
+    }
+}
+
+/* Estilos específicos para formularios de análisis */
+#speakersAnalysisForm .grid {
+    display: grid;
+    gap: 0.75rem; /* Reducido aún más para maximizar ancho */
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+    #speakersAnalysisForm .grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem; /* Menos espacio entre columnas */
+    }
+}
+
+/* En pantallas grandes, un poco más de espacio pero no mucho */
+@media (min-width: 1200px) {
+    #speakersAnalysisForm .grid {
+        gap: 1rem;
+    }
+}
+
+/* Asegurar que los campos de fecha tengan ancho completo pero sin restricciones excesivas */
+#speakersAnalysisForm input[type="date"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Espaciado mínimo en móvil, más flexible en escritorio */
+#speakersAnalysisForm .grid > div {
+    position: relative;
+}
+
+/* Solo en móvil, asegurar separación clara */
+@media (max-width: 767px) {
+    #speakersAnalysisForm .grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    #speakersAnalysisForm .grid > div {
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Asegurar que los inputs tengan el tamaño correcto */
+#speakersAnalysisForm input,
+#speakersAnalysisForm select {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Estilos específicos para el select multiple de intervinientes */
+#speakers {
+    height: 120px !important; /* Altura fija para mostrar múltiples opciones */
+    overflow-y: auto;
+    padding: 0.5rem !important;
+    line-height: 1.4;
+}
+
+/* Mejorar la visualización de las opciones en el select multiple */
+#speakers option {
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    margin-bottom: 1px;
+}
+
+#speakers option:checked {
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    color: white;
+    font-weight: 600;
+}
+
+/* Forzar que el select multiple muestre las opciones seleccionadas visiblemente */
+#speakers:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+/* Asegurar que el placeholder se vea bien */
+#speakers option:disabled {
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* Estilos específicos para las estadísticas del período */
+#generalStats .grid {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    #generalStats .grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 1rem;
+    }
+}
+
+/* Asegurar que las estadísticas no se vean afectadas por otros estilos */
+#generalStats .grid > div {
+    min-height: auto;
+    margin-bottom: 0;
+}
+
+/* Mejorar la apariencia de las estadísticas */
+#generalStats {
+    margin-bottom: 1rem;
+}
+
+@media (min-width: 1024px) {
+    #generalStats .grid {
+        gap: 2rem;
+    }
+}
+
+/* Estilos específicos para la grilla de estadísticas */
+.stats-grid {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .stats-grid {
+        gap: 2rem;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+}
+
+/* Elementos individuales de estadísticas */
+.stats-item {
+    flex: none;
+    min-width: 0;
+}
+
+/* Maximizar ancho para gráficas y resultados */
+#speakersResults {
+    width: 100%;
+    max-width: none !important;
+    margin: 0;
+    padding: 0;
+}
+
+/* Contenedores de gráficas con ancho completo */
+#speakersResults .bg-white {
+    margin-left: calc(-1 * var(--container-padding));
+    margin-right: calc(-1 * var(--container-padding));
+    padding-left: var(--container-padding);
+    padding-right: var(--container-padding);
+    width: auto;
+}
+
+/* Asegurar que las gráficas usen todo el ancho disponible */
+#speakersResults canvas,
+#speakersResults .chart-container,
+#speakersResults svg {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Para gráficas que puedan tener contenedores específicos */
+.chart-wrapper {
+    width: 100%;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+}
+
+/* Reducir márgenes en móvil para gráficas */
+@media (max-width: 768px) {
+    #speakersResults .bg-white {
+        margin-left: calc(-1 * var(--container-padding));
+        margin-right: calc(-1 * var(--container-padding));
+        border-radius: 0;
+    }
+}
+
+/* En pantallas grandes, usar el máximo ancho posible */
+@media (min-width: 1024px) {
+    #speakersResults {
+        width: 100vw;
+        margin-left: calc(-50vw + 50%);
+        padding-left: 2rem;
+        padding-right: 2rem;
     }
 }

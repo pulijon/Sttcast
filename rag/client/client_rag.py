@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+import re
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../../tools")))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../../db")))
 from logs import logcfg
@@ -23,15 +24,25 @@ from findtime import find_nearest_time_id
 # Configuración desde variables de entorno
 FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
-
-
 # Inicialización de FastAPI y Jinja2
 app = FastAPI()
 
 load_env_vars_from_directory("../../.env")
+
+# In-memory history storage
+app.query_history = []
+
+
+# Load HISTORY_KEY from admin.env
+history_key = os.getenv('HISTORY_KEY')
+if not history_key:
+    logging.warning("HISTORY_KEY not found in environment variables")
+else:
+    logging.info(f"HISTORY_KEY loaded successfully")
+app.history_key = history_key
+
 rag_client_host = os.getenv('RAG_CLIENT_HOST', 'localhost')
 rag_client_port = int(os.getenv('RAG_CLIENT_PORT', '8004'))
-
 context_server_host = os.getenv('CONTEXT_SERVER_HOST')
 context_server_port = int(os.getenv('CONTEXT_SERVER_PORT'))
 context_server_url = f"http://{context_server_host}:{context_server_port}/"
@@ -113,6 +124,48 @@ async def ask_question(payload: AskRequest):
             detail="La pregunta no puede estar vacía"
         )
 
+    # Check if this is a history query
+    if app.history_key:
+        # Check if question matches the exact history key (return latest)
+        if question == app.history_key:
+            if app.query_history:
+                latest_entry = app.query_history[-1]
+                logging.info(f"RETURNING HISTORY ENTRY: query='{latest_entry['query']}'")
+                return {
+                    "success": True,
+                    "response": latest_entry["response"],
+                    "references": latest_entry["references"],
+                    "timestamp": latest_entry["timestamp"],
+                    "query": latest_entry["query"]
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No hay historial disponible"
+                )
+        
+        # Check if question matches the pattern HISTORY_KEY-number
+        pattern = f"^{re.escape(app.history_key)}-(\\d+)$"
+        match = re.match(pattern, question)
+        if match:
+            index_back = int(match.group(1))
+            if index_back > 0 and index_back <= len(app.query_history):
+                # Return the entry from n positions back (1-based indexing)
+                entry = app.query_history[-(index_back)]
+                logging.info(f"RETURNING HISTORY ENTRY #{index_back}: query='{entry['query']}'")
+                return {
+                    "success": True,
+                    "response": entry["response"],
+                    "references": entry["references"],
+                    "timestamp": entry["timestamp"],
+                    "query": entry["query"]
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No hay entrada de historial en la posición {index_back}"
+                )
+
     try:
         gcpayload = {
             "query": payload.question,
@@ -180,14 +233,28 @@ async def ask_question(payload: AskRequest):
                         "hyperlink": ref.get("hyperlink", None)
                     })
 
-                        
-
-        return {
+        timestamp_iso = datetime.now().isoformat()
+        
+        # Create response
+        response_data = {
             "success": True,
             "response": reldata["search"],
             "references": references,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": timestamp_iso
         }
+        
+        # Store this query and response in history
+        if history_key:
+            history_entry = {
+                "query": question,
+                "response": reldata["search"],
+                "references": references,
+                "timestamp": timestamp_iso
+            }
+            app.query_history.append(history_entry)
+            logging.info(f"Stored query in history. Total entries: {len(app.query_history)}")
+
+        return response_data
 
     except requests.exceptions.Timeout:
         raise HTTPException(status_code=504, detail="Timeout: El servicio web tardó demasiado en responder")

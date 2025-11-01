@@ -47,6 +47,12 @@ def save_summaries(output_dir, summaries):
         output_dir (string): Directorio de salida para guardar los resúmenes y estadísticas
         summaries (list): Lista de resúmenes generados por el servicio
     """
+    logging.info(f"Guardando {len(summaries)} resúmenes en directorio: {output_dir}")
+    
+    # Crear directorio si no existe
+    os.makedirs(output_dir, exist_ok=True)
+    logging.debug(f"Directorio de salida verificado/creado: {output_dir}")
+    
     csv_file = os.path.join(output_dir, "summary_stats.csv")
     csv_exists = os.path.exists(csv_file)
     fecha_procesado = datetime.now().isoformat(timespec="seconds")
@@ -57,22 +63,35 @@ def save_summaries(output_dir, summaries):
             writer.writerow(["ep_id", "tokens_prompt", "tokens_completion", "tokens_total", "estimated_cost_usd", "fecha_procesado"])
 
         for item in summaries:
-            logging.debug(f"Tratando respusta: {item}")
+            logging.info(f"Procesando respuesta para episodio: {item.get('ep_id', 'UNKNOWN')}")
+            logging.debug(f"Tratando respuesta completa: {item}")
             ep_id = item["ep_id"]
             summary_file = os.path.join(output_dir, f"{ep_id}_summary.json")
             stats_file = os.path.join(output_dir, f"{ep_id}_stats.json")
-            summary_json = item['summary']
-            if summary_json.startswith('"') and summary_json.endswith('"'):
-                summary_json = summary_json[1:-1]
-            # Sustituir tres backslashes por uno
-            summary_json = summary_json.replace('\\\\\\', '\\')
-            summary_json = summary_json.encode("utf-8").decode("unicode_escape")
-            summary = json.loads(summary_json)
-            logging.debug(f"Parseado de JSON: {summary}")
+            
+            logging.info(f"Guardando resumen en: {summary_file}")
+            
+            # El summary ahora viene como JSON válido desde el servicio
+            try:
+                summary = json.loads(item['summary'])
+                logging.info(f"JSON parseado exitosamente para {ep_id}")
+                logging.debug(f"Contenido del resumen: {summary}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Error parseando JSON para episodio {ep_id}: {e}")
+                logging.error(f"Contenido recibido: {item['summary']}")
+                # Crear un resumen por defecto en caso de error
+                summary = {
+                    "es": "Error al procesar el resumen",
+                    "en": "Error processing summary"
+                }
 
             # Guardar resumen JSON
-            with open(summary_file, "w", encoding="utf-8") as f:
-                json.dump(summary, f, indent=2, ensure_ascii=False)
+            try:
+                with open(summary_file, "w", encoding="utf-8") as f:
+                    json.dump(summary, f, indent=2, ensure_ascii=False)
+                logging.info(f"✅ Resumen guardado exitosamente: {summary_file}")
+            except Exception as e:
+                logging.error(f"❌ Error guardando resumen en {summary_file}: {e}")
 
             # Guardar estadísticas en JSON
             with open(stats_file, "w", encoding="utf-8") as f:

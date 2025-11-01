@@ -297,16 +297,44 @@ askForm.addEventListener('submit', async (e) => {
     initCookies();
 
     // Funciones de utilidad dentro del scope del DOMContentLoaded
+    let countdownInterval = null;
+    
     function setLoadingState(loading) {
         submitBtn.disabled = loading;
         if (loading) {
-            submitText.textContent = 'Consultando...';
+            let countdown = 59;
+            // Mantener el spinner visible pero ajustar el texto para que sea más claro
             loadingSpinner.classList.remove('hidden');
+            submitText.textContent = `Consultando ... (${countdown}s)`;
             submitBtn.setAttribute('aria-busy', 'true');
+            
+            // Limpiar cualquier intervalo anterior
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            
+            // Iniciar cuenta atrás
+            countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown >= 0) {
+                    submitText.textContent = `Consultando ... (${countdown}s)`;
+                } else {
+                    // Si llega a 0, mostrar puntos suspensivos
+                    submitText.textContent = '...';
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            }, 1000);
         } else {
             submitText.textContent = 'Consultar';
             loadingSpinner.classList.add('hidden');
             submitBtn.setAttribute('aria-busy', 'false');
+            
+            // Limpiar el intervalo cuando se detiene la carga
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
         }
     }
 
@@ -349,9 +377,17 @@ askForm.addEventListener('submit', async (e) => {
     }
 
     resultsSection.classList.remove('hidden');
-    // Anunciar que los resultados están listos
+    
+    // Hacer scroll automático a los resultados y anunciar que están listos
     setTimeout(() => {
-        searchResult.focus();
+        resultsSection.scrollIntoView({ 
+            behavior: 'smooth',
+            block: 'start'
+        });
+        // Dar tiempo al scroll antes de hacer focus
+        setTimeout(() => {
+            searchResult.focus();
+        }, 300);
     }, 100);
 }
 

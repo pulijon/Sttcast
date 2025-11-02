@@ -1,0 +1,33 @@
+setuptools
+wheel
+pyyaml
+vosk
+ffmpeg-python
+bs4
+botocore
+boto3
+numpy==1.26.4
+# Usar una versión específica de av que sea compatible
+av==10.0.0
+# Instalar pyannote-audio sin sus dependencias automáticas primero
+--no-deps
+git+https://github.com/pyannote/pyannote-audio.git@3.1.1
+# Después instalar las dependencias manualmente
+torch>=1.11.0
+torchaudio>=0.11.0
+lightning>=2.0.0
+torchmetrics>=0.6.0
+asteroid-filterbanks>=0.4.0
+speechbrain>=0.5.0
+huggingface-hub>=0.8.0
+mutagen
+pydub
+seaborn
+fastapi
+openai
+pydantic
+uvicorn
+pysrt
+pandas
+faiss-cpu
+tqdm

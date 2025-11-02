@@ -21,3 +21,5 @@ pysrt
 pandas
 faiss-cpu
 tqdm
+dotenv
+

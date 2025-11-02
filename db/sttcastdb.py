@@ -42,6 +42,11 @@ class SttcastDB:
             self.conn.execute('PRAGMA cache_size = -64000;')  # Tamaño del caché en páginas (ajustable)
         self.cursor = self.conn.cursor()
         self._cache_speaker_episode_stats = {}
+        
+        # Asegurar que la vista intview existe solo si la BD ya existía
+        # (Si se acaba de crear, ya debería tener la vista)
+        if self.exist_file:
+            self.ensure_intview_exists()
 
     def build_cache_speaker_episode_stats(self):
         """Construye una caché de estadísticas de episodios por hablante para optimizar consultas repetidas."""
@@ -108,8 +113,56 @@ class SttcastDB:
             FOREIGN KEY (episodeid) REFERENCES episode(id)
         );
         """)
+        
+        # Crear la vista intview que es necesaria para las consultas del context_server
+        self.cursor.execute("""
+        CREATE VIEW IF NOT EXISTS intview AS
+        SELECT si.id,
+            si.start,
+            si.end,
+            e.epname,
+            e.epdate,
+            st.tag,
+            si.embedding,
+            si.content
+        FROM  speakerintervention AS si
+        JOIN episode AS e on si.episodeid = e.id
+        JOIN speakertag AS st on si.tagid = st.id;
+        """)
+        
         self.conn.commit()
-        logging.info(f"Base de datos '{self.db_path}' creada con éxito y tablas definidas.")
+        logging.info(f"Base de datos '{self.db_path}' creada con éxito, tablas y vistas definidas.")
+    
+    def ensure_intview_exists(self):
+        """Asegura que la vista intview existe, creándola si es necesario.
+        Este método es útil para bases de datos existentes que no tienen la vista."""
+        try:
+            # Verificar si la vista ya existe
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='view' AND name='intview';")
+            if self.cursor.fetchone() is None:
+                # La vista no existe, crearla
+                logging.info("La vista 'intview' no existe, creándola...")
+                self.cursor.execute("""
+                CREATE VIEW intview AS
+                SELECT si.id,
+                    si.start,
+                    si.end,
+                    e.epname,
+                    e.epdate,
+                    st.tag,
+                    si.embedding,
+                    si.content
+                FROM  speakerintervention AS si
+                JOIN episode AS e on si.episodeid = e.id
+                JOIN speakertag AS st on si.tagid = st.id;
+                """)
+                self.conn.commit()
+                logging.info("Vista 'intview' creada exitosamente.")
+            else:
+                logging.info("La vista 'intview' ya existe.")
+        except Exception as e:
+            logging.error(f"Error al verificar/crear la vista 'intview': {e}")
+            raise
     
     def del_episode_data(self, epid):
         """Elimina todos los datos de un episodio dado su ID."""

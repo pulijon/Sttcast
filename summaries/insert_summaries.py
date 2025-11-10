@@ -56,12 +56,24 @@ def get_summary_content(summary_file, lang):
             if lang not in json_content:
                 logging.warning(f"No se encontró el idioma {lang} en {summary_file}")
                 return None
-            html_content =  json_content[lang]
+            html_content = json_content[lang]
+            
+            # Desescapar el contenido HTML si está escapado
+            if '\\\"' in html_content:
+                html_content = html_content.replace('\\\"', '"')
+                logging.debug(f"Contenido HTML desescapado para idioma {lang}")
+            
+            logging.debug(f"Contenido HTML para {lang}: {html_content[:200]}...")
             soup = BeautifulSoup(html_content, 'html.parser')
             summary_span = soup.find('span', id='topic-summary')
             if summary_span:
+                logging.debug(f"Encontrado span con id='topic-summary' para idioma {lang}")
                 return str(summary_span)
             else:
+                logging.warning(f"No se encontró span con id='topic-summary' para idioma {lang} en {summary_file}")
+                # Debug: mostrar los primeros elementos encontrados
+                all_spans = soup.find_all('span')
+                logging.debug(f"Spans encontrados: {[span.get('id', 'sin-id') for span in all_spans[:5]]}")
                 return None
     except Exception as e:
         logging.error(f"Error al procesar el archivo de resumen {summary_file}: {e}")

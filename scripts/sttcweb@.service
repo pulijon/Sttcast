@@ -1,0 +1,17 @@
+[Unit]
+Description=Sttcast Web Client Service (%i)
+After=network.target sttcrag@%i.service
+Wants=network.target sttcrag@%i.service
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/sttcast/etc/%i.env
+ExecStart=/opt/sttcast/scripts/sttcweb.bash
+Restart=always
+RestartSec=5
+User=jmrobles
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

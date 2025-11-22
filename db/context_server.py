@@ -21,6 +21,64 @@ from sttcast_rag_service import EmbeddingInput
 from contextlib import asynccontextmanager
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import hmac
+import hashlib
+import time
+import json
+from urllib.parse import urlparse
+import hmac
+import hashlib
+import time
+import json
+from urllib.parse import urlparse
+
+def create_hmac_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
+    """Crea una firma HMAC para autenticar la solicitud."""
+    message = f"{method}|{path}|{body}|{timestamp}"
+    return hmac.new(
+        secret_key.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+def create_auth_headers(secret_key: str, method: str, url: str, body) -> dict:
+    """Crea los headers de autenticación HMAC."""
+    parsed_url = urlparse(url)
+    path = parsed_url.path
+    timestamp = str(int(time.time()))
+    
+    # SERIALIZACIÓN CONSISTENTE SIN ESPACIOS
+    if hasattr(body, 'model_dump'):
+        body_str = json.dumps(body.model_dump(), separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    elif isinstance(body, list) and len(body) > 0 and hasattr(body[0], 'model_dump'):
+        body_str = json.dumps([item.model_dump() for item in body], separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    elif isinstance(body, dict):
+        body_str = json.dumps(body, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    else:
+        body_str = json.dumps(body, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    
+    # Logging detallado para debugging
+    message = f"{method}|{path}|{body_str}|{timestamp}"
+    logging.debug(f"Creando autenticación HMAC:")
+    logging.debug(f"  URL: {url}")
+    logging.debug(f"  Método: {method}, Path: {path}")
+    logging.debug(f"  Timestamp: {timestamp}")
+    logging.debug(f"  Body original: {body}")
+    logging.debug(f"  Body serializado: {body_str}")
+    logging.debug(f"  Mensaje completo: {message}")
+    
+    signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
+    logging.info(f"HMAC Debug - Enviando a {path}: timestamp={timestamp}, signature={signature}")
+    logging.info(f"HMAC Debug - Clave API (primeros 10 chars): {secret_key[:10]}...")
+    logging.info(f"HMAC Debug - Body: {body_str}")
+    logging.info(f"HMAC Debug - Mensaje construido: {method}|{path}|{body_str}|{timestamp}")
+    
+    return {
+        'X-Timestamp': timestamp,
+        'X-Signature': signature,
+        'X-Client-ID': 'context_server',
+        'Content-Type': 'application/json'
+    }
 
 
 
@@ -80,6 +138,14 @@ async def lifespan(app: FastAPI):
     rag_server_host = os.getenv("RAG_SERVER_HOST", "localhost")
     rag_server_port = int(os.getenv("RAG_SERVER_PORT", "5500"))
     app.state.rag_server_url = f"http://{rag_server_host}:{rag_server_port}"
+    
+    # Cargar clave de autenticación para RAG server
+    rag_server_api_key = os.getenv('RAG_SERVER_API_KEY')
+    if not rag_server_api_key:
+        logging.error("RAG_SERVER_API_KEY not found in environment variables")
+        raise ValueError("RAG_SERVER_API_KEY is required")
+    app.state.rag_server_api_key = rag_server_api_key
+    logging.info("RAG server authentication configured successfully")
 
     # ---------- Otros parámetros ----------
     app.state.relevant_fragments = int(os.getenv("STTCAST_RELEVANT_FRAGMENTS", "100"))
@@ -153,8 +219,14 @@ def addsegments(request: AddSegmentsRequest):
     ids = [intv["id"] for intv in ints]
 
     url = f"{rag_server_url}/getembeddings"
-    headers = {"Content-Type": "application/json"}
-    r = requests.post(url, json=segments, headers=headers)
+    
+    # Crear headers de autenticación HMAC
+    rag_api_key = app.state.rag_server_api_key
+    auth_headers = create_auth_headers(rag_api_key, "POST", url, segments)
+    
+    # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+    body_str = json.dumps(segments, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    r = requests.post(url, data=body_str, headers=auth_headers)
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
     rjson = r.json()
@@ -224,7 +296,15 @@ def getcontext(request: GetContextRequest):
 
     # Embedding de la query (no toca DB)
     qurl = f"{rag_server_url}/getoneembedding"
-    r = requests.post(qurl, json={"query": request.query}, headers={"Content-Type": "application/json"})
+    query_data = {"query": request.query}
+    
+    # Crear headers de autenticación HMAC
+    rag_api_key = app.state.rag_server_api_key
+    auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data)
+    
+    # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+    body_str = json.dumps(query_data, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    r = requests.post(qurl, data=body_str, headers=auth_headers)
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
     qvec = np.array(r.json().get("embedding"), dtype=np.float32).reshape(1, -1)

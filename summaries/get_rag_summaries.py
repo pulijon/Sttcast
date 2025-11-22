@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"..", "tools")))
 from logs import logcfg
+from envvars import load_env_vars_from_directory
 import logging
 import os
 import json
@@ -9,6 +10,38 @@ import argparse
 import requests
 import csv
 from datetime import datetime
+import hmac
+import hashlib
+import time
+from urllib.parse import urlparse
+import hmac
+import hashlib
+import time
+from urllib.parse import urlparse
+
+def create_hmac_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
+    """Crea una firma HMAC para autenticar la solicitud."""
+    message = f"{method}|{path}|{body}|{timestamp}"
+    return hmac.new(
+        secret_key.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+def create_auth_headers(secret_key: str, method: str, url: str, body: list) -> dict:
+    """Crea los headers de autenticación HMAC."""
+    parsed_url = urlparse(url)
+    path = parsed_url.path
+    timestamp = str(int(time.time()))
+    body_str = json.dumps(body, separators=(',', ':'), sort_keys=True)
+    signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
+    
+    return {
+        'X-Timestamp': timestamp,
+        'X-Signature': signature,
+        'X-Client-ID': 'get_rag_summaries',
+        'Content-Type': 'application/json'
+    }
 
 def load_transcriptions(input_dir, max_per_block):
     """Prepara los archivos de transcripción en bloques para enviar al servicio de resúmenes.
@@ -110,6 +143,15 @@ def save_summaries(output_dir, summaries):
 def main():
     """Función principal que configura el registro, carga las transcripciones y envía solicitudes al servicio de resúmenes.
     """
+    # Cargar variables de entorno
+    load_env_vars_from_directory(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    
+    # Obtener clave de autenticación
+    rag_server_api_key = os.getenv('RAG_SERVER_API_KEY')
+    if not rag_server_api_key:
+        logging.error("RAG_SERVER_API_KEY not found in environment variables")
+        raise ValueError("RAG_SERVER_API_KEY is required")
+    
     DEFAULT_MAX_FILES = 6
     parser = argparse.ArgumentParser(description="Obtener resúmenes RAG de transcripciones de podcast")
     parser.add_argument("-t", "--transcriptions", required=True, help="Directorio de entrada con transcripciones HTML")
@@ -124,7 +166,12 @@ def main():
     for block in load_transcriptions(args.transcriptions, args.max_files):
         logging.info(f"📦 Enviando bloque de {len(block)} episodios...: {[b['ep_id'] for b in block]}")
         try:
-            response = requests.post(args.url, json=block)
+            # Crear headers de autenticación HMAC
+            auth_headers = create_auth_headers(rag_server_api_key, "POST", args.url, block)
+            
+            # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+            body_str = json.dumps(block, separators=(',', ':'), sort_keys=True)
+            response = requests.post(args.url, data=body_str, headers=auth_headers)
             response.raise_for_status()
             summaries = response.json()
             save_summaries(args.summaries, summaries)

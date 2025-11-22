@@ -16,6 +16,10 @@ from typing import List
 import requests
 from datetime import datetime
 from urllib.parse import urljoin
+import hashlib
+import hmac
+import time
+import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from sttcast_rag_service import RelSearchRequest
 from findtime import find_nearest_time_id
@@ -28,6 +32,15 @@ WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
 app = FastAPI()
 
 load_env_vars_from_directory("../../.env")
+
+# Load authentication key
+rag_server_api_key = os.getenv('RAG_SERVER_API_KEY')
+if not rag_server_api_key:
+    logging.error("RAG_SERVER_API_KEY not found in environment variables")
+    raise ValueError("RAG_SERVER_API_KEY is required")
+else:
+    logging.info("RAG_SERVER_API_KEY loaded successfully")
+app.rag_server_api_key = rag_server_api_key
 
 # In-memory history storage
 app.query_history = []
@@ -77,6 +90,35 @@ app.mount("/transcripts", StaticFiles(directory=rag_mp3_dir), name="transcripts"
 #   Utilidades
 # ------------------------
 
+def get_client_ip_from_request(request: Request) -> str:
+    """Obtiene la IP del cliente considerando proxies."""
+    forwarded = request.headers.get('X-Forwarded-For')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.client.host if request.client else 'unknown'
+
+def create_hmac_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
+    """Crea una firma HMAC para autenticar la solicitud."""
+    message = f"{method}|{path}|{body}|{timestamp}"
+    return hmac.new(
+        secret_key.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+def create_auth_headers(secret_key: str, method: str, path: str, body: dict, client_id: str) -> dict:
+    """Crea los headers de autenticación HMAC."""
+    timestamp = str(int(time.time()))
+    body_str = json.dumps(body, separators=(',', ':'), sort_keys=True)
+    signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
+    
+    return {
+        'X-Timestamp': timestamp,
+        'X-Signature': signature,
+        'X-Client-ID': client_id,
+        'Content-Type': 'application/json'
+    }
+
 def get_mark(file, seconds):
     """Función para obtener la marca temporal en el archivo."""
     return f"mark_{int(seconds)}"
@@ -113,7 +155,7 @@ async def index(request: Request):
                                     })
 
 @app.post("/api/ask")
-async def ask_question(payload: AskRequest):
+async def ask_question(payload: AskRequest, request: Request):
     """Procesa la pregunta enviada"""
     question = payload.question.strip() if payload.question else ""
     language = payload.language
@@ -184,11 +226,25 @@ async def ask_question(payload: AskRequest):
         if 'context' in data:
             context = data['context']
         # Pregunta al servicio de búsqueda RAG
-        relquery = RelSearchRequest(
-            query=payload.question,
-            embeddings=context
-        ).model_dump()
-        relresp = requests.post(app.relsearch_url, json=relquery)
+        client_ip = get_client_ip_from_request(request)
+        relquery_data = {
+            "query": payload.question,
+            "embeddings": context,
+            "requester": client_ip
+        }
+        
+        # Crear headers de autenticación HMAC
+        auth_headers = create_auth_headers(
+            app.rag_server_api_key,
+            "POST",
+            "/relsearch",
+            relquery_data,
+            "client_rag_service"
+        )
+        
+        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+        body_str = json.dumps(relquery_data, separators=(',', ':'), sort_keys=True)
+        relresp = requests.post(app.relsearch_url, data=body_str, headers=auth_headers)
         if relresp.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

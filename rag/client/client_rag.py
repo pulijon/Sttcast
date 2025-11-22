@@ -28,6 +28,7 @@ from findtime import find_nearest_time_id
 # Configuración desde variables de entorno
 FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
+BASE_PATH = os.getenv('RAG_CLIENT_BASE_PATH', '')
 # Inicialización de FastAPI y Jinja2
 app = FastAPI()
 
@@ -118,6 +119,12 @@ def create_auth_headers(secret_key: str, method: str, path: str, body: dict, cli
         'X-Client-ID': client_id,
         'Content-Type': 'application/json'
     }
+
+def get_transcript_url(filepath):
+    """Construye URL para transcripts considerando el BASE_PATH."""
+    if BASE_PATH:
+        return f"{BASE_PATH}{filepath}"
+    return filepath
 
 def get_mark(file, seconds):
     """Función para obtener la marca temporal en el archivo."""
@@ -261,7 +268,7 @@ async def ask_question(payload: AskRequest, request: Request):
                     if app.rag_mp3_dir:
                         logging.info(f"Procesando referencia: {ref['label']} - {ref['file']} a {ref['time']} segundos")
                         html_file = {
-                            l: os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
+                            l: get_transcript_url(os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html")) for l in ['es', 'en']
                         }
                         real_file = {
                             l: os.path.join(app.rag_mp3_dir, f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
@@ -331,10 +338,13 @@ async def get_gen_stats(request: GenStatsRequest):
     logging.info(f"/api/gen_stats called with fromdate={request.fromdate}, todate={request.todate}")
     logging.info(f"Llamando a {app.context_server_url}api/gen_stats con {request.dict()}")
     try:
-        response = requests.post(f"{app.context_server_url}/api/gen_stats", json=request.dict())
+        response = requests.post(f"{app.context_server_url}/api/gen_stats", json=request.dict(), timeout=60)
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
+    except requests.exceptions.Timeout:
+        logging.error("Timeout al consultar estadísticas generales")
+        raise HTTPException(status_code=504, detail="Timeout: La consulta está tardando demasiado.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
@@ -349,11 +359,18 @@ async def get_speaker_stats(request: SpeakerStatsRequest):
     logging.info(f"/api/speaker_stats called with {request}")
     logging.info(f"Llamando a {app.context_server_url}api/speaker_stats con {request.dict()}")
     try:
-        response = requests.post(f"{app.context_server_url}api/speaker_stats", json=request.dict())
+        response = requests.post(f"{app.context_server_url}api/speaker_stats", json=request.dict(), timeout=120)
+        logging.info(f"Respuesta del context server recibida: {response.status_code}")
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
+        result = response.json()
+        logging.info(f"Datos procesados exitosamente para {len(request.tags)} intervinientes")
+        return result
+    except requests.exceptions.Timeout:
+        logging.error("Timeout al consultar estadísticas de intervinientes")
+        raise HTTPException(status_code=504, detail="Timeout: La consulta está tardando demasiado. Intenta con un período de fechas más pequeño o menos intervinientes.")
     except Exception as e:
+        logging.error(f"Error en speaker_stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 @app.get("/health")

@@ -1,3 +1,10 @@
+    // Configuración de rutas API - detecta automáticamente si estamos bajo /sttcast
+    function getApiPath(endpoint) {
+        const currentPath = window.location.pathname;
+        const basePath = currentPath.startsWith('/sttcast') ? '/sttcast' : '';
+        return basePath + endpoint;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         // Variables globales
         const askForm = document.getElementById('askForm');
@@ -205,7 +212,7 @@ askForm.addEventListener('submit', async (e) => {
 
         try {
             console.log('SENDING REQUEST with question:', question);
-            const response = await fetch("/api/ask", {
+            const response = await fetch(getApiPath("/api/ask"), {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({question, language})
@@ -719,7 +726,7 @@ if ('serviceWorker' in navigator) {
             console.log('[loadSpeakers] Cargando intervinientes para el período', startDate, 'a', endDate);
             
             // Llamada real a la api gen_stats para obtener intervinientes
-            fetch('/api/gen_stats', {
+            fetch(getApiPath('/api/gen_stats'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -871,7 +878,7 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
     console.log('[speakersAnalysis] Período:', startDate, 'a', endDate);
     
     // Llamada al endpoint de análisis de intervinientes
-    fetch('/api/speaker_stats', {
+    fetch(getApiPath('/api/speaker_stats'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -888,16 +895,30 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
     })
     .then(data => {
         console.log('[speakersAnalysis] Datos recibidos:', data);
+        console.log('[speakersAnalysis] Estructura de data.stats:', data.stats);
+        
+        // Verificar que data.stats existe
+        if (!data.stats || !Array.isArray(data.stats)) {
+            throw new Error('La respuesta no contiene un array de estadísticas válido');
+        }
+        
+        console.log('[speakersAnalysis] Procesando', data.stats.length, 'intervinientes');
         
         // Mostrar las gráficas con los datos obtenidos
 	// Inclusión de campo link en episodes
-	data.stats.forEach(speaker => {
-        speaker.episodes = speaker.episodes.map(ep => ({
-              ...ep,
-              link: `<a href="transcripts/${ep.name}_whisper_audio_es.html">${ep.name}</a>`
-           }));
+	data.stats.forEach((speaker, index) => {
+        console.log(`[speakersAnalysis] Procesando interviniente ${index}: ${speaker.tag}`);
+        if (speaker.episodes && Array.isArray(speaker.episodes)) {
+            speaker.episodes = speaker.episodes.map(ep => ({
+                  ...ep,
+                  link: `<a href="${getApiPath('/transcripts')}/${ep.name}_whisper_audio_es.html">${ep.name}</a>`
+               }));
+        } else {
+            console.warn(`[speakersAnalysis] Interviniente ${speaker.tag} no tiene episodios válidos`);
+        }
         });
 
+        console.log('[speakersAnalysis] Llamando a displaySpeakersCharts...');
         displaySpeakersCharts(data);
         // Mostrar la sección de gráficas
         document.getElementById('chartsSection').classList.remove('hidden');
@@ -921,8 +942,11 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
 });
 
 function displaySpeakersCharts(data) {
+    console.log('[displaySpeakersCharts] Iniciando con data:', data);
     const chartsContainer = document.getElementById('chartsContainer');
     chartsContainer.innerHTML = '';
+    
+    console.log('[displaySpeakersCharts] Container limpiado');
     
     // Crear gráfica de total de intervenciones por interviniente
     // const interventionsData = data.stats.map(speaker => ({
@@ -1481,7 +1505,7 @@ function createSpeakerEpisodesTable(speaker) {
         console.log('[loadSpeakers] Cargando intervinientes para el período', startDate, 'a', endDate);
         
         // Llamada real a la api gen_stats para obtener intervinientes
-        fetch('/api/gen_stats', {
+        fetch(getApiPath('/api/gen_stats'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

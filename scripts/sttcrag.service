@@ -1,0 +1,17 @@
+[Unit]
+Description=Sttcast RAG Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/Sttcast/scripts/sttcrag.bash
+Restart=always
+RestartSec=5
+User=teleconectados
+WorkingDirectory=/opt/Sttcast
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

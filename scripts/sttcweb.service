@@ -1,0 +1,17 @@
+[Unit]
+Description=Sttcast Web Client Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/Sttcast/scripts/sttcweb.bash
+Restart=always
+RestartSec=5
+User=teleconectados
+WorkingDirectory=/opt/Sttcast
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

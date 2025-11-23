@@ -43,6 +43,15 @@ else:
     logging.info("RAG_SERVER_API_KEY loaded successfully")
 app.rag_server_api_key = rag_server_api_key
 
+# Load context server authentication key
+context_server_api_key = os.getenv('CONTEXT_SERVER_API_KEY')
+if not context_server_api_key:
+    logging.error("CONTEXT_SERVER_API_KEY not found in environment variables")
+    raise ValueError("CONTEXT_SERVER_API_KEY is required")
+else:
+    logging.info("CONTEXT_SERVER_API_KEY loaded successfully")
+app.context_server_api_key = context_server_api_key
+
 # In-memory history storage
 app.query_history = []
 
@@ -220,8 +229,19 @@ async def ask_question(payload: AskRequest, request: Request):
             "query": payload.question,
             "n_fragments": 100
         }
-
-        gcresp = requests.post(app.get_context_url, json=gcpayload)
+        
+        # Crear headers de autenticación HMAC para context server
+        auth_headers = create_auth_headers(
+            app.context_server_api_key,
+            "POST",
+            "/getcontext",
+            gcpayload,
+            "client_rag_service"
+        )
+        
+        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+        body_str = json.dumps(gcpayload, separators=(',', ':'), sort_keys=True)
+        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers)
         
         if gcresp.status_code != 200:
             raise HTTPException(
@@ -338,7 +358,20 @@ async def get_gen_stats(request: GenStatsRequest):
     logging.info(f"/api/gen_stats called with fromdate={request.fromdate}, todate={request.todate}")
     logging.info(f"Llamando a {app.context_server_url}api/gen_stats con {request.dict()}")
     try:
-        response = requests.post(f"{app.context_server_url}/api/gen_stats", json=request.dict(), timeout=60)
+        payload = request.dict()
+        
+        # Crear headers de autenticación HMAC para context server
+        auth_headers = create_auth_headers(
+            app.context_server_api_key,
+            "POST",
+            "/api/gen_stats",
+            payload,
+            "client_rag_service"
+        )
+        
+        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+        body_str = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+        response = requests.post(f"{app.context_server_url}/api/gen_stats", data=body_str, headers=auth_headers, timeout=60)
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         return response.json()
@@ -359,7 +392,20 @@ async def get_speaker_stats(request: SpeakerStatsRequest):
     logging.info(f"/api/speaker_stats called with {request}")
     logging.info(f"Llamando a {app.context_server_url}api/speaker_stats con {request.dict()}")
     try:
-        response = requests.post(f"{app.context_server_url}api/speaker_stats", json=request.dict(), timeout=120)
+        payload = request.dict()
+        
+        # Crear headers de autenticación HMAC para context server
+        auth_headers = create_auth_headers(
+            app.context_server_api_key,
+            "POST",
+            "/api/speaker_stats",
+            payload,
+            "client_rag_service"
+        )
+        
+        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+        body_str = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+        response = requests.post(f"{app.context_server_url}api/speaker_stats", data=body_str, headers=auth_headers, timeout=120)
         logging.info(f"Respuesta del context server recibida: {response.status_code}")
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)

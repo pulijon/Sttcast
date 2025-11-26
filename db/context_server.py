@@ -291,7 +291,7 @@ async def addsegments(request: Request):
 
     # 2) Calcular embeddings (FUERA del lock de DB)
     ints = db.get_ints(with_embeddings=False, epname=req.epname)
-    logging.info(f"Se han encontrado {len(ints)} segmentos para el episodio {request.epname}")
+    logging.info(f"Se han encontrado {len(ints)} segmentos para el episodio {req.epname}")
 
     segments = [
         {

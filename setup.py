@@ -9,7 +9,9 @@ setup(
     name="sttcast",
     version="1.0.0",
     description="Speech-to-text podcast transcription and RAG system",
-    author="Sttcast Team",
+    author="José Miguel Robles Román",
+    author_email="jmr.sttcast@alaveradeviriato.net",
+    license="GPLv3",
     packages=find_packages(include=['tools', 'api', 'rag', 'db', 'diarization', 'summaries', 'web']),
     python_requires='>=3.9',
     install_requires=[

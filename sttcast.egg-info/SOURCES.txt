@@ -1,10 +1,13 @@
+LICENSE
 README.md
 setup.py
 api/__init__.py
 api/apicontext.py
 api/apihmac.py
+api/apirag.py
 db/__init__.py
 db/context_server.py
+db/rebuild_faiss_index.py
 db/sttcastdb.py
 diarization/__init__.py
 diarization/showspeakers.py

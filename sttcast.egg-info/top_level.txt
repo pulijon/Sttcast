@@ -1,0 +1,6 @@
+api
+db
+diarization
+rag
+tools
+web

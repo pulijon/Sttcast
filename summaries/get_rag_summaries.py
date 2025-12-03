@@ -1,47 +1,18 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"..", "tools")))
-from logs import logcfg
-from envvars import load_env_vars_from_directory
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from tools.logs import logcfg
+from tools.envvars import load_env_vars_from_directory
+from api.apihmac import create_auth_headers, serialize_body
 import logging
-import os
 import json
 import argparse
 import requests
 import csv
 from datetime import datetime
-import hmac
-import hashlib
-import time
-from urllib.parse import urlparse
-import hmac
-import hashlib
-import time
-from urllib.parse import urlparse
-
-def create_hmac_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
-    """Crea una firma HMAC para autenticar la solicitud."""
-    message = f"{method}|{path}|{body}|{timestamp}"
-    return hmac.new(
-        secret_key.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-def create_auth_headers(secret_key: str, method: str, url: str, body: list) -> dict:
-    """Crea los headers de autenticación HMAC."""
-    parsed_url = urlparse(url)
-    path = parsed_url.path
-    timestamp = str(int(time.time()))
-    body_str = json.dumps(body, separators=(',', ':'), sort_keys=True)
-    signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
-    
-    return {
-        'X-Timestamp': timestamp,
-        'X-Signature': signature,
-        'X-Client-ID': 'get_rag_summaries',
-        'Content-Type': 'application/json'
-    }
 
 def load_transcriptions(input_dir, max_per_block):
     """Prepara los archivos de transcripción en bloques para enviar al servicio de resúmenes.
@@ -167,10 +138,10 @@ def main():
         logging.info(f"📦 Enviando bloque de {len(block)} episodios...: {[b['ep_id'] for b in block]}")
         try:
             # Crear headers de autenticación HMAC
-            auth_headers = create_auth_headers(rag_server_api_key, "POST", args.url, block)
+            auth_headers = create_auth_headers(rag_server_api_key, "POST", args.url, block, client_id='get_rag_summaries')
             
             # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-            body_str = json.dumps(block, separators=(',', ':'), sort_keys=True)
+            body_str = serialize_body(block)
             response = requests.post(args.url, data=body_str, headers=auth_headers)
             response.raise_for_status()
             summaries = response.json()

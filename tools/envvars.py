@@ -5,7 +5,7 @@ from pathlib import Path
 def load_env_vars_from_directory(directory=".env"):
     """
     Lee todos los archivos `.env` en un directorio en orden alfabético y configura las variables de entorno.
-    Si una variable ya está configurada, no se sobrescribe.
+    Si una variable ya está configurada en el entorno (como en Docker), NO se sobrescribe.
 
     Args:
         directory (str): Ruta del directorio que contiene los archivos `.env`.
@@ -16,7 +16,7 @@ def load_env_vars_from_directory(directory=".env"):
     
     # Leer todos los archivos .env en orden alfabético
     for env_file in sorted(env_path.glob("*.env")):
-        load_dotenv(env_file, override=True)  # No sobrescribe variables ya configuradas
+        load_dotenv(env_file, override=False)  # No sobrescribe variables ya configuradas en el entorno
     
 
 if __name__ == "__main__":

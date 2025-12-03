@@ -1,9 +1,12 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../tools")))
-from logs import logcfg
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import logging
-from envvars import load_env_vars_from_directory
+from tools.logs import logcfg
+from tools.envvars import load_env_vars_from_directory
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
@@ -16,156 +19,25 @@ import json
 import faiss
 import requests
 from datetime import datetime
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../rag")))
-from sttcast_rag_service import EmbeddingInput
+from api.apirag import EmbeddingInput
+from api.apicontext import (
+    AddSegmentsRequest,
+    GetContextRequest,
+    GetContextResponse,
+    GenStatsRequest,
+    GetGeneralStatsResponse,
+    SpeakerStat,
+    GetSpeakerStatsResponse,
+    SpeakerStatsRequest
+)
+from api.apihmac import create_auth_headers, validate_hmac_auth, serialize_body
 from contextlib import asynccontextmanager
 import threading
 from concurrent.futures import ThreadPoolExecutor
-import hmac
-import hashlib
-import time
-import json
-from urllib.parse import urlparse
-import hmac
-import hashlib
-import time
-import json
-from urllib.parse import urlparse
 
 # Clave para autenticación HMAC del servidor
 CONTEXT_SERVER_API_KEY = None
 
-def create_hmac_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
-    """Crea una firma HMAC para autenticar la solicitud."""
-    message = f"{method}|{path}|{body}|{timestamp}"
-    return hmac.new(
-        secret_key.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-def create_auth_headers(secret_key: str, method: str, url: str, body) -> dict:
-    """Crea los headers de autenticación HMAC."""
-    parsed_url = urlparse(url)
-    path = parsed_url.path
-    timestamp = str(int(time.time()))
-    
-    # SERIALIZACIÓN CONSISTENTE SIN ESPACIOS
-    if hasattr(body, 'model_dump'):
-        body_str = json.dumps(body.model_dump(), separators=(',', ':'), sort_keys=True, ensure_ascii=False)
-    elif isinstance(body, list) and len(body) > 0 and hasattr(body[0], 'model_dump'):
-        body_str = json.dumps([item.model_dump() for item in body], separators=(',', ':'), sort_keys=True, ensure_ascii=False)
-    elif isinstance(body, dict):
-        body_str = json.dumps(body, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
-    else:
-        body_str = json.dumps(body, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
-    
-    # Logging detallado para debugging
-    message = f"{method}|{path}|{body_str}|{timestamp}"
-    logging.debug(f"Creando autenticación HMAC:")
-    logging.debug(f"  URL: {url}")
-    logging.debug(f"  Método: {method}, Path: {path}")
-    logging.debug(f"  Timestamp: {timestamp}")
-    logging.debug(f"  Body original: {body}")
-    logging.debug(f"  Body serializado: {body_str}")
-    logging.debug(f"  Mensaje completo: {message}")
-    
-    signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
-    logging.info(f"HMAC Debug - Enviando a {path}: timestamp={timestamp}, signature={signature}")
-    logging.info(f"HMAC Debug - Clave API (primeros 10 chars): {secret_key[:10]}...")
-    logging.info(f"HMAC Debug - Body: {body_str}")
-    logging.info(f"HMAC Debug - Mensaje construido: {method}|{path}|{body_str}|{timestamp}")
-    
-    return {
-        'X-Timestamp': timestamp,
-        'X-Signature': signature,
-        'X-Client-ID': 'context_server',
-        'Content-Type': 'application/json'
-    }
-
-def verify_hmac_signature(secret_key: str, signature: str, method: str, path: str, body: str, timestamp: str) -> bool:
-    """Verifica la firma HMAC y el timestamp de la solicitud."""
-    try:
-        # Verificar que timestamp no sea muy antiguo (máximo 5 minutos)
-        current_time = time.time()
-        request_time = float(timestamp)
-        time_diff = abs(current_time - request_time)
-        if time_diff > 300:  # 5 minutos
-            logging.warning(f"Timestamp demasiado antiguo: {timestamp}, diferencia: {time_diff} segundos")
-            return False
-        
-        expected = create_hmac_signature(secret_key, method, path, body, timestamp)
-        is_valid = hmac.compare_digest(signature, expected)
-        
-        # Logging detallado para debugging
-        logging.info(f"HMAC Verificación - Método: {method}, Path: {path}")
-        logging.info(f"HMAC Verificación - Timestamp: {timestamp}, Body length: {len(body)}")
-        logging.info(f"HMAC Verificación - Clave API (primeros 10 chars): {secret_key[:10]}...")
-        logging.info(f"HMAC Verificación - Esperada: {expected}")
-        logging.info(f"HMAC Verificación - Recibida: {signature}")
-        logging.info(f"HMAC Verificación - ¿Válida?: {is_valid}")
-        
-        if not is_valid:
-            logging.warning("Las firmas HMAC no coinciden")
-            
-        return is_valid
-    except (ValueError, TypeError) as e:
-        logging.error(f"Error verificando firma HMAC: {e}")
-        return False
-
-def validate_context_hmac_auth(request: Request, body_bytes: bytes = b"") -> str:
-    """Valida la autenticación HMAC y retorna el client_id o lanza excepción."""
-    global CONTEXT_SERVER_API_KEY
-    
-    if not CONTEXT_SERVER_API_KEY:
-        logging.error("CONTEXT_SERVER_API_KEY no configurada")
-        raise HTTPException(status_code=500, detail="Error de configuración del servidor")
-    
-    # Obtener headers requeridos
-    timestamp = request.headers.get('X-Timestamp')
-    signature = request.headers.get('X-Signature')
-    client_id = request.headers.get('X-Client-ID', 'unknown')
-    
-    if not timestamp or not signature:
-        logging.warning(f"Headers de autenticación faltantes para client_id: {client_id}")
-        logging.warning(f"Timestamp: {'presente' if timestamp else 'ausente'}, Signature: {'presente' if signature else 'ausente'}")
-        raise HTTPException(status_code=401, detail="Headers de autenticación requeridos: X-Timestamp, X-Signature")
-    
-    # Verificar firma
-    method = request.method
-    path = str(request.url.path)
-    # USAR EL BODY EXACTO QUE RECIBIMOS, NO RESERIALIZARLO
-    body = body_bytes.decode('utf-8') if body_bytes else ""
-    
-    # LOGGING DETALLADO DEL CUERPO CRUDO
-    logging.info(f"HMAC Debug Server - Cuerpo crudo recibido: '{body}'")
-    logging.info(f"HMAC Debug Server - Bytes del cuerpo: {body_bytes}")
-    
-    logging.debug(f"Validando HMAC para {client_id}: {method} {path} con body de {len(body)} caracteres")
-    
-    if not verify_hmac_signature(CONTEXT_SERVER_API_KEY, signature, method, path, body, timestamp):
-        logging.warning(f"Autenticación HMAC fallida para client_id: {client_id}")
-        logging.debug(f"Esperado vs recibido - Método: {method}, Path: {path}, Timestamp: {timestamp}")
-        logging.debug(f"Body hash: {hashlib.sha256(body.encode()).hexdigest()[:16]}")
-        raise HTTPException(status_code=401, detail="Autenticación HMAC inválida")
-    
-    logging.info(f"Autenticación HMAC exitosa para client_id: {client_id}")
-    return client_id
-
-
-
-class AddSegmentsRequest(BaseModel):
-    epname: str
-    epdate: datetime
-    epfile: str
-    segments: List[dict]
-
-class GetContextRequest(BaseModel):
-    query: str
-    n_fragments: int = 20
-
-class GetContextResponse(BaseModel):
-    context: List[dict]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -200,8 +72,15 @@ async def lifespan(app: FastAPI):
     app.state.index_lock = threading.Lock()
 
     if os.path.exists(index_file):
-        app.state.index = faiss.read_index(index_file)
-        logging.info(f"Índice FAISS cargado de {index_file} (d={app.state.index.d})")
+        try:
+            logging.info(f"Cargando índice FAISS desde {index_file}...")
+            app.state.index = faiss.read_index(index_file)
+            logging.info(f"Índice FAISS cargado exitosamente de {index_file} (d={app.state.index.d})")
+        except Exception as e:
+            logging.error(f"Error cargando índice FAISS desde {index_file}: {e}")
+            logging.warning(f"El índice FAISS está corrupto. El servidor arrancará sin índice.")
+            logging.warning(f"Considera regenerar el índice o restaurar desde un backup.")
+            app.state.index = None
     else:
         app.state.index = None
         logging.info("No existe índice FAISS en disco; se creará al añadir segmentos por primera vez")
@@ -230,15 +109,32 @@ async def lifespan(app: FastAPI):
     # ---------- Otros parámetros ----------
     app.state.relevant_fragments = int(os.getenv("STTCAST_RELEVANT_FRAGMENTS", "100"))
     
-    # Llamar al método build_cache_speaker_episode_stats para inicializar la caché en otro thread
+    # Construcción de caché de estadísticas en background (no bloqueante)
+    # La caché se construirá después de que el servidor esté listo
+    app.state.cache_ready = False
     executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(app.state.db.build_cache_speaker_episode_stats)
+    
+    def build_cache_async():
+        try:
+            logging.info("Iniciando construcción de caché de estadísticas en background...")
+            app.state.db.build_cache_speaker_episode_stats()
+            app.state.cache_ready = True
+            logging.info("Caché de estadísticas construida exitosamente")
+        except Exception as e:
+            logging.error(f"Error construyendo caché de estadísticas: {e}")
+    
+    # Lanzar construcción en background sin esperar
+    executor.submit(build_cache_async)
+    logging.info("Servidor listo - la caché de estadísticas se está construyendo en background")
 
 
     # Listo para servir
     yield
 
     # ---------- Cierre ordenado ----------
+    # Esperar a que termine la construcción de caché antes de cerrar
+    executor.shutdown(wait=True, timeout=10)
+    
     try:
         app.state.db.close()
         logging.info("Conexión a DB cerrada correctamente")
@@ -260,7 +156,7 @@ app = FastAPI(lifespan=lifespan)
 async def addsegments(request: Request):
     # Validar autenticación HMAC
     body_bytes = await request.body()
-    client_id = validate_context_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
     
     # Parse del body
     body_dict = json.loads(body_bytes.decode('utf-8'))
@@ -310,10 +206,10 @@ async def addsegments(request: Request):
     
     # Crear headers de autenticación HMAC
     rag_api_key = app.state.rag_server_api_key
-    auth_headers = create_auth_headers(rag_api_key, "POST", url, segments)
+    auth_headers = create_auth_headers(rag_api_key, "POST", url, segments, client_id='context_server')
     
     # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-    body_str = json.dumps(segments, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    body_str = serialize_body(segments)
     r = requests.post(url, data=body_str, headers=auth_headers)
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
@@ -370,13 +266,42 @@ async def addsegments(request: Request):
     remaining = db.get_ints(with_embeddings=False, epname=req.epname)
     logging.info(f"Tras actualización, quedan {len(remaining)} segmentos sin embedding para {req.epname}")
     return {"ok": True, "episode": req.epname, "segments": len(segments)}
-    
+
+
+async def get_query_embedding(query: str, app) -> Optional[List[float]]:
+    """
+    Obtiene el embedding de una query genérica del RAG server.
+    Retorna una lista de floats o None si falla.
+    """
+    try:
+        rag_server_url = app.state.rag_server_url
+        rag_api_key = app.state.rag_server_api_key
+        
+        qurl = f"{rag_server_url}/getoneembedding"
+        query_data = {"query": query}
+        
+        auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
+        body_str = serialize_body(query_data)
+        
+        r = requests.post(qurl, data=body_str, headers=auth_headers)
+        if r.status_code != 200:
+            logging.warning(f"Error obteniendo embedding: {r.status_code} - {r.text}")
+            return None
+        
+        embedding = r.json().get("embedding")
+        if isinstance(embedding, list):
+            return embedding
+        return None
+        
+    except Exception as e:
+        logging.error(f"Error en get_query_embedding: {e}")
+        return None
 
 @app.post("/getcontext")
 async def getcontext(request: Request):
     # Validar autenticación HMAC
     body_bytes = await request.body()
-    client_id = validate_context_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
     
     # Parse del body
     body_dict = json.loads(body_bytes.decode('utf-8'))
@@ -396,10 +321,10 @@ async def getcontext(request: Request):
     
     # Crear headers de autenticación HMAC
     rag_api_key = app.state.rag_server_api_key
-    auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data)
+    auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
     
     # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-    body_str = json.dumps(query_data, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+    body_str = serialize_body(query_data)
     r = requests.post(qurl, data=body_str, headers=auth_headers)
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.text)
@@ -416,20 +341,13 @@ async def getcontext(request: Request):
     logging.info(f"Contexto recuperado: {len(context)} fragmentos")
     return GetContextResponse(context=context)
 
-class GenStatsRequest(BaseModel):
-    fromdate: str = None
-    todate: str = None
-class GetGeneralStatsResponse(BaseModel):
-    total_episodes: int
-    total_duration: float
-    speakers: List[dict]
 
 # Endpoint para obtener estadísticas generales entre dos fechas
 @app.post("/api/gen_stats")
 async def get_gen_stats(request: Request):
     # Validar autenticación HMAC
     body_bytes = await request.body()
-    client_id = validate_context_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
     
     # Parse del body
     body_dict = json.loads(body_bytes.decode('utf-8'))
@@ -441,27 +359,13 @@ async def get_gen_stats(request: Request):
     stats['speakers'] = [s for s in stats['speakers'] if not s['tag'].lower().startswith('unknown')]
     return GetGeneralStatsResponse(**stats)
 
+
 # Endpoint para obtener las estadísticas de una lista de hablantes entre dos fechas
-class SpeakerStat(BaseModel):
-    tag: str
-    episodes: List[dict]
-    total_interventions: int
-    total_duration: float
-    # total_episode_interventions: int
-    # total_episode_duration: float
-    total_episodes_in_period: int
-class GetSpeakerStatsResponse(BaseModel):
-    tags: List[str]
-    stats: List[SpeakerStat]
-class SpeakerStatsRequest(BaseModel):
-    tags: List[str]
-    fromdate: str = None
-    todate: str = None
 @app.post("/api/speaker_stats")
 async def get_speaker_stats(request: Request):
     # Validar autenticación HMAC
     body_bytes = await request.body()
-    client_id = validate_context_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
     
     # Parse del body
     body_dict = json.loads(body_bytes.decode('utf-8'))

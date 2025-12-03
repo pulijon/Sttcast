@@ -1,12 +1,26 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../tools")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),"../api")))
 import logging
 from logs import logcfg
 from envvars import load_env_vars_from_directory
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List
+from api.apirag import (
+    EpisodeInput,
+    EpisodeOutput,
+    EmbeddingInput,
+    MultiLangText,
+    References,
+    RelSearchRequest,
+    RelSearchResponse,
+    GetEmbeddingsResponse,
+    GetOneEmbeddingRequest,
+    GetOneEmbeddingResponse
+)
+from api.apihmac import validate_hmac_auth
 from bs4 import BeautifulSoup
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -27,85 +41,6 @@ openai: OpenAI = None
 
 # Clave para autenticación HMAC
 RAG_SERVER_API_KEY = None
-
-def create_signature(secret_key: str, method: str, path: str, body: str, timestamp: str) -> str:
-    """Crea una firma HMAC para autenticar la solicitud."""
-    message = f"{method}|{path}|{body}|{timestamp}"
-    return hmac.new(
-        secret_key.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-def verify_signature(secret_key: str, signature: str, method: str, path: str, body: str, timestamp: str) -> bool:
-    """Verifica la firma HMAC y el timestamp de la solicitud."""
-    try:
-        # Verificar que timestamp no sea muy antiguo (máximo 5 minutos)
-        current_time = time.time()
-        request_time = float(timestamp)
-        time_diff = abs(current_time - request_time)
-        if time_diff > 300:  # 5 minutos
-            logging.warning(f"Timestamp demasiado antiguo: {timestamp}, diferencia: {time_diff} segundos")
-            return False
-        
-        expected = create_signature(secret_key, method, path, body, timestamp)
-        is_valid = hmac.compare_digest(signature, expected)
-        
-        # Logging detallado para debugging
-        logging.info(f"HMAC Verificación - Método: {method}, Path: {path}")
-        logging.info(f"HMAC Verificación - Timestamp: {timestamp}, Body length: {len(body)}")
-        logging.info(f"HMAC Verificación - Mensaje: {method}|{path}|{body}|{timestamp}")
-        logging.info(f"HMAC Verificación - Clave API (primeros 10 chars): {secret_key[:10]}...")
-        logging.info(f"HMAC Verificación - Esperada: {expected}")
-        logging.info(f"HMAC Verificación - Recibida: {signature}")
-        logging.info(f"HMAC Verificación - ¿Válida?: {is_valid}")
-        
-        if not is_valid:
-            logging.warning("Las firmas HMAC no coinciden")
-            
-        return is_valid
-    except (ValueError, TypeError) as e:
-        logging.error(f"Error verificando firma HMAC: {e}")
-        return False
-
-def validate_hmac_auth(request: Request, body_bytes: bytes = b"") -> str:
-    """Valida la autenticación HMAC y retorna el client_id o lanza excepción."""
-    global RAG_SERVER_API_KEY
-    
-    if not RAG_SERVER_API_KEY:
-        logging.error("RAG_SERVER_API_KEY no configurada")
-        raise HTTPException(status_code=500, detail="Error de configuración del servidor")
-    
-    # Obtener headers requeridos
-    timestamp = request.headers.get('X-Timestamp')
-    signature = request.headers.get('X-Signature')
-    client_id = request.headers.get('X-Client-ID', 'unknown')
-    
-    if not timestamp or not signature:
-        logging.warning(f"Headers de autenticación faltantes para client_id: {client_id}")
-        logging.warning(f"Timestamp: {'presente' if timestamp else 'ausente'}, Signature: {'presente' if signature else 'ausente'}")
-        raise HTTPException(status_code=401, detail="Headers de autenticación requeridos: X-Timestamp, X-Signature")
-    
-    # Verificar firma
-    method = request.method
-    path = str(request.url.path)
-    # USAR EL BODY EXACTO QUE RECIBIMOS, NO RESERIALIZARLO
-    body = body_bytes.decode('utf-8') if body_bytes else ""
-    
-    # LOGGING DETALLADO DEL CUERPO CRUDO
-    logging.info(f"HMAC Debug Server - Cuerpo crudo recibido: '{body}'")
-    logging.info(f"HMAC Debug Server - Bytes del cuerpo: {body_bytes}")
-    
-    logging.debug(f"Validando HMAC para {client_id}: {method} {path} con body de {len(body)} caracteres")
-    
-    if not verify_signature(RAG_SERVER_API_KEY, signature, method, path, body, timestamp):
-        logging.warning(f"Autenticación HMAC fallida para client_id: {client_id}")
-        logging.debug(f"Esperado vs recibido - Método: {method}, Path: {path}, Timestamp: {timestamp}")
-        logging.debug(f"Body hash: {hashlib.sha256(body.encode()).hexdigest()[:16]}")
-        raise HTTPException(status_code=401, detail="Autenticación HMAC inválida")
-    
-    logging.info(f"Autenticación HMAC exitosa para client_id: {client_id}")
-    return client_id
 
 # Sistema de monitoreo de seguridad
 security_monitor = {
@@ -216,60 +151,7 @@ def log_security_event(event_type: str, client_ip: str, query: str, details: str
             security_monitor[lang_key] = 0
         security_monitor[lang_key] += 1
 
-class EpisodeInput(BaseModel):
-    ep_id: str
-    transcription: str
-
-class EpisodeOutput(BaseModel):
-    ep_id: str
-    summary: str
-    tokens_prompt: int
-    tokens_completion: int
-    tokens_total: int
-    estimated_cost_usd: float
-
-class EmbeddingInput(BaseModel):
-    tag: str
-    epname: str
-    epdate: str
-    start: float
-    end: float
-    content: str
-    
-class RelSearchRequest(BaseModel):
-    query:str
-    embeddings: List[EmbeddingInput]
-    requester: str = "unknown"  # IP del cliente final
-
-class MultiLangText(BaseModel):
-    es: str
-    en: str
-
-class References(BaseModel):
-    label: MultiLangText
-    file: str
-    time: float
-    tag: str
-    
-    
-class RelSearchResponse(BaseModel):
-    tokens_prompt: int
-    tokens_completion: int
-    tokens_total: int
-    estimated_cost_usd: float
-    search: MultiLangText
-    refs: List[References]
-
-class GetEmbeddingsResponse(BaseModel):
-    embeddings: List[List[float]] # List of byte arrays for embeddings
-    tokens_prompt: int
-    tokens_total: int
-
-class GetOneEmbeddingRequest(BaseModel):
-    query: str
-
-class GetOneEmbeddingResponse(BaseModel):
-    embedding: List[float]  # List of floats for the vector
+# Los modelos Pydantic ahora se importan desde api/apirag.py
     
 def calculate_cost_usd(prompt_tokens: int, completion_tokens: int) -> float:
     cost_input = (prompt_tokens / 1_000_000) * 0.15  # $0.15 / millón
@@ -614,7 +496,7 @@ async def summarize(request: Request):
         body_bytes = await request.body()
         
         # Validar autenticación HMAC con el cuerpo crudo
-        client_id = validate_hmac_auth(request, body_bytes)
+        client_id = validate_hmac_auth(request, RAG_SERVER_API_KEY, body_bytes)
         
         # Ahora parsear el JSON
         import json
@@ -807,7 +689,7 @@ async def relsearch(request: Request):
     body_bytes = await request.body()
     
     # Validar autenticación HMAC con el cuerpo crudo
-    client_id = validate_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, RAG_SERVER_API_KEY, body_bytes)
     
     # Ahora parsear el JSON
     import json
@@ -1020,7 +902,7 @@ async def get_embeddings(request: Request):
     body_bytes = await request.body()
     
     # Validar autenticación HMAC con el cuerpo crudo
-    client_id = validate_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, RAG_SERVER_API_KEY, body_bytes)
     
     # Ahora parsear el JSON
     import json
@@ -1062,7 +944,7 @@ async def get_one_embedding(request: Request):
     body_bytes = await request.body()
     
     # Validar autenticación HMAC con el cuerpo crudo
-    client_id = validate_hmac_auth(request, body_bytes)
+    client_id = validate_hmac_auth(request, RAG_SERVER_API_KEY, body_bytes)
     
     # Ahora parsear el JSON
     import json

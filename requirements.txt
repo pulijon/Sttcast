@@ -22,4 +22,4 @@ pandas
 faiss-cpu
 tqdm
 dotenv
-
+asyncpg

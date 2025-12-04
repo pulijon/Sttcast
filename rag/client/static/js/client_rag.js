@@ -260,8 +260,7 @@ askForm.addEventListener('submit', async (e) => {
                 wakeLock.release();
             }
             
-            askForm.querySelector('button[type=submit]').disabled = false;
-            askForm.querySelector('button[type=submit]').textContent = 'Consultar';
+            setLoadingState(false);
         }
     });
 

@@ -399,7 +399,7 @@ Cada uno de los resúmenes debe teber un bloque span con id="topic-summary".
 
 Dentro de este bloque, deberá haber una lista de los asuntos tratados, precedidos del epígrafe "Asuntos tratados" (en inglés, la traducción que corresponda) y un resumen del episodio, precedidos del epígrafe "Resumen". El resumen debe ser de unas cuatrocientas palabras. Los asuntos tratados se incluirán en un bloque span con id "tslist" y el resumen en un span con id "tstext", de forma que, a posteriori se puedan aplicar estilos.
 
-El bloque de asuntos tratados debe tener la siguiente estructura:
+El bloque de asuntos tratados debe tener la siguiente estructura, en la que Asunto 1, Asunto 2, etc. deben cambiarse por un encabezado adecuado al asunto de que se trate y Tiempo de inicio es el tiempo en el que empieza el asunto que corresponda:
 
 <span id="topic-summary">
     <span id="tslist">

@@ -4,7 +4,7 @@ Defines Pydantic models for request/response objects used in sttcast_rag_service
 """
 
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 
 # Models for /summarize endpoint

@@ -315,22 +315,37 @@ async def getcontext(request: Request):
     if index is None:
         raise HTTPException(status_code=500, detail="El índice FAISS aún no está inicializado")
 
-    # Embedding de la query (no toca DB)
-    qurl = f"{rag_server_url}/getoneembedding"
-    query_data = {"query": req.query}
+    # 1. Obtener embedding de la query
+    if req.query_embedding:
+        # Si ya viene en la petición, usarlo
+        qvec = np.array(req.query_embedding, dtype=np.float32).reshape(1, -1)
+    else:
+        # Si no, calcularlo llamando al RAG server
+        qurl = f"{rag_server_url}/getoneembedding"
+        query_data = {"query": req.query}
+        
+        # Crear headers de autenticación HMAC
+        rag_api_key = app.state.rag_server_api_key
+        auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
+        
+        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
+        body_str = serialize_body(query_data)
+        r = requests.post(qurl, data=body_str, headers=auth_headers)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        qvec = np.array(r.json().get("embedding"), dtype=np.float32).reshape(1, -1)
     
-    # Crear headers de autenticación HMAC
-    rag_api_key = app.state.rag_server_api_key
-    auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
-    
-    # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-    body_str = serialize_body(query_data)
-    r = requests.post(qurl, data=body_str, headers=auth_headers)
-    if r.status_code != 200:
-        raise HTTPException(status_code=r.status_code, detail=r.text)
-    qvec = np.array(r.json().get("embedding"), dtype=np.float32).reshape(1, -1)
+    # Normalizar siempre
     faiss.normalize_L2(qvec)
+    
+    # Convertir a lista para devolverlo en la respuesta
+    query_embedding_list = qvec[0].tolist()
 
+    # 2. Si solo se pide el embedding, devolverlo y salir
+    if req.only_embedding:
+        return GetContextResponse(context=[], query_embedding=query_embedding_list)
+
+    # 3. Buscar en FAISS
     D, I = index.search(qvec, k=k)
     ids = I[0].tolist()
     if not ids or ids[0] == -1:
@@ -339,7 +354,8 @@ async def getcontext(request: Request):
     rows = db.get_ints(with_embeddings=True, ids=ids)
     context = [{k: v for k, v in dict(row).items() if k != 'embedding'} for row in rows]
     logging.info(f"Contexto recuperado: {len(context)} fragmentos")
-    return GetContextResponse(context=context)
+    
+    return GetContextResponse(context=context, query_embedding=query_embedding_list)
 
 
 # Endpoint para obtener estadísticas generales entre dos fechas

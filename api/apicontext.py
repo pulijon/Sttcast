@@ -20,10 +20,13 @@ class AddSegmentsRequest(BaseModel):
 class GetContextRequest(BaseModel):
     query: str
     n_fragments: int = 20
+    only_embedding: bool = False
+    query_embedding: Optional[List[float]] = None
 
 
 class GetContextResponse(BaseModel):
     context: List[dict]
+    query_embedding: Optional[List[float]] = None
 
 
 # Models for /api/gen_stats endpoint

@@ -5,6 +5,12 @@ import re
 from tools.logs import logcfg
 from tools.envvars import load_env_vars_from_directory
 
+# Cargar variables de entorno ANTES de importar queriesdb
+# para que la instancia global 'db' tenga acceso a las variables
+# Usar ruta relativa al archivo actual
+env_dir = os.path.join(os.path.dirname(__file__), '..', '..')
+load_env_vars_from_directory(os.path.join(env_dir, '.env'))
+
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -16,7 +22,8 @@ from datetime import datetime
 from urllib.parse import urljoin
 from api.apihmac import create_auth_headers, serialize_body
 from findtime import find_nearest_time_id
-from database import db  # Importar el gestor de BD
+from queriesdb import db  # Importar el gestor de BD (después de cargar env vars)
+from cache_buster import get_static_url
 
 
 # Configuración desde variables de entorno
@@ -34,6 +41,8 @@ async def lifespan(app_instance: FastAPI):
     logging.info("Iniciando client_rag...")
     if app_instance.db and app_instance.db.is_available:
         await app_instance.db.initialize()
+        # Crear tablas si no existen
+        await app_instance.db.create_tables()
     yield
     # Shutdown
     logging.info("Deteniendo client_rag...")
@@ -43,7 +52,7 @@ async def lifespan(app_instance: FastAPI):
 # Inicialización de FastAPI y Jinja2
 app = FastAPI(lifespan=lifespan)
 
-load_env_vars_from_directory("../../.env")
+# Las variables de entorno ya fueron cargadas al inicio del archivo
 
 # Load authentication key
 rag_server_api_key = os.getenv('RAG_SERVER_API_KEY')
@@ -117,10 +126,15 @@ podcast_name = os.getenv('PODCAST_NAME')
 app.podcast_name = podcast_name
 logging.info(f"Podcast Name: {podcast_name}")
 
-templates = Jinja2Templates(directory="templates")
+# Usar rutas relativas al archivo actual para templates y static
+current_dir = os.path.dirname(__file__)
+templates_dir = os.path.join(current_dir, "templates")
+static_dir = os.path.join(current_dir, "static")
+
+templates = Jinja2Templates(directory=templates_dir)
 
 app.mount("/static",
-          StaticFiles(directory="static"), name="static")
+          StaticFiles(directory=static_dir), name="static")
 
 # Mount transcripts directory only if it exists
 if rag_mp3_dir and os.path.exists(rag_mp3_dir):
@@ -177,7 +191,10 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", 
                                     {
                                      "request": request,
-                                     "podcast_name": app.podcast_name
+                                     "podcast_name": app.podcast_name,
+                                     "base_path": BASE_PATH,
+                                     "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+                                     "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH)
                                     })
 
 @app.post("/api/ask")
@@ -235,9 +252,44 @@ async def ask_question(payload: AskRequest, request: Request):
                 )
 
     try:
+        # Paso 1: Obtener embedding de la pregunta
+        gcpayload_emb = {
+            "query": payload.question,
+            "n_fragments": 1, # No importa, solo queremos el embedding
+            "only_embedding": True
+        }
+        
+        auth_headers_emb = create_auth_headers(
+            app.context_server_api_key,
+            "POST",
+            "/getcontext",
+            gcpayload_emb,
+            "client_rag_service"
+        )
+        
+        body_str_emb = serialize_body(gcpayload_emb)
+        gcresp_emb = requests.post(app.get_context_url, data=body_str_emb, headers=auth_headers_emb, timeout=60)
+        
+        if gcresp_emb.status_code != 200:
+             raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Error al obtener embedding de la pregunta: {gcresp_emb.status_code}"
+            )
+        
+        data_emb = gcresp_emb.json()
+        query_embedding = data_emb.get('query_embedding')
+        
+        if not query_embedding:
+             raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo obtener el embedding de la pregunta"
+            )
+
+        # Paso 2: Obtener contexto usando el embedding
         gcpayload = {
             "query": payload.question,
-            "n_fragments": 100
+            "n_fragments": 100,
+            "query_embedding": query_embedding
         }
         
         # Crear headers de autenticación HMAC para context server
@@ -251,7 +303,7 @@ async def ask_question(payload: AskRequest, request: Request):
         
         # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
         body_str = serialize_body(gcpayload)
-        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers)
+        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers, timeout=60)
         
         if gcresp.status_code != 200:
             raise HTTPException(
@@ -281,7 +333,7 @@ async def ask_question(payload: AskRequest, request: Request):
         
         # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
         body_str = serialize_body(relquery_data)
-        relresp = requests.post(app.relsearch_url, data=body_str, headers=auth_headers)
+        relresp = requests.post(app.relsearch_url, data=body_str, headers=auth_headers, timeout=60)
         if relresp.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -349,42 +401,91 @@ async def ask_question(payload: AskRequest, request: Request):
 
         # ===== GUARDAR EN BASE DE DATOS (SOLO /api/ask) =====
         # Guardar la pregunta y respuesta en BD para futuro caché semántico
+        saved_uuid = None
+        logging.info(f"[DEBUG] Verificando guardado en BD. DB disponible: {app.db and app.db.is_available}")
         if app.db and app.db.is_available:
             try:
-                # Obtener embedding de la pregunta del RAG server
-                query_embedding = None
-                try:
-                    embed_url = f"{app.relsearch_url.rsplit('/', 1)[0]}/getoneembedding"
-                    embed_data = {"query": question}
-                    auth_headers = create_auth_headers(
-                        app.rag_server_api_key,
-                        "POST",
-                        "/getoneembedding",
-                        embed_data,
-                        "client_rag_service"
-                    )
-                    body_str = serialize_body(embed_data)
-                    embed_resp = requests.post(embed_url, data=body_str, headers=auth_headers, timeout=15)
-                    if embed_resp.status_code == 200:
-                        query_embedding = embed_resp.json().get("embedding")
-                        logging.debug(f"Embedding obtenido: {len(query_embedding) if query_embedding else 0} dimensiones")
-                except Exception as e:
-                    logging.debug(f"No se pudo obtener embedding (continuando sin él): {e}")
+                # El embedding de la pregunta ya lo tenemos de la llamada inicial a /getcontext
+                # query_embedding ya contiene el embedding
+                logging.info(f"[DEBUG] query_embedding existe: {query_embedding is not None}, tipo: {type(query_embedding) if query_embedding else 'None'}")
                 
-                # Guardar de forma asíncrona sin bloquear
-                import asyncio
-                asyncio.create_task(
-                    app.db.save_query(
+                if query_embedding:
+                    # Preparar response_data completo para almacenar
+                    response_data_to_save = {
+                        "response": reldata["search"],  # Contiene {es: ..., en: ...}
+                        "references": references,
+                        "timestamp": timestamp_iso,
+                        "query": question
+                    }
+                    
+                    # Guardar en BD con estructura completa
+                    result = await app.db.save_query(
                         query_text=question,
-                        response_text=reldata["search"],
+                        response_text=reldata["search"].get("es", ""),  # Español como texto plano
+                        response_data=response_data_to_save,
                         query_embedding=query_embedding,
                         podcast_name=app.podcast_name
                     )
-                )
-                logging.info("💾 Query guardada en BD para caché semántico")
+                    if result and result.get('uuid'):
+                        saved_uuid = result['uuid']
+                        # Construir URL para recuperar la consulta (endpoint HTML)
+                        saved_query_url = f"{BASE_PATH}/savedquery/{saved_uuid}"
+                        response_data['saved_query_url'] = saved_query_url
+                        logging.info(f"Pregunta guardada en BD con UUID: {saved_uuid}")
+                        logging.info(f"URL para recuperar: {saved_query_url}")
+                    
+                    # Buscar consultas similares (excluyendo la actual si tiene UUID)
+                    similar_queries = await app.db.search_similar_queries(
+                        query_embedding=query_embedding,
+                        podcast_name=app.podcast_name,
+                        limit=10,  # Obtener hasta 10 para clasificar por niveles
+                        similarity_threshold=0.60  # Umbral mínimo para capturar similitud baja
+                    )
+                    
+                    # Clasificar por niveles de similitud
+                    if similar_queries:
+                        # Filtrar la consulta actual si existe
+                        if saved_uuid:
+                            similar_queries = [q for q in similar_queries if str(q.get('uuid')) != saved_uuid]
+                        
+                        # Clasificar en tres niveles
+                        high_similarity = []
+                        medium_similarity = []
+                        low_similarity = []
+                        
+                        for query in similar_queries:
+                            similarity = query.get('similarity', 0)
+                            query_info = {
+                                'uuid': str(query['uuid']),
+                                'query_text': query['query_text'],
+                                'similarity': round(similarity, 3),
+                                'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
+                            }
+                            
+                            if similarity >= 0.75:
+                                high_similarity.append(query_info)
+                            elif similarity >= 0.65:
+                                medium_similarity.append(query_info)
+                            elif similarity >= 0.60:
+                                low_similarity.append(query_info)
+                        
+                        response_data['similar_queries'] = {
+                            'high': high_similarity[:3],     # Máximo 3 por nivel
+                            'medium': medium_similarity[:3],
+                            'low': low_similarity[:3]
+                        }
+                        logging.info(f"Consultas similares encontradas: {len(high_similarity)} altas, {len(medium_similarity)} medias, {len(low_similarity)} bajas")
+                        logging.info(f"[DEBUG] response_data ahora incluye similar_queries: {response_data.get('similar_queries') is not None}")
+                    
+                else:
+                    logging.warning("No se pudo obtener embedding para guardar en BD")
             except Exception as e:
-                logging.warning(f"⚠️  Error al guardar en BD (no crítico): {e}")
-
+                logging.error(f"Error guardando en BD: {e}")
+        
+        logging.info(f"[DEBUG] Antes de return - response_data tiene similar_queries: {response_data.get('similar_queries') is not None}")
+        if response_data.get('similar_queries'):
+            logging.info(f"[DEBUG] Contenido de similar_queries: {response_data['similar_queries']}")
+        
         return response_data
 
     except requests.exceptions.Timeout:
@@ -395,6 +496,208 @@ async def ask_question(payload: AskRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Error en la petición: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+@app.get("/api/savedquery/{query_uuid}")
+async def get_saved_query(query_uuid: str, request: Request):
+    """
+    Recupera una consulta guardada por su UUID
+    
+    Retorna el mismo formato que /api/ask cuando hace match,
+    permitiendo acceder a cualquier consulta almacenada mediante su URL.
+    """
+    if not app.db or not app.db.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible"
+        )
+    
+    try:
+        # Obtener query de la BD
+        query_data = await app.db.get_query_by_uuid(query_uuid)
+        
+        if not query_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró ninguna consulta con UUID: {query_uuid}"
+            )
+        
+        # Si existe response_data (nuevo formato), usarlo; si no, usar response_text (compatibilidad)
+        import json
+        if query_data.get('response_data'):
+            # Nuevo formato: respuesta completa con referencias
+            stored_response = json.loads(query_data['response_data'])
+            response_data = {
+                "success": True,
+                "response": stored_response.get('response', query_data.get('response_text', '')),
+                "references": stored_response.get('references', []),
+                "timestamp": query_data['created_at'].isoformat(),
+                "query": query_data['query_text'],
+                "podcast_name": query_data.get('podcast_name'),
+                "uuid": str(query_data['uuid']),
+                "saved_query_url": f"{BASE_PATH}/api/savedquery/{query_uuid}"
+            }
+        else:
+            # Formato antiguo: solo texto plano
+            response_data = {
+                "success": True,
+                "response": {"es": query_data['response_text'], "en": query_data['response_text']},
+                "references": [],
+                "timestamp": query_data['created_at'].isoformat(),
+                "query": query_data['query_text'],
+                "podcast_name": query_data.get('podcast_name'),
+                "uuid": str(query_data['uuid']),
+                "saved_query_url": f"{BASE_PATH}/api/savedquery/{query_uuid}"
+            }
+        
+        logging.info(f"Consulta recuperada: UUID={query_uuid}, Query='{query_data['query_text'][:50]}...'")
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error al recuperar consulta guardada: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al recuperar la consulta: {str(e)}"
+        )
+
+@app.get("/savedquery/{query_uuid}")
+async def get_saved_query_html(query_uuid: str, request: Request):
+    """
+    Renderiza una consulta guardada en formato HTML usando la plantilla existente
+    
+    Permite compartir URLs que se visualizan igual que consultas normales,
+    facilitando el sistema de caché futuro.
+    """
+    if not app.db or not app.db.is_available:
+        return templates.TemplateResponse("index.html", 
+                                        {
+                                         "request": request,
+                                         "podcast_name": app.podcast_name,
+                                         "base_path": BASE_PATH,
+                                         "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+                                         "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
+                                         "error": "Base de datos no disponible"
+                                        })
+    
+    try:
+        # Obtener query de la BD
+        query_data = await app.db.get_query_by_uuid(query_uuid)
+        
+        if not query_data:
+            return templates.TemplateResponse("index.html", 
+                                            {
+                                             "request": request,
+                                             "podcast_name": app.podcast_name,
+                                             "base_path": BASE_PATH,
+                                             "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+                                             "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
+                                             "error": f"No se encontró ninguna consulta con UUID: {query_uuid}"
+                                            })
+        
+        # Parsear response_data almacenado
+        import json
+        if query_data.get('response_data'):
+            stored_response = json.loads(query_data['response_data'])
+            saved_query_data = {
+                "query": query_data['query_text'],
+                "response": stored_response.get('response', {}),
+                "references": stored_response.get('references', []),
+                "timestamp": query_data['created_at'].isoformat(),
+                "uuid": str(query_data['uuid']),
+                "saved_query_url": f"{BASE_PATH}/savedquery/{query_uuid}"
+            }
+        else:
+            # Compatibilidad con formato antiguo
+            saved_query_data = {
+                "query": query_data['query_text'],
+                "response": {"es": query_data.get('response_text', ''), "en": query_data.get('response_text', '')},
+                "references": [],
+                "timestamp": query_data['created_at'].isoformat(),
+                "uuid": str(query_data['uuid']),
+                "saved_query_url": f"{BASE_PATH}/savedquery/{query_uuid}"
+            }
+        
+        # Buscar consultas similares usando el embedding de la consulta guardada
+        if query_data.get('query_embedding'):
+            try:
+                # Convertir el string del embedding de vuelta a lista
+                # El embedding está almacenado como string '[x,y,z,...]'
+                embedding_str = query_data['query_embedding']
+                if isinstance(embedding_str, str):
+                    # Parsear el string a lista de floats
+                    import ast
+                    query_embedding = ast.literal_eval(embedding_str)
+                else:
+                    query_embedding = embedding_str
+                
+                similar_queries = await app.db.search_similar_queries(
+                    query_embedding=query_embedding,
+                    podcast_name=app.podcast_name,
+                    limit=10,
+                    similarity_threshold=0.60
+                )
+                
+                if similar_queries:
+                    # Filtrar la consulta actual
+                    similar_queries = [q for q in similar_queries if str(q.get('uuid')) != query_uuid]
+                    
+                    # Clasificar en tres niveles
+                    high_similarity = []
+                    medium_similarity = []
+                    low_similarity = []
+                    
+                    for query in similar_queries:
+                        similarity = query.get('similarity', 0)
+                        query_info = {
+                            'uuid': str(query['uuid']),
+                            'query_text': query['query_text'],
+                            'similarity': round(similarity, 3),
+                            'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
+                        }
+                        
+                        if similarity >= 0.75:
+                            high_similarity.append(query_info)
+                        elif similarity >= 0.65:
+                            medium_similarity.append(query_info)
+                        elif similarity >= 0.60:
+                            low_similarity.append(query_info)
+                    
+                    saved_query_data['similar_queries'] = {
+                        'high': high_similarity[:3],
+                        'medium': medium_similarity[:3],
+                        'low': low_similarity[:3]
+                    }
+                    logging.info(f"Consultas similares para {query_uuid}: {len(high_similarity)} altas, {len(medium_similarity)} medias, {len(low_similarity)} bajas")
+            except Exception as e:
+                logging.error(f"Error buscando consultas similares para consulta guardada: {e}")
+        
+        logging.info(f"Renderizando consulta guardada: UUID={query_uuid}")
+        
+        # Convertir a JSON para pasar a JavaScript
+        saved_query_json = json.dumps(saved_query_data)
+        
+        return templates.TemplateResponse("index.html", 
+                                        {
+                                         "request": request,
+                                         "podcast_name": app.podcast_name,
+                                         "base_path": BASE_PATH,
+                                         "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+                                         "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
+                                         "saved_query": saved_query_json
+                                        })
+        
+    except Exception as e:
+        logging.error(f"Error al renderizar consulta guardada: {e}")
+        return templates.TemplateResponse("index.html", 
+                                        {
+                                         "request": request,
+                                         "podcast_name": app.podcast_name,
+                                         "base_path": BASE_PATH,
+                                         "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+                                         "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
+                                         "error": f"Error al cargar la consulta: {str(e)}"
+                                        })
 
 # Función que pregunta al endpoint de context server gen_stats para obtener estadísticas generales
 # a partir de dos fechas

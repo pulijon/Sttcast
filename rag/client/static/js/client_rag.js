@@ -41,6 +41,19 @@
         const chartsContainer = document.getElementById('chartsContainer');
         const speakersErrorMsg = document.getElementById('speakersErrorMsg');
         
+        // Variables para URL compartible
+        const copyUrlBtn = document.getElementById('copyUrlBtn');
+        const copyConfirmation = document.getElementById('copyConfirmation');
+        
+        // Variables para consultas similares
+        const similarQueriesSection = document.getElementById('similarQueriesSection');
+        const highSimilarityQueries = document.getElementById('highSimilarityQueries');
+        const mediumSimilarityQueries = document.getElementById('mediumSimilarityQueries');
+        const lowSimilarityQueries = document.getElementById('lowSimilarityQueries');
+        const highSimilarityTableBody = document.getElementById('highSimilarityTableBody');
+        const mediumSimilarityTableBody = document.getElementById('mediumSimilarityTableBody');
+        const lowSimilarityTableBody = document.getElementById('lowSimilarityTableBody');
+        
         const langMap = {
                 "es": "es-ES",
                 "en": "en-US",
@@ -88,6 +101,44 @@
                 endDateInput.value = today.toISOString().split('T')[0];
             }
         });
+        
+        // ===== CARGAR CONSULTA GUARDADA SI EXISTE =====
+        if (window.savedQueryData) {
+            console.log('[SAVED QUERY] Detectada consulta guardada, cargando...', window.savedQueryData);
+            
+            // Ocultar banner de cookies y selector de tipo de consulta
+            const cookieBanner = document.getElementById('cookieBanner');
+            if (cookieBanner) {
+                cookieBanner.style.display = 'none';
+            }
+            queryTypeSelection.classList.add('hidden');
+            
+            // Mostrar el formulario de temas
+            topicsForm.classList.remove('hidden');
+            
+            // Rellenar el campo de pregunta
+            questionInput.value = window.savedQueryData.query;
+            
+            // Mostrar los resultados directamente
+            const lang = languageSelect.value;
+            showResults(window.savedQueryData, lang);
+            
+            // Scroll a resultados
+            setTimeout(() => {
+                resultsSection.scrollIntoView({ 
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }, 300);
+        }
+        
+        // Mostrar error del servidor si existe
+        if (window.serverError) {
+            console.error('[SERVER ERROR]', window.serverError);
+            queryTypeSelection.classList.add('hidden');
+            topicsForm.classList.remove('hidden');
+            showError(window.serverError);
+        }
         
         // Botones de volver atrás
         backToSelection.addEventListener('click', () => {
@@ -177,6 +228,45 @@ languageSelect.addEventListener('change', () => {
     }
 });
 
+// Botón de copiar URL al portapapeles
+copyUrlBtn.addEventListener('click', async () => {
+    const shareUrlInput = document.getElementById('shareUrlInput');
+    const url = shareUrlInput.value;
+    
+    try {
+        // Usar Clipboard API moderna
+        await navigator.clipboard.writeText(url);
+        
+        // Mostrar confirmación
+        copyConfirmation.classList.remove('hidden');
+        copyUrlBtn.textContent = '✅ Copiado';
+        
+        // Resetear después de 2 segundos
+        setTimeout(() => {
+            copyConfirmation.classList.add('hidden');
+            copyUrlBtn.textContent = '📋 Copiar';
+        }, 2000);
+    } catch (err) {
+        // Fallback para navegadores antiguos
+        shareUrlInput.select();
+        shareUrlInput.setSelectionRange(0, 99999); // Para móviles
+        
+        try {
+            document.execCommand('copy');
+            copyConfirmation.classList.remove('hidden');
+            copyUrlBtn.textContent = '✅ Copiado';
+            
+            setTimeout(() => {
+                copyConfirmation.classList.add('hidden');
+                copyUrlBtn.textContent = '📋 Copiar';
+            }, 2000);
+        } catch (err2) {
+            console.error('Error al copiar:', err2);
+            alert('No se pudo copiar la URL. Por favor, cópiala manualmente.');
+        }
+    }
+});
+
 // Envío del formulario
 askForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -212,11 +302,19 @@ askForm.addEventListener('submit', async (e) => {
 
         try {
             console.log('SENDING REQUEST with question:', question);
+            
+            // Timeout de 90 segundos
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 90000);
+            
             const response = await fetch(getApiPath("/api/ask"), {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({question, language})
+                body: JSON.stringify({question, language}),
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             console.log('RESPONSE STATUS:', response.status);
             if (!response.ok) {
                 const errorData = await response.json().catch(()=>{});
@@ -252,7 +350,12 @@ askForm.addEventListener('submit', async (e) => {
             }
 
         } catch (error) {
-            errorMsg.textContent = error.message || "No se pudo completar la consulta";
+            console.error('ERROR en consulta:', error);
+            if (error.name === 'AbortError') {
+                errorMsg.textContent = "La consulta tardó demasiado (timeout de 90 segundos). Intenta con una pregunta más específica.";
+            } else {
+                errorMsg.textContent = error.message || "No se pudo completar la consulta";
+            }
             errorMsg.classList.remove('hidden');
         } finally {
             // Liberar el wake lock
@@ -357,7 +460,9 @@ askForm.addEventListener('submit', async (e) => {
     }
 
     function showResults(data, lang) {
-    console.log("Datos a mostrar:", data, lang);
+    console.log("[DEBUG showResults] Inicio - Datos completos:", data);
+    console.log("[DEBUG showResults] Lang:", lang);
+    console.log("[DEBUG showResults] data.similar_queries:", data.similar_queries);
 
     searchResult.innerHTML = data.response[lang] || "No hay respuesta para este idioma.";
 
@@ -382,6 +487,30 @@ askForm.addEventListener('submit', async (e) => {
         refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">No hay referencias.</td></tr>`;
     }
 
+    // Mostrar URL compartible si está disponible
+    const shareUrlSection = document.getElementById('shareUrlSection');
+    const shareUrlInput = document.getElementById('shareUrlInput');
+    
+    if (data.saved_query_url) {
+        // Construir URL completa
+        const fullUrl = window.location.origin + data.saved_query_url;
+        shareUrlInput.value = fullUrl;
+        shareUrlSection.classList.remove('hidden');
+        console.log('URL compartible:', fullUrl);
+    } else {
+        shareUrlSection.classList.add('hidden');
+    }
+
+    // Mostrar consultas similares si están disponibles
+    console.log('[DEBUG] Verificando similar_queries en data:', data.similar_queries);
+    if (data.similar_queries) {
+        console.log('[DEBUG] similar_queries existe, llamando a showSimilarQueries');
+        showSimilarQueries(data.similar_queries);
+    } else {
+        console.log('[DEBUG] No hay similar_queries, ocultando sección');
+        similarQueriesSection.classList.add('hidden');
+    }
+
     resultsSection.classList.remove('hidden');
     
     // Hacer scroll automático a los resultados y anunciar que están listos
@@ -396,6 +525,72 @@ askForm.addEventListener('submit', async (e) => {
         }, 300);
     }, 100);
 }
+
+    function showSimilarQueries(similarQueries) {
+        console.log('[DEBUG] showSimilarQueries llamada con:', similarQueries);
+        console.log('[DEBUG] Tipo de similarQueries:', typeof similarQueries);
+        console.log('[DEBUG] similarQueries.high:', similarQueries.high);
+        console.log('[DEBUG] similarQueries.medium:', similarQueries.medium);
+        console.log('[DEBUG] similarQueries.low:', similarQueries.low);
+        
+        // Función auxiliar para crear filas de tabla
+        function createQueryRow(query) {
+            const truncatedText = query.query_text.length > 100 
+                ? query.query_text.substring(0, 100) + '...' 
+                : query.query_text;
+            
+            const fullUrl = window.location.origin + query.url;
+            const percentage = Math.round(query.similarity * 100);
+            
+            return `
+                <tr class="hover:bg-opacity-75 cursor-pointer" onclick="window.location.href='${query.url}'">
+                    <td class="px-4 py-2 text-sm">
+                        <a href="${query.url}" class="text-blue-600 hover:text-blue-800 hover:underline">
+                            ${truncatedText}
+                        </a>
+                    </td>
+                    <td class="px-4 py-2 text-center text-sm font-semibold">
+                        ${percentage}%
+                    </td>
+                </tr>
+            `;
+        }
+        
+        // Mostrar alta similitud
+        if (similarQueries.high && similarQueries.high.length > 0) {
+            highSimilarityTableBody.innerHTML = similarQueries.high.map(createQueryRow).join('');
+            highSimilarityQueries.classList.remove('hidden');
+        } else {
+            highSimilarityQueries.classList.add('hidden');
+        }
+        
+        // Mostrar media similitud
+        if (similarQueries.medium && similarQueries.medium.length > 0) {
+            mediumSimilarityTableBody.innerHTML = similarQueries.medium.map(createQueryRow).join('');
+            mediumSimilarityQueries.classList.remove('hidden');
+        } else {
+            mediumSimilarityQueries.classList.add('hidden');
+        }
+        
+        // Mostrar baja similitud
+        if (similarQueries.low && similarQueries.low.length > 0) {
+            lowSimilarityTableBody.innerHTML = similarQueries.low.map(createQueryRow).join('');
+            lowSimilarityQueries.classList.remove('hidden');
+        } else {
+            lowSimilarityQueries.classList.add('hidden');
+        }
+        
+        // Mostrar sección si hay al menos una categoría con resultados
+        const hasResults = (similarQueries.high && similarQueries.high.length > 0) ||
+                          (similarQueries.medium && similarQueries.medium.length > 0) ||
+                          (similarQueries.low && similarQueries.low.length > 0);
+        
+        if (hasResults) {
+            similarQueriesSection.classList.remove('hidden');
+        } else {
+            similarQueriesSection.classList.add('hidden');
+        }
+    }
 
     function createRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

@@ -702,8 +702,8 @@ async def relsearch(request: Request):
     # Obtener IP del cliente final desde el campo requester
     client_ip = req.requester if req.requester != "unknown" else get_client_ip(request)
     
-    # Verificar rate limiting
-    if not check_rate_limit(client_ip):
+    # Verificar rate limiting (límite temporal muy alto para pruebas: 1000 req/60s)
+    if not check_rate_limit(client_ip, max_requests=1000, window_seconds=60):
         log_security_event('RATE_LIMIT_EXCEEDED', client_ip, req.query)
         raise HTTPException(status_code=429, detail="Demasiadas solicitudes. Intente más tarde.")
     

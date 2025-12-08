@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: sttcast-postgres
+    environment:
+      # Usuario administrador de PostgreSQL con permisos para crear BDs y usuarios
+      POSTGRES_USER: ${QUERIESDB_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${QUERIESDB_ADMIN_PASSWORD:-postgres_admin_password}
+      # Base de datos por defecto (postgres)
+      POSTGRES_DB: postgres
+    ports:
+      - "${QUERIESDB_PORT:-5432}:5432"
+    volumes:
+      # Volumen persistente para datos de PostgreSQL
+      - postgres_data:/var/lib/postgresql/data
+      # Script de inicialización para habilitar pgvector
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${QUERIESDB_ADMIN_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - sttcast-network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sttcast-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-jmrobles@alaveradeviriato.net}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - sttcast-network
+
+networks:
+  sttcast-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+

@@ -1,0 +1,44 @@
+# Configuración de Docker Compose para el cliente RAG de Sttcast
+# 
+# Las variables de entorno se cargan desde: ../../.env/rag_client.env
+# Soporta variables:
+#   - RAG_CLIENT_PORT: Puerto expuesto del contenedor (default: 8322)
+#   - RAG_MP3_DIR: Directorio local con transcripciones/MP3s (montado en /app/transcripts)
+#   - Otras variables definidas en rag_client.env
+#
+# Ver .env.example para una lista completa de variables disponibles
+
+services:
+  rag-client:
+    build:
+      context: ../../..
+      dockerfile: rag/client/docker/Dockerfile
+    container_name: sttcast-rag-client
+    ports:
+      - "${RAG_CLIENT_PORT:-8322}:${RAG_CLIENT_PORT:-8322}"
+    extra_hosts:
+      - "localhost:host-gateway"
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Montar el directorio .env del proyecto (en la raíz del proyecto)
+      - ../../../.env:/app/.env:ro
+      # Montar el directorio de logs (se crea si no existe)
+      - ./logs:/app/rag/client/logs
+      # Montar el archivo de configuración de logs
+      - ../log.yml:/app/rag/client/log.yml:ro
+      # Montar el directorio de transcripciones/MP3s si está configurado en RAG_MP3_DIR
+      - ${RAG_MP3_DIR:-./.tmp/transcripts}:/app/transcripts:ro
+    env_file:
+      - ../../../.env/rag_client.env
+    environment:
+      # Variables de entorno adicionales
+      - PYTHONUNBUFFERED=1
+      # NOTA: Ver docker-compose.override.yml para configuración específica del entorno
+    restart: unless-stopped
+    networks:
+      - sttcast-network
+
+networks:
+  sttcast-network:
+    driver: bridge
+

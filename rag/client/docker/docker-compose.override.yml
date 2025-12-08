@@ -1,0 +1,29 @@
+# docker-compose.override.yml
+# Este archivo SOBRESCRIBE las configuraciones de docker-compose.yml
+# Se usa automáticamente con `docker compose`
+#
+# context_server.py escucha en 0.0.0.0, accesible desde cualquier interfaz
+# Usamos la puerta de enlace de Docker (172.27.0.1) para acceder al host
+
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: sttcast_rag
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password
+    ports:
+      - "5432:5432"
+
+  rag-client:
+    environment:
+      # Usar la puerta de enlace de Docker para acceder a servicios en el host
+      # 172.27.0.1 es la puerta de enlace de la red Docker (sttcast-network)
+      - CONTEXT_SERVER_HOST=172.27.0.1
+      - RAG_SERVER_URL=http://172.27.0.1:8320
+      # PostgreSQL está en el mismo docker-compose (accesible por nombre)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=sttcast_rag
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_password
+

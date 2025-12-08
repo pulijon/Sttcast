@@ -306,9 +306,9 @@ askForm.addEventListener('submit', async (e) => {
         try {
             console.log('SENDING REQUEST with question:', question);
             
-            // Timeout de 90 segundos
+            // Timeout de 120 segundos
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 90000);
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
             
             const response = await fetch(getApiPath("/api/ask"), {
                 method: "POST",
@@ -355,7 +355,7 @@ askForm.addEventListener('submit', async (e) => {
         } catch (error) {
             console.error('ERROR en consulta:', error);
             if (error.name === 'AbortError') {
-                errorMsg.textContent = "La consulta tardó demasiado (timeout de 90 segundos). Intenta con una pregunta más específica.";
+                errorMsg.textContent = "La consulta tardó demasiado (timeout de 120 segundos). Intenta con una pregunta más específica.";
             } else {
                 errorMsg.textContent = error.message || "No se pudo completar la consulta";
             }

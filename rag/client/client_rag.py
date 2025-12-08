@@ -86,6 +86,14 @@ else:
     logging.info(f"HISTORY_KEY loaded successfully")
 app.history_key = history_key
 
+# Load PGV_KEY from admin.env
+pgv_key = os.getenv('PGV_KEY')
+if not pgv_key:
+    logging.warning("PGV_KEY not found in environment variables")
+else:
+    logging.info(f"PGV_KEY loaded successfully")
+app.pgv_key = pgv_key
+
 rag_client_host = os.getenv('RAG_CLIENT_HOST', 'localhost')
 rag_client_port = int(os.getenv('RAG_CLIENT_PORT', '8004'))
 context_server_host = os.getenv('CONTEXT_SERVER_HOST')
@@ -698,6 +706,147 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                                          "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
                                          "error": f"Error al cargar la consulta: {str(e)}"
                                         })
+
+@app.get("/pgv/{clave}", response_class=HTMLResponse)
+async def list_all_queries(clave: str, request: Request):
+    """
+    Lista todas las consultas guardadas en la base de datos en formato HTML
+    Requiere autenticación mediante PGV_KEY
+    """
+    # Verificar la clave
+    if not app.pgv_key or clave != app.pgv_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso no autorizado"
+        )
+    
+    if not app.db or not app.db.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible"
+        )
+    
+    try:
+        # Obtener todas las consultas de la base de datos
+        # Podemos usar limit alto para obtener todas, o implementar paginación si es necesario
+        all_queries = await app.db.get_all_queries(
+            podcast_name=app.podcast_name,
+            limit=1000,  # Ajustar según necesidades
+            offset=0
+        )
+        
+        # Construir la tabla HTML
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultas Guardadas - {app.podcast_name}</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }}
+        h1 {{
+            color: #333;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th {{
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }}
+        td {{
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }}
+        tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        a {{
+            color: #1976d2;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+        .query-text {{
+            max-width: 600px;
+            word-wrap: break-word;
+        }}
+        .timestamp {{
+            white-space: nowrap;
+            color: #666;
+        }}
+        .total-count {{
+            margin: 10px 0;
+            color: #666;
+        }}
+    </style>
+</head>
+<body>
+    <h1>Consultas Guardadas - {app.podcast_name}</h1>
+    <div class="total-count">Total de consultas: {len(all_queries)}</div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>Consulta</th>
+                <th>URL Persistente</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+        
+        # Añadir filas para cada consulta
+        for idx, query in enumerate(all_queries, 1):
+            query_uuid = query.get('uuid', '')
+            query_text = query.get('query_text', '')
+            created_at = query.get('created_at', '')
+            
+            # Construir URL persistente usando el UUID
+            query_url = f"{BASE_PATH}/savedquery/{query_uuid}"
+            
+            # Formatear fecha
+            if isinstance(created_at, datetime):
+                formatted_date = created_at.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                formatted_date = str(created_at)
+            
+            html_content += f"""
+            <tr>
+                <td>{idx}</td>
+                <td class="timestamp">{formatted_date}</td>
+                <td class="query-text">{query_text}</td>
+                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+            </tr>
+"""
+        
+        html_content += """
+        </tbody>
+    </table>
+</body>
+</html>
+"""
+        
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        logging.error(f"Error al listar consultas: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener las consultas: {str(e)}"
+        )
 
 # Función que pregunta al endpoint de context server gen_stats para obtener estadísticas generales
 # a partir de dos fechas

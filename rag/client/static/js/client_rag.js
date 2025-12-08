@@ -119,6 +119,9 @@
             // Rellenar el campo de pregunta
             questionInput.value = window.savedQueryData.query;
             
+            // Guardar los datos en lastData para que el cambio de idioma funcione
+            lastData = window.savedQueryData;
+            
             // Mostrar los resultados directamente
             const lang = languageSelect.value;
             showResults(window.savedQueryData, lang);

@@ -276,7 +276,7 @@ async def ask_question(payload: AskRequest, request: Request):
         )
         
         body_str_emb = serialize_body(gcpayload_emb)
-        gcresp_emb = requests.post(app.get_context_url, data=body_str_emb, headers=auth_headers_emb, timeout=60)
+        gcresp_emb = requests.post(app.get_context_url, data=body_str_emb, headers=auth_headers_emb, timeout=120)
         
         if gcresp_emb.status_code != 200:
              raise HTTPException(
@@ -311,7 +311,7 @@ async def ask_question(payload: AskRequest, request: Request):
         
         # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
         body_str = serialize_body(gcpayload)
-        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers, timeout=60)
+        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers, timeout=120)
         
         if gcresp.status_code != 200:
             raise HTTPException(
@@ -341,7 +341,7 @@ async def ask_question(payload: AskRequest, request: Request):
         
         # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
         body_str = serialize_body(relquery_data)
-        relresp = requests.post(app.relsearch_url, data=body_str, headers=auth_headers, timeout=60)
+        relresp = requests.post(app.relsearch_url, data=body_str, headers=auth_headers, timeout=120)
         if relresp.status_code != 200:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -810,7 +810,7 @@ async def list_all_queries(clave: str, request: Request):
         
         # Añadir filas para cada consulta
         for idx, query in enumerate(all_queries, 1):
-            query_uuid = str(query.get('uuid', ''))
+            query_uuid = query.get('uuid', '')
             query_text = query.get('query_text', '')
             created_at = query.get('created_at', '')
             
@@ -871,7 +871,7 @@ async def get_gen_stats(request: GenStatsRequest):
         
         # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
         body_str = serialize_body(payload)
-        response = requests.post(f"{app.context_server_url}/api/gen_stats", data=body_str, headers=auth_headers, timeout=60)
+        response = requests.post(f"{app.context_server_url}/api/gen_stats", data=body_str, headers=auth_headers, timeout=120)
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail=response.text)
         

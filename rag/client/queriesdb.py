@@ -528,7 +528,7 @@ class RAGDatabase:
                 if podcast_name:
                     records = await conn.fetch(
                         """
-                        SELECT id, query_text, response_text, created_at, podcast_name
+                        SELECT id, uuid, query_text, response_text, created_at, podcast_name
                         FROM rag_queries
                         WHERE podcast_name = $1
                         ORDER BY created_at DESC
@@ -541,7 +541,7 @@ class RAGDatabase:
                 else:
                     records = await conn.fetch(
                         """
-                        SELECT id, query_text, response_text, created_at, podcast_name
+                        SELECT id, uuid, query_text, response_text, created_at, podcast_name
                         FROM rag_queries
                         ORDER BY created_at DESC
                         LIMIT $1 OFFSET $2

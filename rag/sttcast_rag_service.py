@@ -563,11 +563,13 @@ def validate_user_query(query: str) -> str:
         r'(?i)(change ton rôle|modifie ton comportement|maintenant tu es)',
         
         # INGLÉS - Intentos de ejecutar código o comandos
-        r'(?i)(execute|run|eval|import|from.*import)',
+        r'(?i)\b(execute|run|eval)\b',
+        r'(?i)\bimport\b|\bfrom\s+\w+\s+import\b',
         r'(?i)(__.*__|eval\(|exec\()',
         
         # ESPAÑOL - Intentos de ejecutar código o comandos
-        r'(?i)(ejecuta|corre|evalúa|importa|ejecutar)',
+        r'(?i)\b(ejecuta|corre|evalúa|ejecutar)\b',
+        r'(?i)\bimporta\b(?!\s+(mucho|poco|nada|que|de|la|el))',  # Evitar "importa mucho", "importa que", etc.
         r'(?i)(código|comando|script)(?!\s+(de|del|en|sobre|para)\s)',  # Evitar falsos positivos cuando se habla "sobre código"
         r'(?i)\b(programa)\s+(ejecut|corr|lanc)',  # Solo "programa" seguido de verbos de ejecución
         

@@ -44,6 +44,8 @@
         // Variables para URL compartible
         const copyUrlBtn = document.getElementById('copyUrlBtn');
         const copyConfirmation = document.getElementById('copyConfirmation');
+        const shareUrlSection = document.getElementById('shareUrlSection');
+        const shareUrlInput = document.getElementById('shareUrlInput');
         
         // Variables para consultas similares
         const similarQueriesSection = document.getElementById('similarQueriesSection');
@@ -66,6 +68,322 @@
         const MAX_RETRIES = 3;
         let fontSize = 16;
         let highContrast = false;
+        let countdownInterval = null; // Intervalo para la cuenta atrás del loading
+
+        // Control de estado del botón de envío y prevención de consultas duplicadas
+        let initialQuestionValue = '';  // Valor inicial o desde consulta guardada
+        let questionHasChanged = false; // Si el texto ha cambiado desde la carga
+        let isProcessingQuery = false;  // Si hay una consulta en proceso
+        let currentSimilarQueries = null; // Consultas similares encontradas
+        let showingSimilarQueries = false; // Si estamos mostrando consultas similares
+        let pendingQuestion = ''; // Pregunta pendiente de procesar cuando se encontraron similares
+
+        // Función para actualizar el estado del botón de envío
+        function updateSubmitButtonState() {
+            const hasText = questionInput.value.trim().length > 0;
+            const canSubmit = hasText && 
+                             questionHasChanged && 
+                             !isProcessingQuery && 
+                             !showingSimilarQueries;
+            
+            submitBtn.disabled = !canSubmit;
+            
+            // Actualizar texto del botón según el estado
+            if (isProcessingQuery) {
+                submitText.textContent = 'Procesando...';
+            } else if (!hasText) {
+                submitText.textContent = 'Introduce tu pregunta';
+            } else if (!questionHasChanged) {
+                submitText.textContent = 'Modifica la pregunta para enviar';
+            } else if (showingSimilarQueries) {
+                submitText.textContent = 'Selecciona una opción arriba';
+            } else {
+                submitText.textContent = 'Consultar';
+            }
+        }
+
+        // Función para reiniciar el estado cuando se carga una nueva consulta
+        function resetQuestionState(newQuestion = '') {
+            initialQuestionValue = newQuestion;
+            questionInput.value = newQuestion;
+            questionHasChanged = false;
+            isProcessingQuery = false;
+            showingSimilarQueries = false;
+            currentSimilarQueries = null;
+            updateSubmitButtonState();
+        }
+
+        // Monitor de cambios en el input de pregunta
+        questionInput.addEventListener('input', () => {
+            const currentValue = questionInput.value;
+            questionHasChanged = currentValue !== initialQuestionValue;
+            
+            // Si está mostrando consultas similares y el usuario modifica, ocultar
+            if (showingSimilarQueries && questionHasChanged) {
+                hideSimilarQueries();
+            }
+            
+            updateSubmitButtonState();
+        });
+
+        // Función para mostrar consultas similares
+        function showSimilarQueries(similarQueries, message) {
+            try {
+                console.log('[DEBUG] === INICIO showSimilarQueries ===');
+                console.log('[DEBUG] similarQueries recibido:', JSON.stringify(similarQueries, null, 2));
+                console.log('[DEBUG] message:', message);
+                
+                currentSimilarQueries = similarQueries;
+                showingSimilarQueries = true;
+                console.log('[DEBUG] Variables de estado actualizadas');
+                
+                // Guardar la pregunta actual para procesarla si el usuario decide continuar
+                pendingQuestion = questionInput.value.trim();
+                console.log('[SIMILAR CHECK] Pregunta guardada para continuar:', pendingQuestion);
+                
+                // Ocultar el contenido normal de resultados (pero no sobrescribirlo)
+                if (searchResult) searchResult.classList.add('hidden');
+                if (refsTable) refsTable.parentElement.classList.add('hidden');
+                if (shareUrlSection) shareUrlSection.classList.add('hidden');
+                console.log('[DEBUG] Contenido de resultados normales ocultado');
+                
+                // Crear HTML para las consultas similares
+                let similarHtml = `
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-blue-800">Consultas similares encontradas</h3>
+                            <div class="mt-2 text-sm text-blue-700">
+                                <p>${message}</p>
+                            </div>
+                            <div class="mt-4">
+                                <div class="flex space-x-2">
+                                    <button id="continueNewSearch" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
+                                        Buscar de nuevo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            console.log('[DEBUG] Iniciando procesamiento de niveles...');
+            
+            // Agregar las consultas similares por categorías
+            ['high', 'medium', 'low'].forEach(level => {
+                console.log(`[DEBUG] Iterando nivel: ${level}`);
+                const queries = similarQueries[level] || [];
+                console.log(`[DEBUG] Procesando nivel ${level}, queries:`, queries.length);
+                    if (queries.length > 0) {
+                    const levelNames = {
+                        'high': 'Alta similitud (85%+)',
+                        'medium': 'Similitud media (70-84%)', 
+                        'low': 'Baja similitud (60-69%)'
+                    };
+                    
+                    const levelColors = {
+                        'high': 'bg-green-100 border-green-200',
+                        'medium': 'bg-yellow-100 border-yellow-200',
+                        'low': 'bg-orange-100 border-orange-200'
+                    };
+                    
+                    console.log(`[DEBUG] Agregando sección ${levelNames[level]}`);
+                    
+                    similarHtml += `
+                        <div class="mt-4 ${levelColors[level]} border rounded-lg p-4">
+                            <h4 class="font-semibold mb-3 text-gray-800">${levelNames[level]}</h4>
+                            <div class="space-y-2">
+                    `;
+                    
+                    queries.forEach(query => {
+                        console.log(`[DEBUG] Agregando query:`, query.query_text);
+                        similarHtml += `
+                            <div class="bg-white p-3 rounded border">
+                                <p class="text-sm text-gray-700 mb-2">${query.query_text}</p>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-gray-500">Similitud: ${(query.similarity * 100).toFixed(1)}%</span>
+                                    <button onclick="loadSavedQuery('${query.uuid}')" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs">
+                                        Usar esta respuesta
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    similarHtml += `
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            console.log('[DEBUG] HTML generado, longitud:', similarHtml.length);
+            console.log('[DEBUG] resultsSection:', resultsSection);
+            
+            // Crear o actualizar div para consultas similares (sin sobrescribir todo resultsSection)
+            let similarDiv = document.getElementById('similarQueriesDiv');
+            if (!similarDiv) {
+                similarDiv = document.createElement('div');
+                similarDiv.id = 'similarQueriesDiv';
+                resultsSection.insertBefore(similarDiv, resultsSection.firstChild);
+            }
+            similarDiv.innerHTML = similarHtml;
+            similarDiv.classList.remove('hidden');
+            resultsSection.classList.remove('hidden');
+            
+            console.log('[DEBUG] similarDiv creado/actualizado, visible:', !resultsSection.classList.contains('hidden'));
+            
+            // Agregar event listener al botón de continuar
+            document.getElementById('continueNewSearch').addEventListener('click', () => {
+                hideSimilarQueries();
+                processNewSearch();
+            });
+            
+            updateSubmitButtonState();
+            
+            } catch (error) {
+                console.error('[FATAL ERROR] Error general en showSimilarQueries:', error);
+                console.error('[FATAL ERROR] Stack:', error.stack);
+                // Mostrar error al usuario
+                errorMsg.textContent = 'Error al mostrar consultas similares: ' + error.message;
+                errorMsg.classList.remove('hidden');
+                isProcessingQuery = false;
+                updateSubmitButtonState();
+            }
+        }
+
+        // Función para ocultar consultas similares
+        function hideSimilarQueries() {
+            showingSimilarQueries = false;
+            currentSimilarQueries = null;
+            pendingQuestion = ''; // Limpiar pregunta pendiente
+            
+            // Ocultar/eliminar el div de consultas similares
+            const similarDiv = document.getElementById('similarQueriesDiv');
+            if (similarDiv) {
+                similarDiv.remove();
+            }
+            
+            // Mostrar de nuevo los elementos normales de resultados
+            if (searchResult) searchResult.classList.remove('hidden');
+            if (refsTable) refsTable.parentElement.classList.remove('hidden');
+            
+            updateSubmitButtonState();
+        }
+
+        // Función para cargar una consulta guardada (usada desde los botones de consultas similares)
+        window.loadSavedQuery = async function(uuid) {
+            try {
+                isProcessingQuery = true;
+                updateSubmitButtonState();
+                
+                const response = await fetch(getApiPath(`/api/savedquery/${uuid}`));
+                if (!response.ok) {
+                    throw new Error('Error al cargar la consulta guardada');
+                }
+                
+                const data = await response.json();
+                
+                // Actualizar el input con la pregunta cargada
+                resetQuestionState(data.query);
+                
+                // Mostrar los resultados
+                hideSimilarQueries();
+                lastData = data;
+                showResults(data, languageSelect.value);
+                
+            } catch (error) {
+                console.error('Error loading saved query:', error);
+                errorMsg.textContent = 'Error al cargar la consulta guardada: ' + error.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                isProcessingQuery = false;
+                updateSubmitButtonState();
+            }
+        };
+
+        // Función para procesar una nueva búsqueda (saltando verificación de similares)
+        async function processNewSearch() {
+            // Usar la pregunta guardada cuando se detectaron similares
+            const question = pendingQuestion || questionInput.value.trim();
+            const language = languageSelect.value;
+            
+            console.log('[PROCESS NEW] Procesando con pregunta:', question);
+            console.log('[PROCESS NEW] pendingQuestion:', pendingQuestion);
+
+            if (!question) {
+                errorMsg.textContent = 'Por favor, introduce una pregunta.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            isProcessingQuery = true;
+            updateSubmitButtonState();
+            hideSimilarQueries();
+
+            // Limpiar resultados anteriores
+            errorMsg.classList.add('hidden');
+            resultsSection.classList.add('hidden');
+            searchResult.innerHTML = '';
+            refsTable.innerHTML = '';
+
+            // Mostrar estado de carga
+            setLoadingState(true);
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000);
+                
+                const response = await fetch(getApiPath("/api/ask"), {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        question, 
+                        language,
+                        skip_similarity_check: true  // Saltar verificación de similares
+                    }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(()=>{});
+                    throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+                }
+                
+                const data = await response.json();
+                lastData = data;
+                
+                // Actualizar estado: ahora la pregunta actual es la "inicial"
+                resetQuestionState(question);
+                
+                showResults(data, language);
+                
+                // Detener loading después de mostrar resultados
+                setLoadingState(false);
+
+            } catch (error) {
+                console.error('Error in new search:', error);
+                if (error.name === 'AbortError') {
+                    errorMsg.textContent = 'La consulta ha tardado demasiado tiempo. Por favor, inténtalo de nuevo.';
+                } else {
+                    errorMsg.textContent = 'Error en la consulta: ' + error.message;
+                }
+                errorMsg.classList.remove('hidden');
+            } finally {
+                setLoadingState(false);
+                isProcessingQuery = false;
+                updateSubmitButtonState();
+            }
+        }
 
         // Navegación entre formularios
         queryTypeForm.addEventListener('submit', (e) => {
@@ -84,8 +402,9 @@
             queryTypeSelection.classList.add('hidden');
             
             if (selectedType.value === 'topics') {
-                // Mostrar formulario de consultas por temas
+                // Mostrar formulario de consultas por temas y reiniciar estado
                 topicsForm.classList.remove('hidden');
+                resetQuestionState('');
                 questionInput.focus();
                 } else if (selectedType.value === 'speakers') {
                 // Mostrar formulario de análisis de intervinientes
@@ -111,21 +430,29 @@
             if (cookieBanner) {
                 cookieBanner.style.display = 'none';
             }
+            
+            console.log('[SAVED QUERY] Ocultando selector de tipo de consulta');
             queryTypeSelection.classList.add('hidden');
             
-            // Mostrar el formulario de temas
+            console.log('[SAVED QUERY] Mostrando formulario de temas');
             topicsForm.classList.remove('hidden');
             
-            // Rellenar el campo de pregunta
-            questionInput.value = window.savedQueryData.query;
+            console.log('[SAVED QUERY] Estableciendo pregunta:', window.savedQueryData.query);
+            // Usar resetQuestionState para establecer como pregunta "inicial"
+            resetQuestionState(window.savedQueryData.query);
             
             // Guardar los datos en lastData para que el cambio de idioma funcione
             lastData = window.savedQueryData;
             
+            console.log('[SAVED QUERY] Mostrando resultados...');
             // Mostrar los resultados directamente
             const lang = languageSelect.value;
             showResults(window.savedQueryData, lang);
             
+            // Asegurar que el estado de loading esté desactivado
+            setLoadingState(false);
+            
+            console.log('[SAVED QUERY] Haciendo scroll a resultados');
             // Scroll a resultados
             setTimeout(() => {
                 resultsSection.scrollIntoView({ 
@@ -133,6 +460,10 @@
                     block: 'start'
                 });
             }, 300);
+        } else {
+            console.log('[SAVED QUERY] No hay consulta guardada, inicializando estado limpio');
+            // Si no hay consulta guardada, inicializar con estado limpio
+            resetQuestionState('');
         }
         
         // Mostrar error del servidor si existe
@@ -147,10 +478,11 @@
         backToSelection.addEventListener('click', () => {
             topicsForm.classList.add('hidden');
             queryTypeSelection.classList.remove('hidden');
-            // Limpiar formulario de temas
-            questionInput.value = '';
+            // Limpiar formulario de temas y reiniciar estado
+            resetQuestionState('');
             resultsSection.classList.add('hidden');
             errorMsg.classList.add('hidden');
+            hideSimilarQueries();
         });
         
         backToSelectionSpeakers.addEventListener('click', () => {
@@ -275,103 +607,117 @@ askForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     console.log('FORM SUBMITTED - Starting request...');
 
-    // Occultar mensajes anteriores
+    // Si no puede enviar según el estado actual, no hacer nada
+    if (!questionHasChanged || isProcessingQuery || showingSimilarQueries) {
+        return;
+    }
+
+    // Ocultar mensajes anteriores
     errorMsg.classList.add('hidden');
     resultsSection.classList.add('hidden');
     searchResult.innerHTML = '';
     refsTable.innerHTML = '';
 
-        const question = questionInput.value.trim();
-        const language = languageSelect.value;
+    const question = questionInput.value.trim();
+    const language = languageSelect.value;
 
-        if (!question) {
-            errorMsg.textContent = 'Por favor, introduce una pregunta.';
-            errorMsg.classList.remove('hidden');
+    if (!question) {
+        errorMsg.textContent = 'Por favor, introduce una pregunta.';
+        errorMsg.classList.remove('hidden');
+        return;
+    }
+
+    isProcessingQuery = true;
+    updateSubmitButtonState();
+
+    // Mostrar estado de carga
+    setLoadingState(true);
+
+    // Prevenir que se active el protector de pantalla durante la consulta
+    let wakeLock = null;
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+        }
+    } catch (err) {
+        console.log('Wake Lock no disponible:', err);
+    }
+
+    try {
+        console.log('SENDING REQUEST with question:', question);
+        
+        // Timeout de 120 segundos
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        
+        // Primer intento: consulta normal (que verificará similares)
+        const response = await fetch(getApiPath("/api/ask"), {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({question, language}),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        console.log('RESPONSE STATUS:', response.status);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(()=>{});
+            throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+        }
+        
+        const data = await response.json();
+        console.log('DATA RECEIVED:', data);
+        
+        // Verificar si se requiere confirmación (hay consultas similares)
+        if (data.requires_confirmation && data.similar_queries) {
+            setLoadingState(false);
+            console.log('[SIMILAR CHECK] Mostrando consultas similares:', data.similar_queries);
+            console.log('[SIMILAR CHECK] Mensaje:', data.message);
+            showSimilarQueries(data.similar_queries, data.message || 'Se encontraron consultas similares.');
+            isProcessingQuery = false;
+            updateSubmitButtonState();
             return;
         }
+        
+        // Si llegamos aquí, es una respuesta normal o match exacto
+        lastData = data;
+        
+        // Actualizar estado: ahora esta pregunta es la "inicial"
+        resetQuestionState(question);
+        
+        showResults(data, language);
+        
+        // Detener loading después de mostrar resultados
+        setLoadingState(false);
 
-        // Mostrar estado de carga
-        setLoadingState(true);
-
-        // Prevenir que se active el protector de pantalla durante la consulta
-        let wakeLock = null;
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-            }
-        } catch (err) {
-            console.log('Wake Lock no disponible:', err);
+    } catch (error) {
+        console.error('Error in form submission:', error);
+        setLoadingState(false);
+        
+        if (error.name === 'AbortError') {
+            errorMsg.textContent = 'La consulta ha tardado demasiado tiempo. Por favor, inténtalo de nuevo.';
+        } else {
+            errorMsg.textContent = 'Error en la consulta: ' + error.message;
         }
-
-        try {
-            console.log('SENDING REQUEST with question:', question);
-            
-            // Timeout de 120 segundos
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 120000);
-            
-            const response = await fetch(getApiPath("/api/ask"), {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({question, language}),
-                signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            console.log('RESPONSE STATUS:', response.status);
-            if (!response.ok) {
-                const errorData = await response.json().catch(()=>{});
-                throw new Error(errorData?.detail || errorData?.error || "Error en la consulta");
+        errorMsg.classList.remove('hidden');
+    } finally {
+        // Liberar wake lock
+        if (wakeLock) {
+            try {
+                await wakeLock.release();
+            } catch (err) {
+                console.log('Error releasing wake lock:', err);
             }
-            const data = await response.json();
-            console.log('DATA RECEIVED:', data);
-            lastData = data;
-            showResults(data, language);
-
-            // Check if query field exists and log for debugging
-            console.log('Checking for query field:', data.query, 'Type:', typeof data.query);
-            
-            // If response contains a query field, replace the question in the form
-            if (data.query) {
-                console.log('History query detected:', data.query);
-                const timestamp = new Date(data.timestamp).toLocaleString();
-                const newValue = `${timestamp} - ${data.query}`;
-                console.log('Setting question input to:', newValue);
-                
-                // Use setTimeout to ensure the DOM is updated
-                setTimeout(() => {
-                    const questionField = document.getElementById('question');
-                    if (questionField) {
-                        questionField.value = newValue;
-                        console.log('Question input updated to:', questionField.value);
-                    } else {
-                        console.error('Question input field not found!');
-                    }
-                }, 150);
-            } else {
-                console.log('No query field found or query field is falsy');
-            }
-
-        } catch (error) {
-            console.error('ERROR en consulta:', error);
-            if (error.name === 'AbortError') {
-                errorMsg.textContent = "La consulta tardó demasiado (timeout de 120 segundos). Intenta con una pregunta más específica.";
-            } else {
-                errorMsg.textContent = error.message || "No se pudo completar la consulta";
-            }
-            errorMsg.classList.remove('hidden');
-        } finally {
-            // Liberar el wake lock
-            if (wakeLock) {
-                wakeLock.release();
-            }
-            
-            setLoadingState(false);
         }
-    });
+        
+        isProcessingQuery = false;
+        updateSubmitButtonState();
+    }
+});
 
-    // Configurar reconocimiento de voz dentro del DOMContentLoaded
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+// Configurar reconocimiento de voz dentro del DOMContentLoaded
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         micBtn.addEventListener('click', startRecognition);
         micBtn.setAttribute('aria-pressed', 'false');
         
@@ -409,7 +755,6 @@ askForm.addEventListener('submit', async (e) => {
     initCookies();
 
     // Funciones de utilidad dentro del scope del DOMContentLoaded
-    let countdownInterval = null;
     
     function setLoadingState(loading) {
         submitBtn.disabled = loading;
@@ -491,26 +836,93 @@ askForm.addEventListener('submit', async (e) => {
     }
 
     // Mostrar URL compartible si está disponible
-    const shareUrlSection = document.getElementById('shareUrlSection');
-    const shareUrlInput = document.getElementById('shareUrlInput');
-    
-    if (data.saved_query_url) {
+    if (data.saved_query_url && shareUrlSection && shareUrlInput) {
         // Construir URL completa
         const fullUrl = window.location.origin + data.saved_query_url;
         shareUrlInput.value = fullUrl;
         shareUrlSection.classList.remove('hidden');
         console.log('URL compartible:', fullUrl);
-    } else {
+    } else if (shareUrlSection) {
         shareUrlSection.classList.add('hidden');
     }
 
     // Mostrar consultas similares si están disponibles
     console.log('[DEBUG] Verificando similar_queries en data:', data.similar_queries);
     if (data.similar_queries) {
-        console.log('[DEBUG] similar_queries existe, llamando a showSimilarQueries');
-        showSimilarQueries(data.similar_queries);
-    } else {
-        console.log('[DEBUG] No hay similar_queries, ocultando sección');
+        console.log('[DEBUG] similar_queries encontradas, mostrando en sección');
+        // Mostrar las consultas similares en la sección estática
+        if (highSimilarityTableBody && highSimilarityQueries) {
+            if (data.similar_queries.high && data.similar_queries.high.length > 0) {
+                highSimilarityTableBody.innerHTML = data.similar_queries.high.map(query => `
+                    <tr class="hover:bg-opacity-75 cursor-pointer" onclick="window.location.href='${query.url}'">
+                        <td class="px-4 py-2 text-sm">
+                            <a href="${query.url}" class="text-blue-600 hover:text-blue-800 hover:underline">
+                                ${query.query_text}
+                            </a>
+                        </td>
+                        <td class="px-4 py-2 text-center text-sm font-semibold">
+                            ${Math.round(query.similarity * 100)}%
+                        </td>
+                    </tr>
+                `).join('');
+                highSimilarityQueries.classList.remove('hidden');
+            } else {
+                highSimilarityQueries.classList.add('hidden');
+            }
+        } else {
+            console.warn('[WARNING] highSimilarityTableBody or highSimilarityQueries not found in DOM');
+        }
+        
+        if (mediumSimilarityTableBody && mediumSimilarityQueries) {
+            if (data.similar_queries.medium && data.similar_queries.medium.length > 0) {
+                mediumSimilarityTableBody.innerHTML = data.similar_queries.medium.map(query => `
+                    <tr class="hover:bg-opacity-75 cursor-pointer" onclick="window.location.href='${query.url}'">
+                        <td class="px-4 py-2 text-sm">
+                            <a href="${query.url}" class="text-blue-600 hover:text-blue-800 hover:underline">
+                                ${query.query_text}
+                            </a>
+                        </td>
+                        <td class="px-4 py-2 text-center text-sm font-semibold">
+                            ${Math.round(query.similarity * 100)}%
+                        </td>
+                    </tr>
+                `).join('');
+                mediumSimilarityQueries.classList.remove('hidden');
+            } else {
+                mediumSimilarityQueries.classList.add('hidden');
+            }
+        } else {
+            console.warn('[WARNING] mediumSimilarityTableBody or mediumSimilarityQueries not found in DOM');
+        }
+        
+        if (lowSimilarityTableBody && lowSimilarityQueries) {
+            if (data.similar_queries.low && data.similar_queries.low.length > 0) {
+                lowSimilarityTableBody.innerHTML = data.similar_queries.low.map(query => `
+                    <tr class="hover:bg-opacity-75 cursor-pointer" onclick="window.location.href='${query.url}'">
+                        <td class="px-4 py-2 text-sm">
+                            <a href="${query.url}" class="text-blue-600 hover:text-blue-800 hover:underline">
+                                ${query.query_text}
+                            </a>
+                        </td>
+                        <td class="px-4 py-2 text-center text-sm font-semibold">
+                            ${Math.round(query.similarity * 100)}%
+                        </td>
+                    </tr>
+                `).join('');
+                lowSimilarityQueries.classList.remove('hidden');
+            } else {
+                lowSimilarityQueries.classList.add('hidden');
+            }
+        } else {
+            console.warn('[WARNING] lowSimilarityTableBody or lowSimilarityQueries not found in DOM');
+        }
+        
+        if (similarQueriesSection) {
+            similarQueriesSection.classList.remove('hidden');
+        } else {
+            console.warn('[WARNING] similarQueriesSection not found in DOM');
+        }
+    } else if (similarQueriesSection) {
         similarQueriesSection.classList.add('hidden');
     }
 
@@ -528,72 +940,6 @@ askForm.addEventListener('submit', async (e) => {
         }, 300);
     }, 100);
 }
-
-    function showSimilarQueries(similarQueries) {
-        console.log('[DEBUG] showSimilarQueries llamada con:', similarQueries);
-        console.log('[DEBUG] Tipo de similarQueries:', typeof similarQueries);
-        console.log('[DEBUG] similarQueries.high:', similarQueries.high);
-        console.log('[DEBUG] similarQueries.medium:', similarQueries.medium);
-        console.log('[DEBUG] similarQueries.low:', similarQueries.low);
-        
-        // Función auxiliar para crear filas de tabla
-        function createQueryRow(query) {
-            const truncatedText = query.query_text.length > 100 
-                ? query.query_text.substring(0, 100) + '...' 
-                : query.query_text;
-            
-            const fullUrl = window.location.origin + query.url;
-            const percentage = Math.round(query.similarity * 100);
-            
-            return `
-                <tr class="hover:bg-opacity-75 cursor-pointer" onclick="window.location.href='${query.url}'">
-                    <td class="px-4 py-2 text-sm">
-                        <a href="${query.url}" class="text-blue-600 hover:text-blue-800 hover:underline">
-                            ${truncatedText}
-                        </a>
-                    </td>
-                    <td class="px-4 py-2 text-center text-sm font-semibold">
-                        ${percentage}%
-                    </td>
-                </tr>
-            `;
-        }
-        
-        // Mostrar alta similitud
-        if (similarQueries.high && similarQueries.high.length > 0) {
-            highSimilarityTableBody.innerHTML = similarQueries.high.map(createQueryRow).join('');
-            highSimilarityQueries.classList.remove('hidden');
-        } else {
-            highSimilarityQueries.classList.add('hidden');
-        }
-        
-        // Mostrar media similitud
-        if (similarQueries.medium && similarQueries.medium.length > 0) {
-            mediumSimilarityTableBody.innerHTML = similarQueries.medium.map(createQueryRow).join('');
-            mediumSimilarityQueries.classList.remove('hidden');
-        } else {
-            mediumSimilarityQueries.classList.add('hidden');
-        }
-        
-        // Mostrar baja similitud
-        if (similarQueries.low && similarQueries.low.length > 0) {
-            lowSimilarityTableBody.innerHTML = similarQueries.low.map(createQueryRow).join('');
-            lowSimilarityQueries.classList.remove('hidden');
-        } else {
-            lowSimilarityQueries.classList.add('hidden');
-        }
-        
-        // Mostrar sección si hay al menos una categoría con resultados
-        const hasResults = (similarQueries.high && similarQueries.high.length > 0) ||
-                          (similarQueries.medium && similarQueries.medium.length > 0) ||
-                          (similarQueries.low && similarQueries.low.length > 0);
-        
-        if (hasResults) {
-            similarQueriesSection.classList.remove('hidden');
-        } else {
-            similarQueriesSection.classList.add('hidden');
-        }
-    }
 
     function createRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

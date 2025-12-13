@@ -188,6 +188,11 @@ def format_time(seconds):
 class AskRequest(BaseModel):
     question: str
     language: str = 'es'
+    skip_similarity_check: bool = False
+
+class CheckSimilarRequest(BaseModel):
+    question: str
+    language: str = 'es'
 
 # ------------------------
 #   Endpoints
@@ -205,6 +210,151 @@ async def index(request: Request):
                                      "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH)
                                     })
 
+@app.post("/api/check_similar")
+async def check_similar_queries(payload: CheckSimilarRequest, request: Request):
+    """
+    Verifica si existen consultas similares antes del procesamiento completo.
+    Retorna las consultas similares encontradas para que el usuario pueda elegir
+    una respuesta rápida o continuar con el procesamiento completo.
+    """
+    question = payload.question.strip() if payload.question else ""
+    
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La pregunta no puede estar vacía"
+        )
+
+    if not app.db or not app.db.is_available:
+        # Si no hay BD disponible, indicar que puede continuar
+        return {
+            "exact_match": False,
+            "similar_queries": {"high": [], "medium": [], "low": []},
+            "can_continue": True
+        }
+
+    try:
+        # Paso 1: Obtener embedding de la pregunta
+        gcpayload_emb = {
+            "query": payload.question,
+            "n_fragments": 1,
+            "only_embedding": True
+        }
+        
+        auth_headers_emb = create_auth_headers(
+            app.context_server_api_key,
+            "POST",
+            "/getcontext",
+            gcpayload_emb,
+            "client_rag_service"
+        )
+        
+        body_str_emb = serialize_body(gcpayload_emb)
+        gcresp_emb = requests.post(app.get_context_url, data=body_str_emb, headers=auth_headers_emb, timeout=120)
+        
+        if gcresp_emb.status_code != 200:
+            logging.warning(f"Error al obtener embedding para verificación: {gcresp_emb.status_code}")
+            return {
+                "exact_match": False,
+                "similar_queries": {"high": [], "medium": [], "low": []},
+                "can_continue": True
+            }
+        
+        data_emb = gcresp_emb.json()
+        query_embedding = data_emb.get('query_embedding')
+        
+        if not query_embedding:
+            return {
+                "exact_match": False,
+                "similar_queries": {"high": [], "medium": [], "low": []},
+                "can_continue": True
+            }
+
+        # Paso 2: Buscar consultas similares
+        similar_queries = await app.db.search_similar_queries(
+            query_embedding=query_embedding,
+            podcast_name=app.podcast_name,
+            limit=15,
+            similarity_threshold=0.60
+        )
+        
+        if not similar_queries:
+            return {
+                "exact_match": False,
+                "similar_queries": {"high": [], "medium": [], "low": []},
+                "can_continue": True
+            }
+        
+        # Clasificar consultas por similitud
+        high_similarity = []
+        medium_similarity = []
+        low_similarity = []
+        exact_match = False
+        
+        for query in similar_queries:
+            similarity = query.get('similarity', 0)
+            
+            # Verificar match exacto (100% de similitud)
+            if similarity >= 0.9999:  # Prácticamente 100%
+                exact_match = True
+                # Para match exacto, retornar directamente esa consulta
+                return {
+                    "exact_match": True,
+                    "exact_match_query": {
+                        'uuid': str(query['uuid']),
+                        'query_text': query['query_text'],
+                        'similarity': round(similarity, 4),
+                        'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
+                    },
+                    "can_continue": False
+                }
+            
+            query_info = {
+                'uuid': str(query['uuid']),
+                'query_text': query['query_text'],
+                'similarity': round(similarity, 3),
+                'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
+            }
+            
+            if similarity >= 0.85:  # Umbral alto para alta similitud
+                high_similarity.append(query_info)
+            elif similarity >= 0.70:  # Umbral medio
+                medium_similarity.append(query_info)
+            elif similarity >= 0.60:  # Umbral bajo
+                low_similarity.append(query_info)
+        
+        response = {
+            "exact_match": False,
+            "similar_queries": {
+                'high': high_similarity[:4],   # Máximo 4 por nivel
+                'medium': medium_similarity[:4],
+                'low': low_similarity[:4]
+            },
+            "can_continue": True,
+            "total_found": len(high_similarity) + len(medium_similarity) + len(low_similarity)
+        }
+        
+        logging.info(f"Verificación de similares para '{question[:50]}...': "
+                   f"{len(high_similarity)} altas, {len(medium_similarity)} medias, "
+                   f"{len(low_similarity)} bajas")
+        
+        return response
+
+    except requests.exceptions.Timeout:
+        logging.warning("Timeout al verificar consultas similares")
+        return {
+            "exact_match": False,
+            "similar_queries": {"high": [], "medium": [], "low": []},
+            "can_continue": True
+        }
+    except Exception as e:
+        logging.error(f"Error verificando consultas similares: {e}")
+        return {
+            "exact_match": False,
+            "similar_queries": {"high": [], "medium": [], "low": []},
+            "can_continue": True
+        }
+
 @app.post("/api/ask")
 async def ask_question(payload: AskRequest, request: Request):
     """Procesa la pregunta enviada"""
@@ -216,6 +366,52 @@ async def ask_question(payload: AskRequest, request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La pregunta no puede estar vacía"
         )
+
+    # Si no se solicita saltar la verificación de similitud, verificar primero
+    if not payload.skip_similarity_check:
+        try:
+            # Verificar consultas similares primero
+            check_request = CheckSimilarRequest(question=question, language=language)
+            similar_check = await check_similar_queries(check_request, request)
+            
+            # Si hay match exacto, retornar inmediatamente
+            if similar_check.get('exact_match'):
+                exact_query = similar_check.get('exact_match_query')
+                if exact_query:
+                    # Obtener la consulta completa de la BD
+                    try:
+                        query_data = await app.db.get_query_by_uuid(exact_query['uuid'])
+                        if query_data and query_data.get('response_data'):
+                            import json
+                            stored_response = json.loads(query_data['response_data'])
+                            
+                            return {
+                                "success": True,
+                                "response": stored_response.get('response', query_data.get('response_text', '')),
+                                "references": stored_response.get('references', []),
+                                "timestamp": query_data['created_at'].isoformat(),
+                                "query": query_data['query_text'],
+                                "exact_match_used": True,
+                                "uuid": str(query_data['uuid']),
+                                "saved_query_url": f"{BASE_PATH}/savedquery/{query_data['uuid']}"
+                            }
+                    except Exception as e:
+                        logging.error(f"Error obteniendo consulta exacta: {e}")
+            
+            # Si hay consultas similares (no exactas), sugerir al frontend que las muestre
+            total_similar = similar_check.get('total_found', 0)
+            if total_similar > 0:
+                return {
+                    "success": False,
+                    "requires_confirmation": True,
+                    "similar_queries": similar_check.get('similar_queries', {}),
+                    "message": f"Encontré {total_similar} consulta{'s' if total_similar != 1 else ''} similar{'es' if total_similar != 1 else ''}. ¿Quieres usar alguna de las respuestas existentes o continuar con una nueva búsqueda?"
+                }
+                
+        except Exception as e:
+            logging.error(f"Error en verificación de similitud: {e}")
+            # Si hay error, continuar con el procesamiento normal
+            pass
 
     # Check if this is a history query
     if app.history_key:
@@ -555,6 +751,79 @@ async def get_saved_query(query_uuid: str, request: Request):
                 "podcast_name": query_data.get('podcast_name'),
                 "uuid": str(query_data['uuid']),
                 "saved_query_url": f"{BASE_PATH}/api/savedquery/{query_uuid}"
+            }
+        
+        # Buscar consultas similares usando el embedding de la consulta guardada
+        if query_data.get('query_embedding'):
+            try:
+                # Convertir el string del embedding de vuelta a lista
+                embedding_str = query_data['query_embedding']
+                if isinstance(embedding_str, str):
+                    # Parsear el string a lista de floats
+                    import ast
+                    query_embedding = ast.literal_eval(embedding_str)
+                else:
+                    query_embedding = embedding_str
+                
+                similar_queries = await app.db.search_similar_queries(
+                    query_embedding=query_embedding,
+                    podcast_name=app.podcast_name,
+                    limit=10,
+                    similarity_threshold=0.60
+                )
+                
+                if similar_queries:
+                    # Filtrar la consulta actual
+                    similar_queries = [q for q in similar_queries if str(q.get('uuid')) != query_uuid]
+                    
+                    # Clasificar en tres niveles
+                    high_similarity = []
+                    medium_similarity = []
+                    low_similarity = []
+                    
+                    for query in similar_queries:
+                        similarity = query.get('similarity', 0)
+                        query_info = {
+                            'uuid': str(query['uuid']),
+                            'query_text': query['query_text'],
+                            'similarity': round(similarity, 3),
+                            'url': f"{BASE_PATH}/api/savedquery/{query['uuid']}"
+                        }
+                        
+                        if similarity >= 0.75:
+                            high_similarity.append(query_info)
+                        elif similarity >= 0.65:
+                            medium_similarity.append(query_info)
+                        elif similarity >= 0.60:
+                            low_similarity.append(query_info)
+                    
+                    response_data['similar_queries'] = {
+                        'high': high_similarity[:3],
+                        'medium': medium_similarity[:3],
+                        'low': low_similarity[:3]
+                    }
+                    logging.info(f"Consultas similares para {query_uuid}: {len(high_similarity)} altas, {len(medium_similarity)} medias, {len(low_similarity)} bajas")
+                else:
+                    # Incluir estructura vacía si no hay similares
+                    response_data['similar_queries'] = {
+                        'high': [],
+                        'medium': [],
+                        'low': []
+                    }
+            except Exception as e:
+                logging.error(f"Error buscando consultas similares para consulta guardada: {e}")
+                # Incluir estructura vacía en caso de error
+                response_data['similar_queries'] = {
+                    'high': [],
+                    'medium': [],
+                    'low': []
+                }
+        else:
+            # Sin embedding, incluir estructura vacía
+            response_data['similar_queries'] = {
+                'high': [],
+                'medium': [],
+                'low': []
             }
         
         logging.info(f"Consulta recuperada: UUID={query_uuid}, Query='{query_data['query_text'][:50]}...'")

@@ -1133,6 +1133,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         questionInput.value = transcript;
         questionInput.focus();
         micStatus.textContent = `Texto detectado: "${transcript}"`;
+        // Marcar que el texto ha cambiado y actualizar estado del botón
+        questionHasChanged = true;
+        updateSubmitButtonState();
     };
 
     recognition.lang = langMap[languageSelect.value];

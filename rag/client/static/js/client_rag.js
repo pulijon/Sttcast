@@ -2247,6 +2247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const input = doc.createElement('input');
             input.type = 'file';
             input.accept = 'audio/*';
+            input.style.display = 'none';
             
             const audioElement = this;
             
@@ -2279,12 +2280,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
                 }
+                // Limpiar el elemento input después de usarlo
+                doc.body.removeChild(input);
             };
 
             input.oncancel = () => {
                 // Resetear flag para permitir reintentar
                 this.dataset.userAskedForFile = 'false';
+                // Limpiar el elemento input si se cancela
+                if (input.parentNode) {
+                    doc.body.removeChild(input);
+                }
             };
+
+            // Añadir el input al DOM antes de hacer click (necesario en algunos navegadores)
+            doc.body.appendChild(input);
 
             // Disparar diálogo de selección de archivo
             input.click();

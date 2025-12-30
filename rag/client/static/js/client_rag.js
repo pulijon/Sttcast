@@ -1133,9 +1133,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         questionInput.value = transcript;
         questionInput.focus();
         micStatus.textContent = `Texto detectado: "${transcript}"`;
-        // Marcar que el texto ha cambiado y actualizar estado del botón
-        questionHasChanged = true;
-        updateSubmitButtonState();
+        
+        // Disparar evento 'input' para actualizar el estado del botón de envío
+        questionInput.dispatchEvent(new Event('input', { bubbles: true }));
     };
 
     recognition.lang = langMap[languageSelect.value];
@@ -2170,3 +2170,141 @@ if ('serviceWorker' in navigator) {
             });
     });
 }
+
+/**
+ * Manejador de audios no disponibles en el servidor
+ * Si un audio no está disponible (error 404), permite al usuario seleccionar el archivo localmente
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    // Detectar audios cargados en iframes de transcripciones
+    const setupAudioFallback = () => {
+        document.querySelectorAll('iframe[src*="transcripts"]').forEach((iframe) => {
+            try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                if (iframeDoc) {
+                    iframeDoc.querySelectorAll('audio').forEach((audio) => {
+                        setupAudioErrorHandler(audio, iframeDoc);
+                    });
+                }
+            } catch (e) {
+                // Ignorar errores de acceso a iframes (CORS)
+                console.debug('[AudioFallback] No se pudo acceder al iframe:', e.message);
+            }
+        });
+
+        // También detectar audios directamente en la página
+        document.querySelectorAll('audio').forEach((audio) => {
+            setupAudioErrorHandler(audio, document);
+        });
+    };
+
+    /**
+     * Configura el manejador de error para un elemento audio específico
+     */
+    function setupAudioErrorHandler(audio, doc) {
+        // Evitar múltiples diálogos por el mismo audio
+        if (audio.dataset.audioFallbackSetup) {
+            return;
+        }
+        audio.dataset.audioFallbackSetup = 'true';
+
+        audio.addEventListener('error', function(event) {
+            // Solo procesar si el error es 404 (audio no encontrado)
+            if (this.error && this.error.code === this.error.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+                console.log('[AudioFallback] Audio no disponible:', this.src);
+                handleAudioNotFound.call(this, doc);
+            }
+        });
+
+        // También detectar cuando el usuario intenta reproducir un audio no disponible
+        audio.addEventListener('play', function(event) {
+            if (this.networkState === this.NETWORK_NO_SOURCE) {
+                console.log('[AudioFallback] Intento de reproducir audio sin fuente:', this.src);
+                handleAudioNotFound.call(this, doc);
+                event.preventDefault();
+            }
+        }, true);
+    }
+
+    /**
+     * Maneja la situación cuando un audio no está disponible
+     */
+    function handleAudioNotFound(doc) {
+        // Evitar múltiples diálogos si ya se preguntó por este audio
+        if (this.dataset.userAskedForFile) {
+            return;
+        }
+        this.dataset.userAskedForFile = 'true';
+
+        const audioFilename = this.src.split('/').pop().split('#')[0] || 'audio.mp3';
+        const expectedTime = this.src.includes('#t=') ? this.src.split('#t=')[1] : null;
+        
+        // Crear diálogo informativo
+        const message = `El archivo de audio "${audioFilename}" no está disponible en el servidor.\n\n¿Tienes este archivo en tu equipo? Puedes seleccionarlo para escucharlo.${expectedTime ? `\n\nSe reproducirá desde: ${expectedTime}` : ''}`;
+        
+        if (confirm(message)) {
+            // Crear input para seleccionar archivo
+            const input = doc.createElement('input');
+            input.type = 'file';
+            input.accept = 'audio/*';
+            
+            const audioElement = this;
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    // Liberar blob anterior si existe
+                    if (audioElement.src && audioElement.src.startsWith('blob:')) {
+                        URL.revokeObjectURL(audioElement.src);
+                    }
+                    
+                    // Crear URL para el archivo local
+                    const blobUrl = URL.createObjectURL(file);
+                    
+                    // Preservar el fragmento de tiempo si existía
+                    if (expectedTime) {
+                        audioElement.src = blobUrl + '#t=' + expectedTime;
+                    } else {
+                        audioElement.src = blobUrl;
+                    }
+                    
+                    // Recargar el audio
+                    audioElement.load();
+                    
+                    // Intentar reproducir automáticamente
+                    const playPromise = audioElement.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            console.log('[AudioFallback] No se pudo reproducir automáticamente:', error);
+                        });
+                    }
+                }
+            };
+
+            input.oncancel = () => {
+                // Resetear flag para permitir reintentar
+                this.dataset.userAskedForFile = 'false';
+            };
+
+            // Disparar diálogo de selección de archivo
+            input.click();
+        } else {
+            // Resetear flag para permitir reintentar
+            this.dataset.userAskedForFile = 'false';
+        }
+    }
+
+    // Configurar fallback al cargar la página
+    setupAudioFallback();
+
+    // También configurar fallback cuando se carguen nuevas referencias (después de búsquedas)
+    const originalShowResults = window.showResults;
+    if (originalShowResults && typeof originalShowResults === 'function') {
+        window.showResults = function(...args) {
+            const result = originalShowResults.apply(this, args);
+            // Pequeño delay para permitir que los iframes se carguen
+            setTimeout(setupAudioFallback, 500);
+            return result;
+        };
+    }
+});

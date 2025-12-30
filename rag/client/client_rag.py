@@ -52,6 +52,9 @@ async def lifespan(app_instance: FastAPI):
 # Inicialización de FastAPI y Jinja2
 app = FastAPI(lifespan=lifespan)
 
+from middleware_audio_fallback import AudioFallbackMiddleware
+app.add_middleware(AudioFallbackMiddleware)
+
 # Las variables de entorno ya fueron cargadas al inicio del archivo
 
 # Load authentication key

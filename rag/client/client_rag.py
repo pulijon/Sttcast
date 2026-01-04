@@ -12,7 +12,7 @@ env_dir = os.path.join(os.path.dirname(__file__), '..', '..')
 load_env_vars_from_directory(os.path.join(env_dir, '.env'))
 
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -30,6 +30,7 @@ from cache_buster import get_static_url
 FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
 BASE_PATH = os.getenv('RAG_CLIENT_BASE_PATH', '')
+TRANSCRIPTS_URL_EXTERNAL = os.getenv('TRANSCRIPTS_URL_EXTERNAL')  # URL base de S3 u otro storage externo
 
 # Lifespan event para inicializar BD
 from contextlib import asynccontextmanager
@@ -147,12 +148,19 @@ templates = Jinja2Templates(directory=templates_dir)
 app.mount("/static",
           StaticFiles(directory=static_dir), name="static")
 
-# Mount transcripts directory only if it exists
-if rag_mp3_dir and os.path.exists(rag_mp3_dir):
-    app.mount("/transcripts", StaticFiles(directory=rag_mp3_dir), name="transcripts")
-    logging.info(f"Mounted /transcripts to {rag_mp3_dir}")
+# Almacenar configuración en app para usar en endpoints
+app.transcripts_url_external = TRANSCRIPTS_URL_EXTERNAL
+app.transcripts_local_dir = rag_mp3_dir if rag_mp3_dir and os.path.exists(rag_mp3_dir) else None
+
+if app.transcripts_local_dir:
+    logging.info(f"Transcripts: Local directory available at {app.transcripts_local_dir}")
 else:
     logging.warning(f"RAG_MP3_DIR not found or not configured: {rag_mp3_dir}")
+
+if app.transcripts_url_external:
+    logging.info(f"Transcripts: External URL configured: {app.transcripts_url_external}")
+else:
+    logging.info("Transcripts: No external URL configured, using local only")
 # ------------------------
 #   Utilidades
 # ------------------------
@@ -184,6 +192,69 @@ def format_time(seconds):
     secs = int(float(seconds) % 60)
     return f"{mins}:{secs:02d}"
 
+async def get_transcript_file(file_path: str) -> tuple:
+    """
+    Obtiene archivo de transcripción desde fuente externa o local.
+    Estrategia híbrida: intenta S3 primero, luego filesystem local.
+    
+    Retorna: (contenido, content_type, headers_dict) o (None, None, {}) si no existe
+    """
+    import mimetypes
+    
+    # Intentar S3 primero si está configurado
+    if app.transcripts_url_external:
+        try:
+            external_url = f"{app.transcripts_url_external}/{file_path}"
+            logging.info(f"Intentando obtener desde S3: {external_url}")
+            
+            response = requests.get(external_url, timeout=10)
+            if response.status_code == 200:
+                content_type = response.headers.get('content-type', 'application/octet-stream')
+                # Devolver headers relevantes de S3 para Range support
+                s3_headers = {}
+                if 'content-length' in response.headers:
+                    s3_headers['content-length'] = response.headers['content-length']
+                if 'accept-ranges' in response.headers:
+                    s3_headers['accept-ranges'] = response.headers['accept-ranges']
+                logging.info(f"Archivo obtenido desde S3: {file_path}")
+                return response.content, content_type, s3_headers
+            elif response.status_code == 404:
+                logging.debug(f"Archivo no encontrado en S3: {file_path}")
+            else:
+                logging.warning(f"Error al obtener de S3 ({response.status_code}): {file_path}")
+        except requests.exceptions.Timeout:
+            logging.warning(f"Timeout al intentar obtener de S3: {file_path}")
+        except Exception as e:
+            logging.warning(f"Error al obtener de S3: {e}")
+    
+    # Fallback a filesystem local
+    if app.transcripts_local_dir:
+        try:
+            local_path = os.path.join(app.transcripts_local_dir, file_path)
+            # Seguridad: evitar path traversal
+            local_path = os.path.normpath(local_path)
+            if not local_path.startswith(os.path.normpath(app.transcripts_local_dir)):
+                logging.error(f"Intento de path traversal: {file_path}")
+                return None, None, {}
+            
+            if os.path.isfile(local_path):
+                logging.info(f"Archivo obtenido desde filesystem local: {file_path}")
+                content_type, _ = mimetypes.guess_type(local_path)
+                if content_type is None:
+                    content_type = 'application/octet-stream'
+                
+                file_size = os.path.getsize(local_path)
+                with open(local_path, 'rb') as f:
+                    return f.read(), content_type, {'content-length': str(file_size)}
+            else:
+                logging.debug(f"Archivo no encontrado en filesystem: {local_path}")
+        except Exception as e:
+            logging.error(f"Error al obtener del filesystem: {e}")
+    
+    # No encontrado en ningún lugar
+    logging.warning(f"Archivo no encontrado en ninguna fuente: {file_path}")
+    return None, None, {}
+
 # ------------------------
 #   Modelos
 # ------------------------
@@ -212,6 +283,233 @@ async def index(request: Request):
                                      "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                      "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH)
                                     })
+
+@app.get("/transcripts/{file_path:path}")
+async def get_transcript(file_path: str, request: Request):
+    """
+    Endpoint proxy híbrido para archivos de transcripción.
+    Intenta obtener de S3 primero, luego del filesystem local.
+    Soporta HTTP Range Requests para seek eficiente en audio/video (marcas de tiempo).
+    
+    Para archivos grandes (3+ horas), esto es crítico: solo descarga los bytes necesarios.
+    """
+    
+    # Si es un Range Request a S3, manejarlo especialmente
+    range_header = request.headers.get("Range")
+    if range_header and app.transcripts_url_external:
+        return await get_transcript_with_range(file_path, range_header)
+    
+    # Si no es Range Request, obtener archivo completo (para fallback local)
+    content, content_type, source_headers = await get_transcript_file(file_path)
+    
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Archivo no encontrado: {file_path}"
+        )
+    
+    file_size = len(content)
+    
+    # Headers comunes
+    headers = {
+        "Cache-Control": "public, max-age=86400",  # Cache 24 horas
+        "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+        "Accept-Ranges": "bytes",  # Indicar que soportamos rangos
+    }
+    headers.update(source_headers)
+    
+    # Procesar Range Request si existe
+    if range_header:
+        try:
+            if not range_header.startswith("bytes="):
+                return Response(
+                    content=content,
+                    media_type=content_type,
+                    status_code=200,
+                    headers=headers
+                )
+            
+            ranges_str = range_header[6:]
+            
+            # Soportar single range
+            if "," not in ranges_str and "-" in ranges_str:
+                start_str, end_str = ranges_str.split("-", 1)
+                
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else file_size - 1
+                
+                if start < 0 or start >= file_size or end >= file_size or start > end:
+                    headers["Content-Range"] = f"bytes */{file_size}"
+                    raise HTTPException(
+                        status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
+                        headers=headers,
+                        detail="Range no satisfiable"
+                    )
+                
+                partial_content = content[start:end + 1]
+                headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+                
+                logging.info(f"Range Request: {file_path} bytes {start}-{end}/{file_size}")
+                
+                return Response(
+                    content=partial_content,
+                    media_type=content_type,
+                    status_code=206,
+                    headers=headers
+                )
+        except (ValueError, IndexError):
+            logging.warning(f"Error parsing Range header: {range_header}")
+            pass
+    
+    # Devolver archivo completo
+    return Response(
+        content=content,
+        media_type=content_type,
+        status_code=200,
+        headers=headers
+    )
+
+
+async def get_transcript_with_range(file_path: str, range_header: str):
+    """
+    Maneja Range Requests eficientemente para S3.
+    En lugar de descargar todo el archivo, solo descarga el rango solicitado.
+    
+    Esto es crítico para archivos de 3+ horas.
+    """
+    external_url = f"{app.transcripts_url_external}/{file_path}"
+    
+    try:
+        logging.info(f"Range Request a S3: {file_path} - {range_header}")
+        
+        # Pasar el Range header directamente a S3
+        headers = {"Range": range_header}
+        response = requests.get(external_url, headers=headers, timeout=10)
+        
+        # S3 devuelve 206 si puede satisfacer el rango
+        if response.status_code == 206:
+            logging.info(f"Rango obtenido de S3: {file_path}")
+            return Response(
+                content=response.content,
+                media_type=response.headers.get('content-type', 'application/octet-stream'),
+                status_code=206,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Range": response.headers.get('content-range', ''),
+                    "Content-Length": str(len(response.content))
+                }
+            )
+        
+        # Si S3 devuelve 200, significa que no soporta rangos (raro)
+        # Descargar todo y procesar el rango localmente
+        elif response.status_code == 200:
+            logging.warning(f"S3 no devolvió 206, procesando rango localmente: {file_path}")
+            
+            try:
+                ranges_str = range_header[6:]
+                if "," not in ranges_str and "-" in ranges_str:
+                    start_str, end_str = ranges_str.split("-", 1)
+                    start = int(start_str) if start_str else 0
+                    end = int(end_str) if end_str else len(response.content) - 1
+                    
+                    partial = response.content[start:end + 1]
+                    return Response(
+                        content=partial,
+                        media_type=response.headers.get('content-type', 'application/octet-stream'),
+                        status_code=206,
+                        headers={
+                            "Cache-Control": "public, max-age=86400",
+                            "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+                            "Accept-Ranges": "bytes",
+                            "Content-Range": f"bytes {start}-{end}/{len(response.content)}",
+                            "Content-Length": str(len(partial))
+                        }
+                    )
+            except (ValueError, IndexError):
+                pass
+            
+            # Fallback: devolver todo
+            return Response(
+                content=response.content,
+                media_type=response.headers.get('content-type', 'application/octet-stream'),
+                status_code=200,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(response.content))
+                }
+            )
+        
+        elif response.status_code == 404:
+            # Intentar fallback local
+            logging.debug(f"Archivo no encontrado en S3, intentando fallback local: {file_path}")
+            content, content_type, source_headers = await get_transcript_file(file_path)
+            
+            if content is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Archivo no encontrado: {file_path}"
+                )
+            
+            # Procesar el Range Request localmente
+            try:
+                ranges_str = range_header[6:]
+                if "," not in ranges_str and "-" in ranges_str:
+                    start_str, end_str = ranges_str.split("-", 1)
+                    start = int(start_str) if start_str else 0
+                    end = int(end_str) if end_str else len(content) - 1
+                    
+                    partial = content[start:end + 1]
+                    return Response(
+                        content=partial,
+                        media_type=content_type,
+                        status_code=206,
+                        headers={
+                            "Cache-Control": "public, max-age=86400",
+                            "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+                            "Accept-Ranges": "bytes",
+                            "Content-Range": f"bytes {start}-{end}/{len(content)}",
+                            "Content-Length": str(len(partial))
+                        }
+                    )
+            except (ValueError, IndexError):
+                pass
+            
+            return Response(
+                content=content,
+                media_type=content_type,
+                status_code=200,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Content-Disposition": f"inline; filename={os.path.basename(file_path)}",
+                    "Accept-Ranges": "bytes"
+                }
+            )
+        
+        else:
+            logging.warning(f"Error al obtener de S3 ({response.status_code}): {file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Error al obtener archivo de S3: {response.status_code}"
+            )
+    
+    except requests.exceptions.Timeout:
+        logging.error(f"Timeout en Range Request a S3: {file_path}")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Timeout al obtener de S3"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error en Range Request: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error: {str(e)}"
+        )
 
 @app.post("/api/check_similar")
 async def check_similar_queries(payload: CheckSimilarRequest, request: Request):

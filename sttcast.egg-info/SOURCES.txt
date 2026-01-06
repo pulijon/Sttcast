@@ -19,6 +19,7 @@ rag/sttcast_rag_service.py
 sttcast.egg-info/PKG-INFO
 sttcast.egg-info/SOURCES.txt
 sttcast.egg-info/dependency_links.txt
+sttcast.egg-info/entry_points.txt
 sttcast.egg-info/requires.txt
 sttcast.egg-info/top_level.txt
 tools/__init__.py

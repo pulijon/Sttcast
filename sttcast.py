@@ -1,9 +1,13 @@
 #! /usr/bin/python3
 
+# Aplicar parche para PyTorch 2.6+ con omegaconf
+import torch_fix
+
 from tools.logs import logcfg
 from tools.envvars import load_env_vars_from_directory
 import logging
 import whisperx
+from whisperx.diarize import DiarizationPipeline
 from vosk import Model, KaldiRecognizer
 import wave
 import ffmpeg
@@ -389,7 +393,7 @@ def whisper_task_work(cfg):
 
     # Inicializar el pipeline de diarización de WhisperX
     # logging.info(HUGGINGFACE_TOKEN)
-    diarization_pipeline = whisperx.DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
+    diarization_pipeline = DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
     diarization = diarization_pipeline(audio_file)
     result = whisperx.assign_word_speakers(diarization, result)
     

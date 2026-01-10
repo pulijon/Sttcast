@@ -697,6 +697,122 @@ class RAGDatabase:
             logger.error(f"❌ Error al limpiar queries antiguas: {e}")
             return 0
 
+    async def backup_to_file(self, backup_file: str) -> bool:
+        """
+        Crea un backup completo de la base de datos en un archivo SQL.
+        
+        Args:
+            backup_file: Ruta del archivo donde guardar el backup
+            
+        Returns:
+            True si el backup se realizó exitosamente, False en caso contrario
+        """
+        if not self.is_available:
+            logger.error("❌ Base de datos no disponible. No se puede hacer backup.")
+            return False
+        
+        try:
+            import subprocess
+            
+            # Configurar variables de entorno para pg_dump
+            env = os.environ.copy()
+            env['PGPASSWORD'] = self.password
+            
+            # Comando pg_dump para hacer backup completo
+            cmd = [
+                'pg_dump',
+                f'--host={self.host}',
+                f'--port={self.port}',
+                f'--username={self.user}',
+                '--no-password',
+                '--format=plain',
+                '--verbose',
+                '--file={}'.format(backup_file),
+                self.database
+            ]
+            
+            logger.info(f"📦 Iniciando backup de '{self.database}' a '{backup_file}'...")
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"❌ Error en pg_dump: {result.stderr}")
+                return False
+            
+            # Verificar que el archivo se creó
+            if not os.path.exists(backup_file):
+                logger.error(f"❌ Archivo de backup no creado: {backup_file}")
+                return False
+            
+            file_size = os.path.getsize(backup_file) / (1024 * 1024)  # Tamaño en MB
+            logger.info(f"✅ Backup realizado exitosamente: {backup_file} ({file_size:.2f} MB)")
+            return True
+            
+        except FileNotFoundError:
+            logger.error("❌ pg_dump no encontrado. Asegúrate de tener PostgreSQL instalado.")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error durante backup: {e}")
+            return False
+
+    async def restore_from_file(self, backup_file: str, create_db_and_user: bool = False) -> bool:
+        """
+        Restaura la base de datos desde un archivo de backup SQL.
+        
+        Args:
+            backup_file: Ruta del archivo de backup
+            create_db_and_user: Si True, crea la BD y usuario si no existen
+            
+        Returns:
+            True si la restauración se realizó exitosamente, False en caso contrario
+        """
+        if not self.is_available:
+            logger.error("❌ Base de datos no disponible. No se puede restaurar.")
+            return False
+        
+        if not os.path.exists(backup_file):
+            logger.error(f"❌ Archivo de backup no encontrado: {backup_file}")
+            return False
+        
+        try:
+            import subprocess
+            
+            # Si se pide crear BD y usuario, hacerlo primero
+            if create_db_and_user:
+                logger.info("📝 Creando base de datos y usuario si no existen...")
+                await self._ensure_database_and_user_exist()
+            
+            # Configurar variables de entorno para psql
+            env = os.environ.copy()
+            env['PGPASSWORD'] = self.password
+            
+            # Comando psql para restaurar desde el backup
+            cmd = [
+                'psql',
+                f'--host={self.host}',
+                f'--port={self.port}',
+                f'--username={self.user}',
+                '--no-password',
+                f'--dbname={self.database}',
+                f'--file={backup_file}'
+            ]
+            
+            logger.info(f"📥 Iniciando restauración desde '{backup_file}' a base de datos '{self.database}'...")
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"❌ Error en psql durante restauración: {result.stderr}")
+                return False
+            
+            logger.info(f"✅ Restauración completada exitosamente desde {backup_file}")
+            return True
+            
+        except FileNotFoundError:
+            logger.error("❌ psql no encontrado. Asegúrate de tener PostgreSQL instalado.")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error durante restauración: {e}")
+            return False
+
 
 # Instancia global del gestor de BD
 db = RAGDatabase()

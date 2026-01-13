@@ -30,8 +30,8 @@ from pathlib import Path
 # Agregar el directorio parent a sys.path para importar desde tools y api
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from logs import logcfg
-from envvars import load_env_vars_from_directory
+from tools.logs import logcfg
+from tools.envvars import load_env_vars_from_directory
 from rag.client.queriesdb import RAGDatabase
 
 # Configurar logging

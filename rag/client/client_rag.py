@@ -861,11 +861,27 @@ async def ask_question(payload: AskRequest, request: Request):
                             l: os.path.join(app.rag_mp3_dir, f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
                         }
                         logging.info(f"Archivos HTML: {html_file}")
-                        logging.info(f"Buscando ID más cercano para {ref['time']} segundos en {html_file['es']}")
-                        nearest_id = find_nearest_time_id(
-                            real_file['es'], 
-                            ref['time']
-                        )
+                        logging.info(f"Buscando ID más cercano para {ref['time']} segundos")
+                        
+                        # Determinar qué ruta usar: local o URL externa
+                        file_to_search = None
+                        if os.path.exists(real_file['es']):
+                            # Usar ruta local si existe
+                            file_to_search = real_file['es']
+                            logging.info(f"Usando archivo local: {file_to_search}")
+                        elif app.transcripts_url_external:
+                            # Usar URL externa si está configurada
+                            file_to_search = f"{app.transcripts_url_external}/{ref['file']}_whisper_audio_es.html"
+                            logging.info(f"Usando URL externa: {file_to_search}")
+                        
+                        if file_to_search:
+                            nearest_id = find_nearest_time_id(
+                                file_to_search, 
+                                ref['time']
+                            )
+                        else:
+                            nearest_id = None
+                            logging.warning(f"No se encontró archivo local ni URL externa configurada")
                         logging.info(f"ID más cercano encontrado: {nearest_id}")
                         ref['hyperlink'] = {
                             l: f"{html_file[l]}#{nearest_id}" if nearest_id else None

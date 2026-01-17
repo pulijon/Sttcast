@@ -63,6 +63,13 @@ CONF_DIR = os.path.join(os.path.dirname(__file__), ".env")
 # Huggingface token
 HUGGINGFACE_TOKEN = ""
 
+# Parámetros de Pyannote para diarizacion
+PYANNOTE_METHOD = "ward"
+PYANNOTE_MIN_CLUSTER_SIZE = 15
+PYANNOTE_THRESHOLD = 0.7147
+PYANNOTE_MIN_SPEAKERS = None
+PYANNOTE_MAX_SPEAKERS = None
+
 
 def class_str(st, cl):
     return f'<span class="{cl}">{st}</span>'
@@ -87,10 +94,21 @@ def audio_tag_str(mp3file, seconds):
 
 
 def get_pars():
+    global PYANNOTE_METHOD, PYANNOTE_MIN_CLUSTER_SIZE, PYANNOTE_THRESHOLD, PYANNOTE_MIN_SPEAKERS, PYANNOTE_MAX_SPEAKERS
     load_env_vars_from_directory(os.path.join(os.path.dirname(__file__),'.env'))
     cal_file = os.getenv('PODCAST_CAL_FILE', DEFAULT_PODCAST_CAL_FILE)
     prefix = os.getenv('PODCAST_PREFIX', DEFAULT_PODCAST_PREFIX)
     podcast_templates = os.getenv('PODCAST_TEMPLATES', DEFAULT_PODCAST_TEMPLATES)
+    
+    # Cargar parámetros de Pyannote desde .env
+    PYANNOTE_METHOD = os.getenv('PYANNOTE_METHOD', 'ward')
+    PYANNOTE_MIN_CLUSTER_SIZE = int(os.getenv('PYANNOTE_MIN_CLUSTER_SIZE', '15'))
+    PYANNOTE_THRESHOLD = float(os.getenv('PYANNOTE_THRESHOLD', '0.7147'))
+    # Los parámetros de min/max speakers son opcionales
+    pyannote_min_speakers_str = os.getenv('PYANNOTE_MIN_SPEAKERS', '')
+    pyannote_max_speakers_str = os.getenv('PYANNOTE_MAX_SPEAKERS', '')
+    PYANNOTE_MIN_SPEAKERS = int(pyannote_min_speakers_str) if pyannote_min_speakers_str else None
+    PYANNOTE_MAX_SPEAKERS = int(pyannote_max_speakers_str) if pyannote_max_speakers_str else None
 
     parser = argparse.ArgumentParser()
     parser.add_argument("fnames", type=str, nargs='+',
@@ -391,10 +409,39 @@ def whisper_task_work(cfg):
     result = model.transcribe(audio_file, language=cfg['whlanguage'])
     whsusptime = cfg['whsusptime']
 
-    # Inicializar el pipeline de diarización de WhisperX
+    # Inicializar el pipeline de diarización de WhisperX con parámetros configurables
     # logging.info(HUGGINGFACE_TOKEN)
+    logging.info(f"Inicializando Pyannote con parámetros: método={cfg.get('pyannote_method', 'ward')}, "
+                 f"min_cluster_size={cfg.get('pyannote_min_cluster_size', 15)}, "
+                 f"threshold={cfg.get('pyannote_threshold', 0.7147)}, "
+                 f"min_speakers={cfg.get('pyannote_min_speakers')}, "
+                 f"max_speakers={cfg.get('pyannote_max_speakers')}")
+    
     diarization_pipeline = DiarizationPipeline(device=whdevice, use_auth_token=HUGGINGFACE_TOKEN)
-    diarization = diarization_pipeline(audio_file)
+    
+    # Configurar los parámetros de clustering si están disponibles
+    # El pipeline de whisperx envuelve el Pipeline de pyannote en el atributo .model
+    pyannote_params = {
+        "clustering": {
+            "method": cfg.get('pyannote_method', 'ward'),
+            "min_cluster_size": cfg.get('pyannote_min_cluster_size', 15),
+            "threshold": cfg.get('pyannote_threshold', 0.7147)
+        }
+    }
+    
+    try:
+        diarization_pipeline.model.instantiate(pyannote_params)
+        logging.info(f"Parámetros de Pyannote aplicados correctamente")
+    except Exception as e:
+        logging.warning(f"No se pudieron aplicar los parámetros de Pyannote: {e}. "
+                       f"Se usarán los valores por defecto")
+    
+    # Pasar min_speakers y max_speakers a diarization_pipeline si están configurados
+    diarization = diarization_pipeline(
+        audio_file,
+        min_speakers=cfg.get('pyannote_min_speakers'),
+        max_speakers=cfg.get('pyannote_max_speakers')
+    )
     result = whisperx.assign_word_speakers(diarization, result)
     
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
@@ -750,6 +797,11 @@ def launch_whisper_tasks(args):
                     "whtraining": args.whtraining,
                     "whsusptime": float(args.whsusptime),
                     "speaker_mapping": speaker_mapping,
+                    "pyannote_method": PYANNOTE_METHOD,
+                    "pyannote_min_cluster_size": PYANNOTE_MIN_CLUSTER_SIZE,
+                    "pyannote_threshold": PYANNOTE_THRESHOLD,
+                    "pyannote_min_speakers": PYANNOTE_MIN_SPEAKERS,
+                    "pyannote_max_speakers": PYANNOTE_MAX_SPEAKERS,
                     } for fenum in enumerate(mp3files)
                 ]
             )

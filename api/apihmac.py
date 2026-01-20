@@ -45,6 +45,10 @@ def serialize_body(body: Any) -> str:
     Returns:
         String JSON serializado de forma consistente (sin espacios, ordenado)
     """
+    # Para multipart/form-data, retornar cadena vacía literal
+    if body is None or body == "":
+        return ""
+    
     # SERIALIZACIÓN CONSISTENTE SIN ESPACIOS
     if hasattr(body, 'model_dump'):
         # Pydantic model
@@ -99,15 +103,23 @@ def create_auth_headers(
     
     signature = create_hmac_signature(secret_key, method, path, body_str, timestamp)
     
-    logging.info(f"HMAC Debug - Enviando a {path}: timestamp={timestamp}, signature={signature[:16]}...")
-    logging.info(f"HMAC Debug - Clave API (primeros 10 chars): {secret_key[:10]}...")
+    logging.debug(f"HMAC Cliente - Generando para {path}: método={method}, timestamp={timestamp}, body_len={len(body_str)}")
+    logging.debug(f"HMAC Cliente - Mensaje: '{message}'")
+    logging.debug(f"HMAC Cliente - Firma generada: {signature}")
+    logging.debug(f"HMAC Cliente - Clave API (primeros 10 chars): {secret_key[:10]}...")
     
-    return {
+    headers = {
         'X-Timestamp': timestamp,
         'X-Signature': signature,
-        'X-Client-ID': client_id,
-        'Content-Type': 'application/json'
+        'X-Client-ID': client_id
     }
+    
+    # Solo añadir Content-Type: application/json si es body no vacío
+    # Para multipart/form-data, dejar que requests maneje el Content-Type
+    if body_str and body_str != '{}':
+        headers['Content-Type'] = 'application/json'
+    
+    return headers
 
 
 def verify_hmac_signature(
@@ -148,12 +160,13 @@ def verify_hmac_signature(
         is_valid = hmac.compare_digest(signature, expected)
         
         # Logging detallado para debugging
-        logging.info(f"HMAC Verificación - Método: {method}, Path: {path}")
-        logging.info(f"HMAC Verificación - Timestamp: {timestamp}, Body length: {len(body)}")
-        logging.info(f"HMAC Verificación - Clave API (primeros 10 chars): {secret_key[:10]}...")
-        logging.info(f"HMAC Verificación - Esperada: {expected[:16]}...")
-        logging.info(f"HMAC Verificación - Recibida: {signature[:16]}...")
-        logging.info(f"HMAC Verificación - ¿Válida?: {is_valid}")
+        message_servidor = f"{method}|{path}|{body}|{timestamp}"
+        logging.debug(f"HMAC Servidor - Verificando: método={method}, path='{path}', timestamp={timestamp}, body_len={len(body)}")
+        logging.debug(f"HMAC Servidor - Mensaje completo: '{message_servidor}'")
+        logging.debug(f"HMAC Servidor - Clave API (primeros 10 chars): {secret_key[:10]}...")
+        logging.debug(f"HMAC Servidor - Firma esperada: {expected}")
+        logging.debug(f"HMAC Servidor - Firma recibida: {signature}")
+        logging.debug(f"HMAC Servidor - ¿Válida?: {is_valid}")
         
         if not is_valid:
             logging.warning("Las firmas HMAC no coinciden")
@@ -217,5 +230,5 @@ def validate_hmac_auth(
         logging.debug(f"Body hash: {hashlib.sha256(body.encode()).hexdigest()[:16]}")
         raise HTTPException(status_code=401, detail="Autenticación HMAC inválida")
     
-    logging.info(f"Autenticación HMAC exitosa para client_id: {client_id}")
+    logging.debug(f"Autenticación HMAC exitosa para client_id: {client_id}")
     return client_id

@@ -88,7 +88,7 @@ then
 		cp "${meta_whisper_files[$i]}" "${srcdir}"
 		rm "${meta_whisper_files[$i]}"
 		cp "${srt_whisper_files[$i]}" "${srcdir}"
-		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[i]}"
+		echo ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
 		python ./add_audio_tag.py --mp3-file "${mp3_whisper_files[$i]}" -o "${audio_whisper_files[$i]}" "${html_whisper_files[$i]}"
 		python ./diarization/showspeakers.py "${html_whisper_files[$i]}" "${audio_whisper_files[$i]}"
     	cp "${html_whisper_files[$i]}" "${srcdir}"

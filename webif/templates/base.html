@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Sttcast{% endblock %} - Sttcast Web</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if user %}
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-microphone-alt"></i>
+                <span>Sttcast</span>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <ul>
+                <li class="{% if request.url.path == '/' %}active{% endif %}">
+                    <a href="/">
+                        <i class="fas fa-home"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li class="{% if '/transcriptions' in request.url.path %}active{% endif %}">
+                    <a href="/transcriptions">
+                        <i class="fas fa-file-audio"></i>
+                        <span>Transcripciones</span>
+                    </a>
+                </li>
+                <li class="{% if '/profiles' in request.url.path %}active{% endif %}">
+                    <a href="/profiles">
+                        <i class="fas fa-sliders-h"></i>
+                        <span>Perfiles</span>
+                    </a>
+                </li>
+                {% if user.role.value == 'admin' %}
+                <li class="{% if '/users' in request.url.path %}active{% endif %}">
+                    <a href="/users">
+                        <i class="fas fa-users"></i>
+                        <span>Usuarios</span>
+                    </a>
+                </li>
+                <li class="{% if '/config' in request.url.path %}active{% endif %}">
+                    <a href="/config">
+                        <i class="fas fa-cog"></i>
+                        <span>Configuración</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="user-info" style="cursor: pointer;" onclick="location.href='/profile';" title="Ver perfil">
+                <i class="fas fa-user-circle"></i>
+                <div class="user-details">
+                    <span class="username">{{ user.username }}</span>
+                    <span class="role">{{ user.role.value }}</span>
+                </div>
+            </div>
+            <a href="/logout" class="logout-btn" title="Cerrar sesión">
+                <i class="fas fa-sign-out-alt"></i>
+            </a>
+        </div>
+    </aside>
+    {% endif %}
+    
+    <!-- Main Content -->
+    <main class="main-content {% if not user %}no-sidebar{% endif %}">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <script src="/static/js/app.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

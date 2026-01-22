@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}Nuevo Perfil{% else %}Editar Perfil{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <i class="fas fa-{% if is_new %}plus{% else %}edit{% endif %}"></i>
+        {% if is_new %}Nuevo Perfil{% else %}Editar Perfil{% endif %}
+    </h1>
+    <a href="/profiles" class="btn btn-outline">
+        <i class="fas fa-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i>
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        <form method="post" action="{% if is_new %}/profiles/new{% else %}/profiles/{{ profile.id }}{% endif %}" enctype="multipart/form-data">
+            <!-- Información básica -->
+            <fieldset>
+                <legend><i class="fas fa-info-circle"></i> Información Básica</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="name">Nombre del perfil *</label>
+                        <input type="text" id="name" name="name" 
+                               value="{{ profile.name if profile else '' }}" required
+                               placeholder="Ej: Cowboys de Medianoche">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="prefix">Prefijo de archivos *</label>
+                        <input type="text" id="prefix" name="prefix" 
+                               value="{{ profile.prefix if profile else 'tr' }}" required
+                               placeholder="Ej: cm">
+                        <small class="form-help">Prefijo para los archivos de salida</small>
+                    </div>
+                    
+                    <div class="form-group full-width">
+                        <label for="description">Descripción</label>
+                        <textarea id="description" name="description" rows="2"
+                                  placeholder="Descripción opcional del perfil">{{ profile.description if profile and profile.description else '' }}</textarea>
+                    </div>
+                    
+                    {% if user.role.value == 'admin' %}
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="is_public" value="true"
+                                   {% if profile and profile.is_public %}checked{% endif %}>
+                            <span><i class="fas fa-globe"></i> Perfil público (visible para todos)</span>
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+            </fieldset>
+            
+            <!-- Motor de transcripción -->
+            <fieldset>
+                <legend><i class="fas fa-cogs"></i> Motor de Transcripción</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="default_engine">Motor por defecto</label>
+                        <select id="default_engine" name="default_engine">
+                            <option value="whisper" 
+                                    {% if not profile or profile.default_engine.value == 'whisper' %}selected{% endif %}>
+                                Whisper (GPU) - Mayor calidad
+                            </option>
+                            <option value="vosk" 
+                                    {% if profile and profile.default_engine.value == 'vosk' %}selected{% endif %}>
+                                Vosk (CPU) - Más rápido
+                            </option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="default_language">Idioma por defecto</label>
+                        <select id="default_language" name="default_language">
+                            <option value="es" {% if not profile or profile.default_language == 'es' %}selected{% endif %}>Español</option>
+                            <option value="en" {% if profile and profile.default_language == 'en' %}selected{% endif %}>Inglés</option>
+                            <option value="fr" {% if profile and profile.default_language == 'fr' %}selected{% endif %}>Francés</option>
+                            <option value="de" {% if profile and profile.default_language == 'de' %}selected{% endif %}>Alemán</option>
+                            <option value="it" {% if profile and profile.default_language == 'it' %}selected{% endif %}>Italiano</option>
+                            <option value="pt" {% if profile and profile.default_language == 'pt' %}selected{% endif %}>Portugués</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group whisper-option">
+                        <label for="whisper_model">Modelo Whisper</label>
+                        <select id="whisper_model" name="whisper_model">
+                            <option value="tiny" {% if profile and profile.whisper_model == 'tiny' %}selected{% endif %}>tiny (rápido, menor calidad)</option>
+                            <option value="base" {% if profile and profile.whisper_model == 'base' %}selected{% endif %}>base</option>
+                            <option value="small" {% if not profile or profile.whisper_model == 'small' %}selected{% endif %}>small (recomendado)</option>
+                            <option value="medium" {% if profile and profile.whisper_model == 'medium' %}selected{% endif %}>medium</option>
+                            <option value="large" {% if profile and profile.whisper_model == 'large' %}selected{% endif %}>large (lento, mejor calidad)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group whisper-option">
+                        <label for="whisper_device">Dispositivo Whisper</label>
+                        <select id="whisper_device" name="whisper_device">
+                            <option value="cuda" {% if not profile or profile.whisper_device == 'cuda' %}selected{% endif %}>CUDA (GPU NVIDIA)</option>
+                            <option value="cpu" {% if profile and profile.whisper_device == 'cpu' %}selected{% endif %}>CPU</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+            
+            <!-- Parámetros de procesamiento -->
+            <fieldset>
+                <legend><i class="fas fa-sliders-h"></i> Parámetros de Procesamiento</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="seconds">Duración de segmentos (seg)</label>
+                        <input type="number" id="seconds" name="seconds" 
+                               value="{{ profile.seconds if profile else 15000 }}" min="1000" max="60000">
+                        <small class="form-help">Duración máxima de cada segmento de audio</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="overlap">Solapamiento</label>
+                        <input type="number" id="overlap" name="overlap" 
+                               value="{{ profile.overlap if profile else 2 }}" min="0" max="10">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="min_offset">Offset mínimo (seg)</label>
+                        <input type="number" id="min_offset" name="min_offset" 
+                               value="{{ profile.min_offset if profile else 30 }}" min="0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="max_gap">Gap máximo</label>
+                        <input type="number" id="max_gap" name="max_gap" step="0.1"
+                               value="{{ profile.max_gap if profile else 0.8 }}" min="0" max="5">
+                    </div>
+                </div>
+            </fieldset>
+            
+            <!-- Umbrales de confianza -->
+            <fieldset>
+                <legend><i class="fas fa-chart-line"></i> Umbrales de Confianza</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="high_confidence">Confianza alta</label>
+                        <input type="number" id="high_confidence" name="high_confidence" 
+                               step="0.01" value="{{ profile.high_confidence if profile else 0.95 }}" 
+                               min="0" max="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="medium_confidence">Confianza media</label>
+                        <input type="number" id="medium_confidence" name="medium_confidence" 
+                               step="0.01" value="{{ profile.medium_confidence if profile else 0.7 }}"
+                               min="0" max="1">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="low_confidence">Confianza baja</label>
+                        <input type="number" id="low_confidence" name="low_confidence" 
+                               step="0.01" value="{{ profile.low_confidence if profile else 0.5 }}"
+                               min="0" max="1">
+                    </div>
+                </div>
+            </fieldset>
+            
+            <!-- Parámetros de Pyannote (Diarización) -->
+            <fieldset class="whisper-option">
+                <legend><i class="fas fa-users"></i> Diarización (Pyannote)</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="pyannote_method">Método de clustering</label>
+                        <select id="pyannote_method" name="pyannote_method">
+                            <option value="ward" {% if not profile or profile.pyannote_method == 'ward' %}selected{% endif %}>ward (recomendado)</option>
+                            <option value="complete" {% if profile and profile.pyannote_method == 'complete' %}selected{% endif %}>complete</option>
+                            <option value="average" {% if profile and profile.pyannote_method == 'average' %}selected{% endif %}>average</option>
+                            <option value="single" {% if profile and profile.pyannote_method == 'single' %}selected{% endif %}>single</option>
+                            <option value="centroid" {% if profile and profile.pyannote_method == 'centroid' %}selected{% endif %}>centroid</option>
+                        </select>
+                        <small class="form-help">Algoritmo de clustering jerárquico</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pyannote_min_cluster_size">Tamaño mínimo de cluster</label>
+                        <input type="number" id="pyannote_min_cluster_size" name="pyannote_min_cluster_size" 
+                               value="{{ profile.pyannote_min_cluster_size if profile else 15 }}" min="1" max="100">
+                        <small class="form-help">Mínimo de segmentos por hablante</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pyannote_threshold">Umbral de clustering</label>
+                        <input type="number" id="pyannote_threshold" name="pyannote_threshold" 
+                               step="0.0001" value="{{ profile.pyannote_threshold if profile else 0.7147 }}" 
+                               min="0" max="2">
+                        <small class="form-help">Distancia umbral para separar hablantes</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pyannote_min_speakers">Mín. hablantes (opcional)</label>
+                        <input type="number" id="pyannote_min_speakers" name="pyannote_min_speakers" 
+                               value="{{ profile.pyannote_min_speakers if profile and profile.pyannote_min_speakers else '' }}" 
+                               min="1" max="50" placeholder="Auto">
+                        <small class="form-help">Dejar vacío para detección automática</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pyannote_max_speakers">Máx. hablantes (opcional)</label>
+                        <input type="number" id="pyannote_max_speakers" name="pyannote_max_speakers" 
+                               value="{{ profile.pyannote_max_speakers if profile and profile.pyannote_max_speakers else '' }}" 
+                               min="1" max="50" placeholder="Auto">
+                        <small class="form-help">Dejar vacío para detección automática</small>
+                    </div>
+                </div>
+            </fieldset>
+            
+            <!-- Archivos de configuración -->
+            <fieldset>
+                <legend><i class="fas fa-folder-open"></i> Archivos de Configuración</legend>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="calendar_file">Archivo de calendario</label>
+                        {% if profile and profile.calendar_file %}
+                        <div class="current-file-info">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Archivo actual: <strong>{{ profile.calendar_file }}</strong></span>
+                            <label class="checkbox-label" style="margin-left: 1rem;">
+                                <input type="checkbox" name="remove_calendar_file" value="true">
+                                <span>Eliminar archivo</span>
+                            </label>
+                        </div>
+                        {% endif %}
+                        <input type="file" id="calendar_file" name="calendar_file"
+                               accept=".txt,.csv,.json">
+                        <small class="form-help">Archivo con fechas de emisión para asociar a las transcripciones. Formatos: TXT, CSV, JSON</small>
+                    </div>
+                </div>
+            </fieldset>
+            
+            <!-- Opciones adicionales -->
+            <fieldset>
+                <legend><i class="fas fa-puzzle-piece"></i> Opciones Adicionales</legend>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="audio_tags" value="true"
+                                   {% if profile and profile.audio_tags %}checked{% endif %}>
+                            <span><i class="fas fa-volume-up"></i> Incluir audio tags en HTML</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="use_training" value="true" id="use_training_check"
+                                   {% if profile and profile.use_training %}checked{% endif %}>
+                            <span><i class="fas fa-graduation-cap"></i> Usar archivo de entrenamiento</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group full-width training-option">
+                        <label for="training_file">Archivo de entrenamiento (MP3)</label>
+                        {% if profile and profile.training_file %}
+                        <div class="current-file-info">
+                            <i class="fas fa-file-audio"></i>
+                            <span>Archivo actual: <strong>{{ profile.training_file }}</strong></span>
+                            <label class="checkbox-label" style="margin-left: 1rem;">
+                                <input type="checkbox" name="remove_training_file" value="true">
+                                <span>Eliminar archivo</span>
+                            </label>
+                        </div>
+                        {% endif %}
+                        <input type="file" id="training_file" name="training_file"
+                               accept=".mp3,.wav,.m4a,.ogg,.flac">
+                        <small class="form-help">Sube un archivo de audio para entrenamiento del modelo de diarización. Formatos: MP3, WAV, M4A, OGG, FLAC</small>
+                    </div>
+                </div>
+            </fieldset>
+            
+            <div class="form-actions">
+                <a href="/profiles" class="btn btn-outline">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i>
+                    {% if is_new %}Crear Perfil{% else %}Guardar Cambios{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Mostrar/ocultar opciones según motor seleccionado
+document.getElementById('default_engine').addEventListener('change', function() {
+    const whisperOptions = document.querySelectorAll('.whisper-option');
+    whisperOptions.forEach(el => {
+        el.style.display = this.value === 'whisper' ? 'block' : 'none';
+    });
+});
+
+// Mostrar/ocultar campo de archivo de entrenamiento
+document.getElementById('use_training_check').addEventListener('change', function() {
+    const trainingOption = document.querySelector('.training-option');
+    trainingOption.style.display = this.checked ? 'block' : 'none';
+});
+
+// Inicializar estado
+document.getElementById('default_engine').dispatchEvent(new Event('change'));
+document.getElementById('use_training_check').dispatchEvent(new Event('change'));
+</script>
+{% endblock %}

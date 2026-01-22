@@ -1,0 +1,742 @@
+{% extends "base.html" %}
+
+{% block title %}Transcripciones{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-file-audio"></i> Transcripciones</h1>
+</div>
+
+<!-- Zona de carga de archivos - Solo arrastar/seleccionar -->
+<div class="card upload-card">
+    <div class="card-header">
+        <h2><i class="fas fa-upload"></i> Subir Archivos</h2>
+    </div>
+    <div class="card-body">
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-content">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Arrastra archivos aquí o haz clic para seleccionar</p>
+                <span class="upload-hint">Formatos soportados: MP3, WAV, M4A, OGG, FLAC</span>
+            </div>
+            <input type="file" id="fileInput" accept=".mp3,.wav,.m4a,.ogg,.flac" multiple hidden>
+        </div>
+    </div>
+</div>
+
+<!-- Preparación de trabajos - Aquí se configuran las opciones por fichero -->
+<div class="card" id="preparationCard" style="display: none;">
+    <div class="card-header">
+        <h2><i class="fas fa-cogs"></i> Preparación de Trabajos</h2>
+        <div class="header-actions">
+            <button class="btn btn-primary" id="startAllBtn">
+                <i class="fas fa-play"></i> Iniciar Todos
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <table class="table" id="preparationTable">
+            <thead>
+                <tr>
+                    <th style="width: 25%;">Archivo</th>
+                    <th style="width: 20%;">Perfil</th>
+                    <th style="width: 12%;">Motor</th>
+                    <th style="width: 10%;">Idioma</th>
+                    <th style="width: 10%;">Training</th>
+                    <th style="width: 8%;">Audio</th>
+                    <th style="width: 15%;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="preparationBody">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Historial de Transcripciones -->
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-history"></i> Historial de Transcripciones</h2>
+    </div>
+    <div class="card-body">
+        {% if transcriptions %}
+        <table class="table" id="transcriptionsTable">
+            <thead>
+                <tr>
+                    <th>Archivo</th>
+                    <th>Estado</th>
+                    <th>Progreso</th>
+                    <th>Motor</th>
+                    <th>Idioma</th>
+                    <th>Audio Tags</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in transcriptions %}
+                <tr id="job-{{ job.id }}" data-job-id="{{ job.id }}">
+                    <td>
+                        <i class="fas fa-file-audio text-muted"></i>
+                        {{ job.original_filename }}
+                    </td>
+                    <td class="status-cell">
+                        <span class="status-badge status-{{ job.status.value }}">
+                            {% if job.status.value == 'pending' %}
+                                <i class="fas fa-clock"></i> Pendiente
+                            {% elif job.status.value == 'uploading' %}
+                                <i class="fas fa-upload"></i> Subiendo
+                            {% elif job.status.value == 'queued' %}
+                                <i class="fas fa-list"></i> En cola
+                            {% elif job.status.value == 'running' %}
+                                <i class="fas fa-spinner fa-spin"></i> Procesando
+                            {% elif job.status.value == 'completed' %}
+                                <i class="fas fa-check"></i> Completado
+                            {% elif job.status.value == 'failed' %}
+                                <i class="fas fa-times"></i> Error
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td class="progress-cell">
+                        {% if job.status.value in ['running', 'queued'] %}
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ job.progress }}%"></div>
+                        </div>
+                        <span class="progress-text">{{ job.progress|int }}%</span>
+                        {% elif job.status.value == 'completed' %}
+                        <span class="text-success">100%</span>
+                        {% elif job.status.value == 'failed' %}
+                        <span class="text-danger" title="{{ job.error }}">Error</span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="engine-badge engine-{{ job.engine.value }}">
+                            {{ job.engine.value }}
+                        </span>
+                    </td>
+                    <td>{{ job.language }}</td>
+                    <td>
+                        {% if job.config_snapshot and job.config_snapshot.get('audio_tags') %}
+                        <i class="fas fa-check text-success" title="Sí"></i>
+                        {% else %}
+                        <i class="fas fa-times text-muted" title="No"></i>
+                        {% endif %}
+                    </td>
+                    <td>{{ job.created_at | format_datetime_user(user_timezone) }}</td>
+                    <td>
+                        <div class="btn-group">
+                            {% if job.status.value == 'pending' %}
+                            <button class="btn btn-sm btn-primary start-btn" 
+                                    data-job-id="{{ job.id }}" title="Iniciar">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            {% endif %}
+                            
+                            {% if job.status.value == 'completed' %}
+                            <a href="/transcriptions/{{ job.id }}/download/html" 
+                               class="btn btn-sm btn-success" title="Descargar HTML">
+                                <i class="fas fa-file-code"></i>
+                            </a>
+                            <a href="/transcriptions/{{ job.id }}/download/srt" 
+                               class="btn btn-sm btn-outline" title="Descargar SRT">
+                                <i class="fas fa-closed-captioning"></i>
+                            </a>
+                            {% endif %}
+                            
+                            <form method="post" action="/transcriptions/{{ job.id }}/delete" 
+                                  onsubmit="return confirm('¿Eliminar esta transcripción?');"
+                                  style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-inbox"></i>
+            <p>No hay transcripciones</p>
+            <p class="text-muted">Sube un archivo de audio para comenzar</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Datos de perfiles para JavaScript -->
+<script type="application/json" id="profilesData">
+{{ profiles_json | safe }}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Variables globales
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const preparationCard = document.getElementById('preparationCard');
+const preparationBody = document.getElementById('preparationBody');
+const startAllBtn = document.getElementById('startAllBtn');
+
+// Cargar datos de perfiles
+let profilesData = {};
+try {
+    profilesData = JSON.parse(document.getElementById('profilesData').textContent || '{}');
+} catch (e) {
+    console.error('Error parsing profiles data:', e);
+}
+
+// Archivos en preparación (aún no subidos al servidor)
+let preparationFiles = new Map();
+let fileIdCounter = 0;
+
+// Polling de trabajos en progreso
+let pollingIntervals = new Map();
+
+// Drag and drop
+uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    addFilesToPreparation(e.dataTransfer.files);
+});
+
+uploadZone.addEventListener('click', () => {
+    fileInput.click();
+});
+
+fileInput.addEventListener('change', () => {
+    addFilesToPreparation(fileInput.files);
+    fileInput.value = ''; // Reset para permitir seleccionar el mismo archivo
+});
+
+// Añadir archivos a la zona de preparación
+function addFilesToPreparation(files) {
+    for (const file of files) {
+        const fileId = 'prep_' + (++fileIdCounter);
+        preparationFiles.set(fileId, {
+            file: file,
+            profile_id: 'none',
+            engine: 'whisper',
+            language: 'es',
+            training_option: 'none',
+            audio_tags: false
+        });
+    }
+    updatePreparationTable();
+    preparationCard.style.display = 'block';
+}
+
+// Actualizar tabla de preparación
+function updatePreparationTable() {
+    // Guardar valores actuales de los controles antes de limpiar la tabla
+    preparationFiles.forEach((data, fileId) => {
+        const profileSelect = document.getElementById('profile-' + fileId);
+        const engineSelect = document.getElementById('engine-' + fileId);
+        const languageSelect = document.getElementById('language-' + fileId);
+        const trainingSelect = document.getElementById('training-' + fileId);
+        const audioTagsCheck = document.getElementById('audiotags-' + fileId);
+        
+        // Si los elementos existen, guardar sus valores actuales
+        if (profileSelect) data.profile_id = profileSelect.value;
+        if (engineSelect) data.engine = engineSelect.value;
+        if (languageSelect) data.language = languageSelect.value;
+        if (trainingSelect) data.training_option = trainingSelect.value;
+        if (audioTagsCheck) data.audio_tags = audioTagsCheck.checked;
+    });
+    
+    preparationBody.innerHTML = '';
+    
+    preparationFiles.forEach((data, fileId) => {
+        const row = document.createElement('tr');
+        row.id = 'prep-row-' + fileId;
+        
+        // Obtener opciones de perfiles
+        const profileOptions = getProfileOptions();
+        
+        row.innerHTML = 
+            '<td>' +
+                '<i class="fas fa-file-audio text-muted"></i> ' +
+                '<span class="filename" title="' + data.file.name + '">' + truncateFilename(data.file.name, 30) + '</span> ' +
+                '<small class="text-muted">(' + formatFileSize(data.file.size) + ')</small>' +
+            '</td>' +
+            '<td>' +
+                '<select class="form-control-sm" id="profile-' + fileId + '" onchange="onProfileChange(\'' + fileId + '\')">' +
+                    profileOptions +
+                '</select>' +
+            '</td>' +
+            '<td>' +
+                '<select class="form-control-sm" id="engine-' + fileId + '" onchange="onEngineChange(\'' + fileId + '\')">' +
+                    '<option value="whisper">Whisper</option>' +
+                    '<option value="vosk">Vosk</option>' +
+                '</select>' +
+            '</td>' +
+            '<td>' +
+                '<select class="form-control-sm" id="language-' + fileId + '">' +
+                    '<option value="es">ES</option>' +
+                    '<option value="en">EN</option>' +
+                    '<option value="fr">FR</option>' +
+                    '<option value="de">DE</option>' +
+                '</select>' +
+            '</td>' +
+            '<td>' +
+                '<select class="form-control-sm" id="training-' + fileId + '">' +
+                    '<option value="none">No</option>' +
+                    '<option value="profile" disabled>Perfil</option>' +
+                '</select>' +
+            '</td>' +
+            '<td class="text-center">' +
+                '<input type="checkbox" id="audiotags-' + fileId + '" title="Incluir marcas de audio">' +
+            '</td>' +
+            '<td>' +
+                '<div class="btn-group">' +
+                    '<button class="btn btn-sm btn-success" onclick="startSingleJob(\'' + fileId + '\')" title="Iniciar">' +
+                        '<i class="fas fa-play"></i>' +
+                    '</button>' +
+                    '<button class="btn btn-sm btn-danger" onclick="removeFromPreparation(\'' + fileId + '\')" title="Eliminar">' +
+                        '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                '</div>' +
+            '</td>';
+        preparationBody.appendChild(row);
+        
+        // Restaurar valores guardados
+        document.getElementById('profile-' + fileId).value = data.profile_id || 'none';
+        document.getElementById('engine-' + fileId).value = data.engine || 'whisper';
+        document.getElementById('language-' + fileId).value = data.language || 'es';
+        document.getElementById('training-' + fileId).value = data.training_option || 'none';
+        document.getElementById('audiotags-' + fileId).checked = data.audio_tags || false;
+        
+        // Si el motor es Vosk, aplicar restricciones
+        if (data.engine === 'vosk') {
+            onEngineChange(fileId);
+        }
+        
+        // Si tiene perfil, actualizar opciones de training
+        if (data.profile_id && data.profile_id !== 'none' && profilesData[data.profile_id]) {
+            const profile = profilesData[data.profile_id];
+            const trainingSelect = document.getElementById('training-' + fileId);
+            const profileTrainingOption = trainingSelect.querySelector('option[value="profile"]');
+            if (profile.training_file) {
+                profileTrainingOption.disabled = false;
+                profileTrainingOption.textContent = 'Perfil';
+            }
+        }
+    });
+    
+    // Ocultar si no hay archivos
+    if (preparationFiles.size === 0) {
+        preparationCard.style.display = 'none';
+    }
+}
+
+// Obtener opciones de perfiles
+function getProfileOptions() {
+    let html = '<option value="none">Sin perfil</option>';
+    for (const id in profilesData) {
+        html += '<option value="' + id + '">' + profilesData[id].name + '</option>';
+    }
+    return html;
+}
+
+// Cuando cambia el perfil, actualizar opciones relacionadas
+function onProfileChange(fileId) {
+    const profileSelect = document.getElementById('profile-' + fileId);
+    const trainingSelect = document.getElementById('training-' + fileId);
+    const engineSelect = document.getElementById('engine-' + fileId);
+    const languageSelect = document.getElementById('language-' + fileId);
+    const audioTagsCheck = document.getElementById('audiotags-' + fileId);
+    
+    const profileId = profileSelect.value;
+    
+    if (profileId !== 'none' && profilesData[profileId]) {
+        const profile = profilesData[profileId];
+        
+        // Pre-seleccionar valores del perfil
+        if (profile.default_engine) {
+            engineSelect.value = profile.default_engine;
+        }
+        if (profile.default_language) {
+            languageSelect.value = profile.default_language;
+        }
+        if (profile.audio_tags) {
+            audioTagsCheck.checked = profile.audio_tags;
+        }
+        
+        // Habilitar opción de training del perfil si tiene archivo
+        const profileTrainingOption = trainingSelect.querySelector('option[value="profile"]');
+        if (profile.training_file) {
+            profileTrainingOption.disabled = false;
+            profileTrainingOption.textContent = 'Perfil';
+            trainingSelect.value = 'profile';
+        } else {
+            profileTrainingOption.disabled = true;
+            profileTrainingOption.textContent = 'Perfil (N/D)';
+            trainingSelect.value = 'none';
+        }
+        
+        // Aplicar restricciones del motor seleccionado
+        onEngineChange(fileId);
+    } else {
+        // Sin perfil, deshabilitar training de perfil
+        const profileTrainingOption = trainingSelect.querySelector('option[value="profile"]');
+        profileTrainingOption.disabled = true;
+        profileTrainingOption.textContent = 'Perfil (N/D)';
+        trainingSelect.value = 'none';
+        
+        // Aplicar restricciones del motor seleccionado
+        onEngineChange(fileId);
+    }
+}
+
+// Cuando cambia el motor, ajustar opciones disponibles
+function onEngineChange(fileId) {
+    const engineSelect = document.getElementById('engine-' + fileId);
+    const languageSelect = document.getElementById('language-' + fileId);
+    const trainingSelect = document.getElementById('training-' + fileId);
+    
+    const engine = engineSelect.value;
+    
+    if (engine === 'vosk') {
+        // Vosk solo soporta español
+        languageSelect.value = 'es';
+        languageSelect.disabled = true;
+        languageSelect.title = 'Vosk solo soporta español';
+        
+        // Vosk no soporta training
+        trainingSelect.value = 'none';
+        trainingSelect.disabled = true;
+        trainingSelect.title = 'Training solo disponible con Whisper';
+    } else {
+        // Whisper soporta múltiples idiomas
+        languageSelect.disabled = false;
+        languageSelect.title = '';
+        
+        // Re-habilitar training (dependerá del perfil si tiene archivo)
+        trainingSelect.disabled = false;
+        trainingSelect.title = '';
+    }
+}
+
+// Eliminar archivo de preparación
+function removeFromPreparation(fileId) {
+    preparationFiles.delete(fileId);
+    updatePreparationTable();
+}
+
+// Iniciar un trabajo individual
+async function startSingleJob(fileId) {
+    const data = preparationFiles.get(fileId);
+    if (!data) return;
+    
+    // Recoger valores actuales de los controles
+    const profileId = document.getElementById('profile-' + fileId).value;
+    const engine = document.getElementById('engine-' + fileId).value;
+    const language = document.getElementById('language-' + fileId).value;
+    const trainingOption = document.getElementById('training-' + fileId).value;
+    const audioTags = document.getElementById('audiotags-' + fileId).checked;
+    
+    // Preparar FormData
+    const formData = new FormData();
+    formData.append('file', data.file);
+    formData.append('profile_id', profileId);
+    formData.append('engine', engine);
+    formData.append('language', language);
+    formData.append('training_option', trainingOption);
+    formData.append('audio_tags', audioTags ? 'true' : 'false');
+    
+    try {
+        // Subir archivo
+        const uploadResponse = await fetch('/transcriptions/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!uploadResponse.ok) {
+            const error = await uploadResponse.json();
+            showToast('error', 'Error: ' + error.detail);
+            return;
+        }
+        
+        const uploadData = await uploadResponse.json();
+        
+        // Iniciar transcripción
+        const startResponse = await fetch('/transcriptions/' + uploadData.id + '/start', {
+            method: 'POST'
+        });
+        
+        if (!startResponse.ok) {
+            const error = await startResponse.json();
+            showToast('error', 'Error al iniciar: ' + error.detail);
+            return;
+        }
+        
+        showToast('success', 'Transcripción iniciada: ' + data.file.name);
+        
+        // Eliminar de preparación
+        preparationFiles.delete(fileId);
+        updatePreparationTable();
+        
+        // Añadir fila al historial dinámicamente (sin recargar)
+        addJobToHistory(uploadData, data.file.name);
+        
+        // Iniciar polling para este trabajo
+        startPolling(uploadData.id);
+        
+    } catch (error) {
+        showToast('error', 'Error: ' + error.message);
+    }
+}
+
+// Iniciar todos los trabajos
+startAllBtn.addEventListener('click', async function() {
+    const fileIds = Array.from(preparationFiles.keys());
+    for (const fileId of fileIds) {
+        await startSingleJob(fileId);
+    }
+});
+
+// Utilidades
+function truncateFilename(name, maxLen) {
+    if (name.length <= maxLen) return name;
+    const ext = name.split('.').pop();
+    const base = name.substring(0, name.length - ext.length - 1);
+    const truncLen = maxLen - ext.length - 4;
+    return base.substring(0, truncLen) + '...' + ext;
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Polling de estado para trabajos en progreso
+function startPolling(jobId) {
+    const interval = setInterval(async function() {
+        try {
+            const response = await fetch('/transcriptions/' + jobId + '/status');
+            if (response.ok) {
+                const data = await response.json();
+                updateJobStatus(jobId, data);
+                
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(interval);
+                    pollingIntervals.delete(jobId);
+                }
+            }
+        } catch (error) {
+            console.error('Error polling status:', error);
+        }
+    }, 3000);
+    
+    pollingIntervals.set(jobId, interval);
+}
+
+// Actualizar estado en la UI
+function updateJobStatus(jobId, data) {
+    const row = document.getElementById('job-' + jobId);
+    if (!row) return;
+    
+    const statusCell = row.querySelector('.status-cell');
+    const progressCell = row.querySelector('.progress-cell');
+    
+    const statusIcons = {
+        'pending': '<i class="fas fa-clock"></i> Pendiente',
+        'uploading': '<i class="fas fa-upload"></i> Subiendo',
+        'queued': '<i class="fas fa-list"></i> En cola',
+        'running': '<i class="fas fa-spinner fa-spin"></i> Procesando',
+        'completed': '<i class="fas fa-check"></i> Completado',
+        'failed': '<i class="fas fa-times"></i> Error'
+    };
+    
+    statusCell.innerHTML = '<span class="status-badge status-' + data.status + '">' + (statusIcons[data.status] || data.status) + '</span>';
+    
+    if (data.status === 'running' || data.status === 'queued') {
+        progressCell.innerHTML = 
+            '<div class="progress-bar">' +
+                '<div class="progress-fill" style="width: ' + data.progress + '%"></div>' +
+            '</div>' +
+            '<span class="progress-text">' + Math.round(data.progress) + '%</span>';
+    } else if (data.status === 'completed') {
+        progressCell.innerHTML = '<span class="text-success">100%</span>';
+        // Actualizar acciones para mostrar botones de descarga
+        updateJobActions(jobId, 'completed');
+    } else if (data.status === 'failed') {
+        progressCell.innerHTML = '<span class="text-danger" title="' + (data.error || 'Error desconocido') + '">Error</span>';
+        updateJobActions(jobId, 'failed');
+    }
+}
+
+// Actualizar botones de acción según estado
+function updateJobActions(jobId, status) {
+    const row = document.getElementById('job-' + jobId);
+    if (!row) return;
+    
+    const actionsCell = row.querySelector('td:last-child');
+    if (!actionsCell) return;
+    
+    let actionsHtml = '<div class="btn-group">';
+    
+    if (status === 'completed') {
+        actionsHtml += 
+            '<a href="/transcriptions/' + jobId + '/download/html" class="btn btn-sm btn-success" title="Descargar HTML">' +
+                '<i class="fas fa-file-code"></i>' +
+            '</a>' +
+            '<a href="/transcriptions/' + jobId + '/download/srt" class="btn btn-sm btn-outline" title="Descargar SRT">' +
+                '<i class="fas fa-closed-captioning"></i>' +
+            '</a>';
+    }
+    
+    actionsHtml += 
+        '<form method="post" action="/transcriptions/' + jobId + '/delete" ' +
+              'onsubmit="return confirm(\'¿Eliminar esta transcripción?\');" style="display: inline;">' +
+            '<button type="submit" class="btn btn-sm btn-danger" title="Eliminar">' +
+                '<i class="fas fa-trash"></i>' +
+            '</button>' +
+        '</form>' +
+    '</div>';
+    
+    actionsCell.innerHTML = actionsHtml;
+}
+
+// Añadir trabajo al historial dinámicamente
+function addJobToHistory(jobData, filename) {
+    const table = document.getElementById('transcriptionsTable');
+    let tbody = table ? table.querySelector('tbody') : null;
+    
+    // Si no hay tabla (historial vacío), crearla
+    if (!table) {
+        const emptyState = document.querySelector('.empty-state');
+        if (emptyState) {
+            const cardBody = emptyState.parentElement;
+            emptyState.remove();
+            
+            const newTable = document.createElement('table');
+            newTable.className = 'table';
+            newTable.id = 'transcriptionsTable';
+            newTable.innerHTML = 
+                '<thead>' +
+                    '<tr>' +
+                        '<th>Archivo</th>' +
+                        '<th>Estado</th>' +
+                        '<th>Progreso</th>' +
+                        '<th>Motor</th>' +
+                        '<th>Idioma</th>' +
+                        '<th>Audio Tags</th>' +
+                        '<th>Fecha</th>' +
+                        '<th>Acciones</th>' +
+                    '</tr>' +
+                '</thead>' +
+                '<tbody></tbody>';
+            cardBody.appendChild(newTable);
+            tbody = newTable.querySelector('tbody');
+        }
+    }
+    
+    if (!tbody) return;
+    
+    // Crear nueva fila
+    const row = document.createElement('tr');
+    row.id = 'job-' + jobData.id;
+    row.dataset.jobId = jobData.id;
+    
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit', year: 'numeric'}) + ' ' + 
+                   now.toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'});
+    
+    const audioTagsIcon = jobData.audio_tags ? 
+        '<i class="fas fa-check text-success" title="Sí"></i>' : 
+        '<i class="fas fa-times text-muted" title="No"></i>';
+    
+    row.innerHTML = 
+        '<td><i class="fas fa-file-audio text-muted"></i> ' + filename + '</td>' +
+        '<td class="status-cell"><span class="status-badge status-queued"><i class="fas fa-list"></i> En cola</span></td>' +
+        '<td class="progress-cell">' +
+            '<div class="progress-bar"><div class="progress-fill" style="width: 0%"></div></div>' +
+            '<span class="progress-text">0%</span>' +
+        '</td>' +
+        '<td><span class="engine-badge engine-' + (jobData.engine || 'whisper') + '">' + (jobData.engine || 'whisper') + '</span></td>' +
+        '<td>' + (jobData.language || 'es') + '</td>' +
+        '<td>' + audioTagsIcon + '</td>' +
+        '<td>' + dateStr + '</td>' +
+        '<td>' +
+            '<div class="btn-group">' +
+                '<form method="post" action="/transcriptions/' + jobData.id + '/delete" ' +
+                      'onsubmit="return confirm(\'¿Eliminar esta transcripción?\');" style="display: inline;">' +
+                    '<button type="submit" class="btn btn-sm btn-danger" title="Eliminar">' +
+                        '<i class="fas fa-trash"></i>' +
+                    '</button>' +
+                '</form>' +
+            '</div>' +
+        '</td>';
+    
+    // Insertar al principio de la tabla
+    if (tbody.firstChild) {
+        tbody.insertBefore(row, tbody.firstChild);
+    } else {
+        tbody.appendChild(row);
+    }
+}
+
+// Iniciar polling para trabajos en progreso existentes
+document.querySelectorAll('[data-job-id]').forEach(function(row) {
+    const jobId = row.dataset.jobId;
+    const statusBadge = row.querySelector('.status-badge');
+    if (statusBadge && (statusBadge.classList.contains('status-running') || 
+                        statusBadge.classList.contains('status-queued'))) {
+        startPolling(jobId);
+    }
+});
+
+// Botones de inicio en la tabla de historial
+document.querySelectorAll('.start-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+        const jobId = btn.dataset.jobId;
+        try {
+            const response = await fetch('/transcriptions/' + jobId + '/start', { method: 'POST' });
+            if (response.ok) {
+                showToast('success', 'Transcripción iniciada');
+                location.reload();
+            } else {
+                const error = await response.json();
+                showToast('error', 'Error: ' + error.detail);
+            }
+        } catch (error) {
+            showToast('error', 'Error: ' + error.message);
+        }
+    });
+});
+
+// Mostrar toast
+function showToast(type, message) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.innerHTML = 
+        '<i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + '"></i> ' +
+        '<span>' + message + '</span>';
+    container.appendChild(toast);
+    
+    setTimeout(function() {
+        toast.classList.add('fade-out');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-home"></i> Dashboard</h1>
+    <p class="subtitle">Bienvenido, {{ user.username }}</p>
+</div>
+
+<!-- Estadísticas -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon bg-primary">
+            <i class="fas fa-file-audio"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.total_transcriptions }}</span>
+            <span class="stat-label">Transcripciones Totales</span>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon bg-warning">
+            <i class="fas fa-spinner"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.active_transcriptions }}</span>
+            <span class="stat-label">En Proceso</span>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon bg-success">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.completed_transcriptions }}</span>
+            <span class="stat-label">Completadas</span>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon bg-info">
+            <i class="fas fa-sliders-h"></i>
+        </div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.total_profiles }}</span>
+            <span class="stat-label">Perfiles</span>
+        </div>
+    </div>
+</div>
+
+<!-- Acciones rápidas -->
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-bolt"></i> Acciones Rápidas</h2>
+    </div>
+    <div class="card-body">
+        <div class="quick-actions">
+            <a href="/transcriptions" class="action-btn">
+                <i class="fas fa-plus-circle"></i>
+                <span>Nueva Transcripción</span>
+            </a>
+            <a href="/profiles/new" class="action-btn">
+                <i class="fas fa-cog"></i>
+                <span>Crear Perfil</span>
+            </a>
+            {% if user.role.value == 'admin' %}
+            <a href="/users/new" class="action-btn">
+                <i class="fas fa-user-plus"></i>
+                <span>Añadir Usuario</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Transcripciones recientes -->
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-clock"></i> Transcripciones Recientes</h2>
+        <a href="/transcriptions" class="btn btn-sm btn-outline">Ver todas</a>
+    </div>
+    <div class="card-body">
+        {% if recent_transcriptions %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Archivo</th>
+                    <th>Estado</th>
+                    <th>Motor</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in recent_transcriptions %}
+                <tr>
+                    <td>
+                        <i class="fas fa-file-audio text-muted"></i>
+                        {{ job.original_filename }}
+                    </td>
+                    <td>
+                        <span class="status-badge status-{{ job.status.value }}">
+                            {% if job.status.value == 'pending' %}
+                                <i class="fas fa-clock"></i> Pendiente
+                            {% elif job.status.value == 'uploading' %}
+                                <i class="fas fa-upload"></i> Subiendo
+                            {% elif job.status.value == 'queued' %}
+                                <i class="fas fa-list"></i> En cola
+                            {% elif job.status.value == 'running' %}
+                                <i class="fas fa-spinner fa-spin"></i> Procesando
+                            {% elif job.status.value == 'completed' %}
+                                <i class="fas fa-check"></i> Completado
+                            {% elif job.status.value == 'failed' %}
+                                <i class="fas fa-times"></i> Error
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="engine-badge engine-{{ job.engine.value }}">
+                            {{ job.engine.value }}
+                        </span>
+                    </td>
+                    <td>{{ job.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>
+                        {% if job.status.value == 'completed' %}
+                        <a href="/transcriptions/{{ job.id }}/download/html" class="btn btn-sm btn-outline" title="Descargar HTML">
+                            <i class="fas fa-download"></i>
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-inbox"></i>
+            <p>No hay transcripciones recientes</p>
+            <a href="/transcriptions" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Crear primera transcripción
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

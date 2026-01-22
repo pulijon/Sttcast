@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-users"></i> Gestión de Usuarios</h1>
+    <a href="/users/new" class="btn btn-primary">
+        <i class="fas fa-user-plus"></i> Nuevo Usuario
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Email</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th>Último acceso</th>
+                    <th>Creado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>
+                        <i class="fas fa-user-circle text-muted"></i>
+                        {{ u.username }}
+                    </td>
+                    <td>{{ u.email or '-' }}</td>
+                    <td>
+                        <span class="role-badge role-{{ u.role.value }}">
+                            {% if u.role.value == 'admin' %}
+                                <i class="fas fa-crown"></i>
+                            {% elif u.role.value == 'user' %}
+                                <i class="fas fa-user"></i>
+                            {% else %}
+                                <i class="fas fa-eye"></i>
+                            {% endif %}
+                            {{ u.role.value }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if u.is_active %}
+                        <span class="status-badge status-completed">
+                            <i class="fas fa-check-circle"></i> Activo
+                        </span>
+                        {% else %}
+                        <span class="status-badge status-failed">
+                            <i class="fas fa-ban"></i> Inactivo
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>{{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else 'Nunca' }}</td>
+                    <td>{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="/users/{{ u.id }}" class="btn btn-sm btn-outline" title="Editar">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% if u.id != user.id %}
+                            <form method="post" action="/users/{{ u.id }}/delete" 
+                                  onsubmit="return confirm('¿Eliminar usuario {{ u.username }}?');"
+                                  style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Eliminar">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

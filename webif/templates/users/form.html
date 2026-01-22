@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}Nuevo Usuario{% else %}Editar Usuario{% endif %}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <i class="fas fa-{% if is_new %}user-plus{% else %}user-edit{% endif %}"></i>
+        {% if is_new %}Nuevo Usuario{% else %}Editar Usuario{% endif %}
+    </h1>
+    <a href="/users" class="btn btn-outline">
+        <i class="fas fa-arrow-left"></i> Volver
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if error %}
+        <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i>
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        <form method="post" action="{% if is_new %}/users/new{% else %}/users/{{ form_user.id }}{% endif %}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="username">
+                        <i class="fas fa-user"></i> Nombre de usuario *
+                    </label>
+                    <input type="text" 
+                           id="username" 
+                           name="username" 
+                           value="{{ form_user.username if form_user else '' }}"
+                           required
+                           {% if not is_new %}readonly{% endif %}
+                           placeholder="Nombre único de usuario">
+                    {% if not is_new %}
+                    <small class="form-help">El nombre de usuario no se puede cambiar</small>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">
+                        <i class="fas fa-envelope"></i> Email
+                    </label>
+                    <input type="email" 
+                           id="email" 
+                           name="email" 
+                           value="{{ form_user.email if form_user and form_user.email else '' }}"
+                           placeholder="correo@ejemplo.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">
+                        <i class="fas fa-lock"></i> Contraseña {% if is_new %}*{% endif %}
+                    </label>
+                    <input type="password" 
+                           id="password" 
+                           name="password"
+                           {% if is_new %}required{% endif %}
+                           placeholder="{% if is_new %}Contraseña{% else %}Dejar vacío para mantener{% endif %}">
+                    {% if not is_new %}
+                    <small class="form-help">Dejar vacío para mantener la contraseña actual</small>
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label for="role">
+                        <i class="fas fa-user-tag"></i> Rol *
+                    </label>
+                    <select id="role" name="role" required>
+                        <option value="user" {% if form_user and form_user.role.value == 'user' %}selected{% endif %}>
+                            Usuario
+                        </option>
+                        <option value="viewer" {% if form_user and form_user.role.value == 'viewer' %}selected{% endif %}>
+                            Visor
+                        </option>
+                        <option value="admin" {% if form_user and form_user.role.value == 'admin' %}selected{% endif %}>
+                            Administrador
+                        </option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="timezone">
+                        <i class="fas fa-globe"></i> Zona Horaria *
+                    </label>
+                    <select id="timezone" name="timezone" required>
+                        <option value="UTC" {% if form_user and form_user.timezone == 'UTC' %}selected{% elif not form_user %}selected{% endif %}>UTC</option>
+                        <option value="Europe/Madrid" {% if form_user and form_user.timezone == 'Europe/Madrid' %}selected{% endif %}>España (Zona Horaria Central)</option>
+                        <option value="Europe/London" {% if form_user and form_user.timezone == 'Europe/London' %}selected{% endif %}>Reino Unido</option>
+                        <option value="Europe/Paris" {% if form_user and form_user.timezone == 'Europe/Paris' %}selected{% endif %}>Francia</option>
+                        <option value="Europe/Berlin" {% if form_user and form_user.timezone == 'Europe/Berlin' %}selected{% endif %}>Alemania</option>
+                        <option value="Europe/Rome" {% if form_user and form_user.timezone == 'Europe/Rome' %}selected{% endif %}>Italia</option>
+                        <option value="Europe/Amsterdam" {% if form_user and form_user.timezone == 'Europe/Amsterdam' %}selected{% endif %}>Países Bajos</option>
+                        <option value="Europe/Brussels" {% if form_user and form_user.timezone == 'Europe/Brussels' %}selected{% endif %}>Bélgica</option>
+                        <option value="Europe/Vienna" {% if form_user and form_user.timezone == 'Europe/Vienna' %}selected{% endif %}>Austria</option>
+                        <option value="Europe/Prague" {% if form_user and form_user.timezone == 'Europe/Prague' %}selected{% endif %}>República Checa</option>
+                        <option value="Europe/Warsaw" {% if form_user and form_user.timezone == 'Europe/Warsaw' %}selected{% endif %}>Polonia</option>
+                        <option value="Europe/Athens" {% if form_user and form_user.timezone == 'Europe/Athens' %}selected{% endif %}>Grecia</option>
+                        <option value="Europe/Helsinki" {% if form_user and form_user.timezone == 'Europe/Helsinki' %}selected{% endif %}>Finlandia</option>
+                        <option value="Europe/Istanbul" {% if form_user and form_user.timezone == 'Europe/Istanbul' %}selected{% endif %}>Turquía</option>
+                        <option value="America/New_York" {% if form_user and form_user.timezone == 'America/New_York' %}selected{% endif %}>Nueva York</option>
+                        <option value="America/Los_Angeles" {% if form_user and form_user.timezone == 'America/Los_Angeles' %}selected{% endif %}>Los Ángeles</option>
+                        <option value="America/Chicago" {% if form_user and form_user.timezone == 'America/Chicago' %}selected{% endif %}>Chicago</option>
+                        <option value="America/Mexico_City" {% if form_user and form_user.timezone == 'America/Mexico_City' %}selected{% endif %}>Ciudad de México</option>
+                        <option value="America/Toronto" {% if form_user and form_user.timezone == 'America/Toronto' %}selected{% endif %}>Toronto</option>
+                        <option value="America/Buenos_Aires" {% if form_user and form_user.timezone == 'America/Buenos_Aires' %}selected{% endif %}>Buenos Aires</option>
+                        <option value="America/Sao_Paulo" {% if form_user and form_user.timezone == 'America/Sao_Paulo' %}selected{% endif %}>São Paulo</option>
+                        <option value="Asia/Tokyo" {% if form_user and form_user.timezone == 'Asia/Tokyo' %}selected{% endif %}>Tokio</option>
+                        <option value="Asia/Hong_Kong" {% if form_user and form_user.timezone == 'Asia/Hong_Kong' %}selected{% endif %}>Hong Kong</option>
+                        <option value="Asia/Shanghai" {% if form_user and form_user.timezone == 'Asia/Shanghai' %}selected{% endif %}>Shanghái</option>
+                        <option value="Asia/Singapore" {% if form_user and form_user.timezone == 'Asia/Singapore' %}selected{% endif %}>Singapur</option>
+                        <option value="Asia/Bangkok" {% if form_user and form_user.timezone == 'Asia/Bangkok' %}selected{% endif %}>Bangkok</option>
+                        <option value="Asia/Dubai" {% if form_user and form_user.timezone == 'Asia/Dubai' %}selected{% endif %}>Dubái</option>
+                        <option value="Asia/Kolkata" {% if form_user and form_user.timezone == 'Asia/Kolkata' %}selected{% endif %}>India</option>
+                        <option value="Australia/Sydney" {% if form_user and form_user.timezone == 'Australia/Sydney' %}selected{% endif %}>Sídney</option>
+                        <option value="Pacific/Auckland" {% if form_user and form_user.timezone == 'Pacific/Auckland' %}selected{% endif %}>Nueva Zelanda</option>
+                    </select>
+                </div>
+                
+                {% if not is_new %}
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" 
+                               name="is_active" 
+                               value="true"
+                               {% if form_user.is_active %}checked{% endif %}>
+                        <span><i class="fas fa-check-circle"></i> Usuario activo</span>
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="form-actions">
+                <a href="/users" class="btn btn-outline">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i>
+                    {% if is_new %}Crear Usuario{% else %}Guardar Cambios{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

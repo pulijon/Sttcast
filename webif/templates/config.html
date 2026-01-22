@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-cog"></i> Configuración del Sistema</h1>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="alert alert-success">
+    <i class="fas fa-check-circle"></i>
+    Configuración guardada correctamente
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <form method="post" action="/config">
+            {% for config in configs %}
+            <div class="form-group">
+                <label for="{{ config.key }}">
+                    {{ config.label }}
+                </label>
+                <input type="{% if config.is_secret %}password{% else %}text{% endif %}" 
+                       id="{{ config.key }}" 
+                       name="{{ config.key }}" 
+                       value="{{ config.value }}"
+                       class="form-control">
+                {% if config.description %}
+                <small class="form-help">{{ config.description }}</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Guardar Configuración
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Información del sistema -->
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-info-circle"></i> Información del Sistema</h2>
+    </div>
+    <div class="card-body">
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">Versión de Sttcast Web:</span>
+                <span class="info-value">1.0.0</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Usuario actual:</span>
+                <span class="info-value">{{ user.username }} ({{ user.role.value }})</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

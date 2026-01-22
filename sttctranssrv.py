@@ -225,18 +225,13 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
         config['temp_dir'] = str(job_processing_dir)
         config['work_id'] = job_id
         
-        # Obtener nombre original del archivo (sin UUID)
+        # Obtener nombre original del archivo
+        # Con la nueva estructura, el archivo ya tiene su nombre original en job_dir/original_filename
         original_filename = None
         if 'fnames' in config and config['fnames']:
             original_path = Path(config['fnames'][0])
-            # Extraer nombre sin el UUID que se añade al guardar
-            original_filename = original_path.name
-            if "_" in original_filename:
-                # Formato: {job_id}_{filename} -> extraer filename
-                parts = original_filename.split("_", 1)
-                if len(parts) > 1:
-                    original_filename = parts[1]
-            original_filename = Path(original_filename).stem  # Sin extensión
+            # El archivo ya tiene su nombre original (sin UUID)
+            original_filename = original_path.stem  # Sin extensión
         
         # Inyectar pool global para evitar crear procesos por trabajo
         if process_pool:
@@ -257,6 +252,15 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
                     config
                 )
             finally:
+                # Forzar liberación de memoria GPU
+                import gc
+                import torch
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    logging.info(f"Job {job_id}: Memoria GPU liberada")
+                
                 gpu_semaphore.release()
                 logging.info(f"Job {job_id}: Slot GPU liberado (slots disponibles: {gpu_semaphore._value})")
         else:
@@ -275,14 +279,19 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
         
         result_files = []
         
+        # Obtener html_suffix del config (ya incluye el '_' si no está vacío)
+        html_suffix = config.get('html_suffix', '')
+        if html_suffix and not html_suffix.startswith('_'):
+            html_suffix = '_' + html_suffix
+        
         # Mover archivos de resultado con nombres finales limpios
         for output_file in result['output_files']:
             html_src = Path(output_file['html'])
             srt_src = Path(output_file['srt'])
             
             if html_src.exists():
-                # Nombre final sin UUID ni sufijos
-                html_filename = f"{original_filename}.html" if original_filename else "transcription.html"
+                # Nombre final con sufijo si está configurado
+                html_filename = f"{original_filename}{html_suffix}.html" if original_filename else "transcription.html"
                 html_dst = job_result_dir / html_filename
                 shutil.move(html_src, html_dst)
                 result_files.append({
@@ -293,8 +302,8 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
                 })
             
             if srt_src.exists():
-                # Nombre final sin UUID ni sufijos
-                srt_filename = f"{original_filename}.srt" if original_filename else "transcription.srt"
+                # Nombre final con sufijo si está configurado
+                srt_filename = f"{original_filename}{html_suffix}.srt" if original_filename else "transcription.srt"
                 srt_dst = job_result_dir / srt_filename
                 shutil.move(srt_src, srt_dst)
                 result_files.append({
@@ -345,26 +354,11 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
 def _cleanup_temp_files(job_id: str, config: Dict[str, Any]):
     """Limpiar archivos temporales de un trabajo"""
     try:
-        # Eliminar archivo de audio original
-        if 'fnames' in config and config['fnames']:
-            audio_path = Path(config['fnames'][0])
-            if audio_path.exists():
-                audio_path.unlink()
-                logging.info(f"Job {job_id}: Eliminado archivo de audio temporal: {audio_path}")
-        
-        # Eliminar archivo de entrenamiento si existe
-        if 'whtraining' in config and config['whtraining']:
-            training_path = Path(config['whtraining'])
-            if training_path.exists():
-                training_path.unlink()
-                logging.info(f"Job {job_id}: Eliminado archivo de entrenamiento temporal: {training_path}")
-        
-        # Eliminar archivo de calendario si existe
-        if 'calendar' in config and config['calendar']:
-            calendar_path = Path(config['calendar'])
-            if calendar_path.exists():
-                calendar_path.unlink()
-                logging.info(f"Job {job_id}: Eliminado archivo de calendario temporal: {calendar_path}")
+        # Con la nueva estructura de directorios por trabajo, limpiar el directorio completo
+        job_upload_dir = UPLOAD_DIR / job_id
+        if job_upload_dir.exists():
+            shutil.rmtree(job_upload_dir)
+            logging.info(f"Job {job_id}: Directorio de uploads limpiado: {job_upload_dir}")
         
         # Limpiar directorio temporal del trabajo
         if 'temp_dir' in config and config['temp_dir']:
@@ -411,7 +405,22 @@ async def transcribe_audio_endpoint(
     try:
         config_dict = json.loads(config)
         config_obj = TranscriptionConfig(**config_dict)
-        logging.info(f"Configuración parseada: whisper={config_obj.whisper}, modelo={config_obj.whmodel}")
+        # Log detallado de todas las opciones del trabajo
+        logging.info("=" * 60)
+        logging.info(f"NUEVO TRABAJO DE TRANSCRIPCIÓN")
+        logging.info("=" * 60)
+        logging.info(f"  Cliente: {client_id}")
+        logging.info(f"  Archivo: {audio_file.filename}")
+        logging.info(f"  Motor: {'whisper' if config_obj.whisper else 'vosk'}")
+        logging.info(f"  Modelo Whisper: {config_obj.whmodel}")
+        logging.info(f"  Idioma: {config_obj.whlanguage}")
+        logging.info(f"  Audio tags: {config_obj.audio_tags}")
+        logging.info(f"  Use training: {config_obj.use_training}")
+        logging.info(f"  Training file: {training_file.filename if training_file else 'N/A'}")
+        logging.info(f"  Calendar file: {calendar_file.filename if calendar_file else config_obj.calendar_file or 'N/A'}")
+        logging.info(f"  Prefix: {config_obj.prefix}")
+        logging.info(f"  Config completa: {json.dumps(config_dict, indent=2)}")
+        logging.info("=" * 60)
     except json.JSONDecodeError as e:
         logging.error(f"Error parsing JSON config: {e}")
         raise HTTPException(status_code=400, detail="Configuración JSON inválida")
@@ -435,23 +444,55 @@ async def transcribe_audio_endpoint(
     job_id = create_job_id()
     logging.info(f"Nuevo trabajo creado: {job_id} por cliente {client_id}")
     
-    # Guardar archivo subido
-    upload_path = UPLOAD_DIR / f"{job_id}_{audio_file.filename}"
+    # Crear directorio específico para este trabajo
+    job_dir = UPLOAD_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Extraer el nombre original del archivo (puede venir con prefijo UUID del webif)
+    original_filename = audio_file.filename
+    # Si el nombre tiene formato UUID_nombre.ext, extraer solo nombre.ext
+    parts = original_filename.split('_', 1)
+    if len(parts) > 1 and len(parts[0]) == 36:  # UUID tiene 36 caracteres
+        try:
+            uuid.UUID(parts[0])  # Verificar que es un UUID válido
+            original_filename = parts[1]  # Usar solo la parte después del UUID
+        except ValueError:
+            pass  # No es un UUID, mantener el nombre completo
+    
+    # Guardar archivo con su nombre original en el directorio del trabajo
+    upload_path = job_dir / original_filename
     with open(upload_path, "wb") as f:
         shutil.copyfileobj(audio_file.file, f)
     
-    # Guardar archivo de entrenamiento si se proporciona
+    # Guardar archivo de entrenamiento si se proporciona (en el directorio del trabajo)
     training_path = None
     if training_file:
-        training_path = UPLOAD_DIR / f"{job_id}_training_{training_file.filename}"
+        # Extraer nombre original del training file
+        training_original_name = training_file.filename
+        parts = training_original_name.split('_', 1)
+        if len(parts) > 1 and len(parts[0]) == 36:
+            try:
+                uuid.UUID(parts[0])
+                training_original_name = parts[1]
+            except ValueError:
+                pass
+        training_path = job_dir / f"training_{training_original_name}"
         with open(training_path, "wb") as f:
             shutil.copyfileobj(training_file.file, f)
         logging.info(f"Job {job_id}: Archivo de entrenamiento guardado: {training_path}")
     
-    # Guardar archivo de calendario si se proporciona
+    # Guardar archivo de calendario si se proporciona (en el directorio del trabajo)
     calendar_path = None
     if calendar_file:
-        calendar_path = UPLOAD_DIR / f"{job_id}_calendar_{calendar_file.filename}"
+        calendar_original_name = calendar_file.filename
+        parts = calendar_original_name.split('_', 1)
+        if len(parts) > 1 and len(parts[0]) == 36:
+            try:
+                uuid.UUID(parts[0])
+                calendar_original_name = parts[1]
+            except ValueError:
+                pass
+        calendar_path = job_dir / f"calendar_{calendar_original_name}"
         with open(calendar_path, "wb") as f:
             shutil.copyfileobj(calendar_file.file, f)
         logging.info(f"Job {job_id}: Archivo de calendario guardado: {calendar_path}")
@@ -643,11 +684,10 @@ async def delete_job(
     if job_result_dir.exists():
         shutil.rmtree(job_result_dir)
     
-    # Eliminar archivos de entrada y procesamiento
-    upload_files = list(UPLOAD_DIR.glob(f"{job_id}_*"))
-    for file_path in upload_files:
-        if file_path.exists():
-            file_path.unlink()
+    # Eliminar directorio de uploads del trabajo (nueva estructura)
+    job_upload_dir = UPLOAD_DIR / job_id
+    if job_upload_dir.exists():
+        shutil.rmtree(job_upload_dir)
     
     # Eliminar directorio de procesamiento
     processing_dir = PROCESSING_DIR / job_id

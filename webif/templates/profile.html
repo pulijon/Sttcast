@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Mi Perfil{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-user-circle"></i> Mi Perfil</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Información Personal</h2>
+    </div>
+    <div class="card-body">
+        <form method="post" action="/profile">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="username">
+                        <i class="fas fa-user"></i> Nombre de usuario
+                    </label>
+                    <input type="text" 
+                           id="username" 
+                           value="{{ user.username }}"
+                           readonly
+                           class="form-control"
+                           placeholder="Nombre de usuario">
+                    <small class="form-help">No se puede cambiar el nombre de usuario</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">
+                        <i class="fas fa-envelope"></i> Email
+                    </label>
+                    <input type="email" 
+                           id="email" 
+                           value="{{ user.email or '' }}"
+                           readonly
+                           class="form-control"
+                           placeholder="correo@ejemplo.com">
+                    <small class="form-help">Contacta al administrador para cambiar tu email</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="role">
+                        <i class="fas fa-user-tag"></i> Rol
+                    </label>
+                    <input type="text" 
+                           id="role" 
+                           value="{% if user.role.value == 'admin' %}Administrador{% elif user.role.value == 'viewer' %}Visor{% else %}Usuario{% endif %}"
+                           readonly
+                           class="form-control"
+                           placeholder="Rol">
+                </div>
+                
+                <div class="form-group">
+                    <label for="timezone">
+                        <i class="fas fa-globe"></i> Zona Horaria *
+                    </label>
+                    <select id="timezone" name="timezone" required>
+                        <option value="UTC" {% if user.timezone == 'UTC' %}selected{% endif %}>UTC</option>
+                        <option value="Europe/Madrid" {% if user.timezone == 'Europe/Madrid' %}selected{% endif %}>España (Zona Horaria Central)</option>
+                        <option value="Europe/London" {% if user.timezone == 'Europe/London' %}selected{% endif %}>Reino Unido</option>
+                        <option value="Europe/Paris" {% if user.timezone == 'Europe/Paris' %}selected{% endif %}>Francia</option>
+                        <option value="Europe/Berlin" {% if user.timezone == 'Europe/Berlin' %}selected{% endif %}>Alemania</option>
+                        <option value="Europe/Rome" {% if user.timezone == 'Europe/Rome' %}selected{% endif %}>Italia</option>
+                        <option value="Europe/Amsterdam" {% if user.timezone == 'Europe/Amsterdam' %}selected{% endif %}>Países Bajos</option>
+                        <option value="Europe/Brussels" {% if user.timezone == 'Europe/Brussels' %}selected{% endif %}>Bélgica</option>
+                        <option value="Europe/Vienna" {% if user.timezone == 'Europe/Vienna' %}selected{% endif %}>Austria</option>
+                        <option value="Europe/Prague" {% if user.timezone == 'Europe/Prague' %}selected{% endif %}>República Checa</option>
+                        <option value="Europe/Warsaw" {% if user.timezone == 'Europe/Warsaw' %}selected{% endif %}>Polonia</option>
+                        <option value="Europe/Athens" {% if user.timezone == 'Europe/Athens' %}selected{% endif %}>Grecia</option>
+                        <option value="Europe/Helsinki" {% if user.timezone == 'Europe/Helsinki' %}selected{% endif %}>Finlandia</option>
+                        <option value="Europe/Istanbul" {% if user.timezone == 'Europe/Istanbul' %}selected{% endif %}>Turquía</option>
+                        <option value="America/New_York" {% if user.timezone == 'America/New_York' %}selected{% endif %}>Nueva York</option>
+                        <option value="America/Los_Angeles" {% if user.timezone == 'America/Los_Angeles' %}selected{% endif %}>Los Ángeles</option>
+                        <option value="America/Chicago" {% if user.timezone == 'America/Chicago' %}selected{% endif %}>Chicago</option>
+                        <option value="America/Mexico_City" {% if user.timezone == 'America/Mexico_City' %}selected{% endif %}>Ciudad de México</option>
+                        <option value="America/Toronto" {% if user.timezone == 'America/Toronto' %}selected{% endif %}>Toronto</option>
+                        <option value="America/Buenos_Aires" {% if user.timezone == 'America/Buenos_Aires' %}selected{% endif %}>Buenos Aires</option>
+                        <option value="America/Sao_Paulo" {% if user.timezone == 'America/Sao_Paulo' %}selected{% endif %}>São Paulo</option>
+                        <option value="Asia/Tokyo" {% if user.timezone == 'Asia/Tokyo' %}selected{% endif %}>Tokio</option>
+                        <option value="Asia/Hong_Kong" {% if user.timezone == 'Asia/Hong_Kong' %}selected{% endif %}>Hong Kong</option>
+                        <option value="Asia/Shanghai" {% if user.timezone == 'Asia/Shanghai' %}selected{% endif %}>Shanghái</option>
+                        <option value="Asia/Singapore" {% if user.timezone == 'Asia/Singapore' %}selected{% endif %}>Singapur</option>
+                        <option value="Asia/Bangkok" {% if user.timezone == 'Asia/Bangkok' %}selected{% endif %}>Bangkok</option>
+                        <option value="Asia/Dubai" {% if user.timezone == 'Asia/Dubai' %}selected{% endif %}>Dubái</option>
+                        <option value="Asia/Kolkata" {% if user.timezone == 'Asia/Kolkata' %}selected{% endif %}>India</option>
+                        <option value="Australia/Sydney" {% if user.timezone == 'Australia/Sydney' %}selected{% endif %}>Sídney</option>
+                        <option value="Pacific/Auckland" {% if user.timezone == 'Pacific/Auckland' %}selected{% endif %}>Nueva Zelanda</option>
+                    </select>
+                    <small class="form-help">Selecciona tu zona horaria para ver las fechas correctamente</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <i class="fas fa-calendar"></i> Miembro desde
+                    </label>
+                    <input type="text" 
+                           value="{{ user.created_at.strftime('%d/%m/%Y %H:%M') }}"
+                           readonly
+                           class="form-control"
+                           placeholder="Fecha de creación">
+                </div>
+                
+                {% if user.last_login %}
+                <div class="form-group">
+                    <label>
+                        <i class="fas fa-sign-in-alt"></i> Último acceso
+                    </label>
+                    <input type="text" 
+                           value="{{ user.last_login.strftime('%d/%m/%Y %H:%M') }}"
+                           readonly
+                           class="form-control"
+                           placeholder="Último acceso">
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="form-actions">
+                <a href="/" class="btn btn-outline">Cancelar</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Guardar Cambios
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="info-box">
+    <i class="fas fa-info-circle"></i>
+    <p>
+        <strong>Nota:</strong> Para cambiar tu contraseña, email o rol, 
+        contacta con el administrador del sistema.
+    </p>
+</div>
+
+<style>
+.info-box {
+    background-color: #e7f3ff;
+    border-left: 4px solid #2196F3;
+    padding: 15px;
+    margin-top: 20px;
+    border-radius: 4px;
+    color: #0c5aa0;
+}
+
+.info-box i {
+    margin-right: 10px;
+}
+</style>
+{% endblock %}

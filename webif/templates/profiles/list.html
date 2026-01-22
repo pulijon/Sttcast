@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Perfiles{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-sliders-h"></i> Perfiles de Transcripción</h1>
+    <a href="/profiles/new" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Nuevo Perfil
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if profiles %}
+        <div class="profiles-grid">
+            {% for profile in profiles %}
+            <div class="profile-card">
+                <div class="profile-header">
+                    <h3>{{ profile.name }}</h3>
+                    {% if profile.is_public %}
+                    <span class="badge badge-info" title="Perfil público">
+                        <i class="fas fa-globe"></i>
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <p class="profile-description">
+                    {{ profile.description or 'Sin descripción' }}
+                </p>
+                
+                <div class="profile-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Prefijo:</span>
+                        <span class="detail-value">{{ profile.prefix }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Motor:</span>
+                        <span class="engine-badge engine-{{ profile.default_engine.value }}">
+                            {{ profile.default_engine.value }}
+                        </span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Idioma:</span>
+                        <span class="detail-value">{{ profile.default_language }}</span>
+                    </div>
+                    {% if profile.default_engine.value == 'whisper' %}
+                    <div class="detail-item">
+                        <span class="detail-label">Modelo:</span>
+                        <span class="detail-value">{{ profile.whisper_model }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="profile-actions">
+                    <a href="/profiles/{{ profile.id }}" class="btn btn-sm btn-outline">
+                        <i class="fas fa-edit"></i> Editar
+                    </a>
+                    {% if profile.owner_id == user.id or user.role.value == 'admin' %}
+                    <form method="post" action="/profiles/{{ profile.id }}/delete" 
+                          onsubmit="return confirm('¿Eliminar perfil {{ profile.name }}?');"
+                          style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-sliders-h"></i>
+            <p>No hay perfiles configurados</p>
+            <a href="/profiles/new" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Crear primer perfil
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

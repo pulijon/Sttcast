@@ -117,6 +117,18 @@ def get_pars():
                         help=f"Calendario de episodios en formato CSV. Por defecto {cal_file}")
     parser.add_argument("-t", "--templates", type=str, default=podcast_templates,
                     help=f"Plantillas para los podcasts. Por defecto {podcast_templates}")
+    
+    # Parámetros de Pyannote (diarización)
+    parser.add_argument("--pyannote-method", type=str, default=PYANNOTE_METHOD,
+                        help=f"Método de clustering para pyannote. Por defecto {PYANNOTE_METHOD}")
+    parser.add_argument("--pyannote-min-cluster-size", type=int, default=PYANNOTE_MIN_CLUSTER_SIZE,
+                        help=f"Tamaño mínimo de cluster para pyannote. Por defecto {PYANNOTE_MIN_CLUSTER_SIZE}")
+    parser.add_argument("--pyannote-threshold", type=float, default=PYANNOTE_THRESHOLD,
+                        help=f"Umbral de clustering para pyannote. Por defecto {PYANNOTE_THRESHOLD}")
+    parser.add_argument("--pyannote-min-speakers", type=int, default=PYANNOTE_MIN_SPEAKERS,
+                        help=f"Número mínimo de hablantes (opcional). Por defecto {PYANNOTE_MIN_SPEAKERS}")
+    parser.add_argument("--pyannote-max-speakers", type=int, default=PYANNOTE_MAX_SPEAKERS,
+                        help=f"Número máximo de hablantes (opcional). Por defecto {PYANNOTE_MAX_SPEAKERS}")
 
     return parser.parse_args()
 
@@ -151,6 +163,13 @@ def launch_vosk_tasks(args):
 def launch_whisper_tasks(args):
     global procfnames
     
+    # Usar valores de argumentos si están definidos, si no usar los globales (de .env)
+    pyannote_method = getattr(args, 'pyannote_method', None) or PYANNOTE_METHOD
+    pyannote_min_cluster_size = getattr(args, 'pyannote_min_cluster_size', None) or PYANNOTE_MIN_CLUSTER_SIZE
+    pyannote_threshold = getattr(args, 'pyannote_threshold', None) or PYANNOTE_THRESHOLD
+    pyannote_min_speakers = getattr(args, 'pyannote_min_speakers', None) or PYANNOTE_MIN_SPEAKERS
+    pyannote_max_speakers = getattr(args, 'pyannote_max_speakers', None) or PYANNOTE_MAX_SPEAKERS
+    
     config_dict = {
         'procfnames': procfnames,
         'cpus': args.cpus,
@@ -163,11 +182,11 @@ def launch_whisper_tasks(args):
         'max_gap': args.max_gap,
         'whtraining': args.whtraining,
         'whsusptime': args.whsusptime,
-        'pyannote_method': PYANNOTE_METHOD,
-        'pyannote_min_cluster_size': PYANNOTE_MIN_CLUSTER_SIZE,
-        'pyannote_threshold': PYANNOTE_THRESHOLD,
-        'pyannote_min_speakers': PYANNOTE_MIN_SPEAKERS,
-        'pyannote_max_speakers': PYANNOTE_MAX_SPEAKERS,
+        'pyannote_method': pyannote_method,
+        'pyannote_min_cluster_size': pyannote_min_cluster_size,
+        'pyannote_threshold': pyannote_threshold,
+        'pyannote_min_speakers': pyannote_min_speakers,
+        'pyannote_max_speakers': pyannote_max_speakers,
     }
     
     return sttcast_core.launch_whisper_tasks_core(config_dict)

@@ -17,3 +17,9 @@ class SttcastArgs:
         self.min_offset = 60
         self.max_gap = 0.8
         self.audio_tags = False
+        # Parámetros de Pyannote para diarización
+        self.pyannote_method = "ward"
+        self.pyannote_min_cluster_size = 15
+        self.pyannote_threshold = 0.7147
+        self.pyannote_min_speakers = None
+        self.pyannote_max_speakers = None

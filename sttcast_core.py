@@ -6,6 +6,8 @@ import torch_fix
 from tools.logs import logcfg
 from tools.envvars import load_env_vars_from_directory
 import logging
+import gc
+import torch
 import whisperx
 from whisperx.diarize import DiarizationPipeline
 from vosk import Model, KaldiRecognizer
@@ -523,7 +525,17 @@ def whisper_task_work(cfg):
     logging.info(f"Terminado fragmento con whisper {hname}")
     with open(hname, "w", encoding="utf-8") as f:
         f.write(sh.prettify())
+    
+    # Liberar memoria GPU explícitamente
     del diarization_pipeline
+    del model
+    del result
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        logging.debug(f"Memoria GPU liberada. VRAM libre: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+    
     return hname, sname, datetime.datetime.now() - stime
 
 

@@ -1,461 +1,491 @@
 ![](screenshots/rag_with_web_if.png)
-# Rationale for sttcast.py
 
-STT (Speech To Text) technology is becoming increasyngly popular. Virtual assistants as Alexa, Siri, Cortana or Google are able to understand voice commands and operate accordingly.
+# STTCast - Intelligent Podcast Transcription and Search System
 
-Every big cloud provider has its APIs to transcribe voice to text. Results are usually good. However if you want (as I do) to convert collections of podcasts to text (hundreds of hours), you must consider time and cost of the operation.
+*Verba volant, scripta manent* — "spoken words fly away, written words remain." This ancient Latin proverb has perhaps been the greatest disadvantage of radio programs and their digital successors, podcasts. We can always revisit what was written, but not what was spoken — until now. This project breaks through this age-old barrier, enabling podcast enthusiasts who struggled to find where a particular topic was discussed to finally locate, read, and listen again to what was said.
 
-There are open source projects as Vosk-Kaldi that may be of help in this task. **sttcast.py** makes use of its Python API to offline transcribe podcasts, downloaded as mp3 files.
+**STTCast** is a comprehensive suite for automatic podcast transcription, speaker identification (diarization), and intelligent semantic search powered by RAG (Retrieval-Augmented Generation).
 
-It is worth also mentioning OpenAI Whisper. It is a very interesting alternative although it is also more resource  consuming. It has been included as an option engine for **sttcast.py**
+## 🎯 Key Features
 
-# Requirements
+- **WhisperX Transcription**: Primary transcription engine based on OpenAI Whisper with CUDA acceleration
+- **Pyannote Diarization**: Automatic speaker identification through voice clustering
+- **Alternative Vosk Engine**: For GPU-free processing (Spanish only)
+- **Web Interface**: Browser-based transcription management
+- **RAG Semantic Search**: Intelligent search system across podcast collections
+- **Participation Analysis**: Speaking time statistics per speaker
+- **Query Cache**: Semantic caching system to optimize repeated searches
 
-The requirements for **sttcast.py** are as follows:
+## 📐 System Architecture
 
-* A python 3.x installation (it has been tested on Python 3.10 on Windows and Linux)
-* The tool **ffmpeg** installed in a folder of the PATH variable.
-* A vosk model for the desired language (you may find a lot of them in [alfphacephei](https://alphacephei.com/vosk/models). It has been tested with the Spanish model [vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip))
-  
-Python dependencies can be installed in a virtual environment. The dependencies are specified in the file `requirements.txt`. The following commands install, in Linux, such dependencies (I suppose they should also work in Mac):
+STTCast uses a three-tier architecture that separates responsibilities and enables scalability:
 
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          PRESENTATION LAYER                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐   │
+│  │   Web Interface  │  │    RAG Client    │  │        CLI           │   │
+│  │   (webif)        │  │  (rag/client)    │  │    (sttcast.py)      │   │
+│  │   Port 8302      │  │   Port 8004      │  │                      │   │
+│  └────────┬─────────┘  └────────┬─────────┘  └──────────────────────┘   │
+│           │                     │                                       │
+└───────────┼─────────────────────┼───────────────────────────────────────┘
+            │                     │
+┌───────────┼─────────────────────┼───────────────────────────────────────┐
+│           │       SERVICE LAYER                                         │
+├───────────┼─────────────────────┼───────────────────────────────────────┤
+│  ┌────────▼─────────┐  ┌────────▼─────────┐  ┌──────────────────────┐   │
+│  │  Transcription   │  │   RAG Server     │  │   Context Server     │   │
+│  │     Server       │  │ (sttcast_rag_    │  │  (context_server)    │   │
+│  │  (sttctranssrv)  │  │   service)       │  │                      │   │
+│  │   Port 8000      │  │   Port 5500      │  │   Port 8001          │   │
+│  └────────┬─────────┘  └────────┬─────────┘  └──────────┬───────────┘   │
+│           │                     │                       │               │
+└───────────┼─────────────────────┼───────────────────────┼───────────────┘
+            │                     │                       │
+┌───────────┼─────────────────────┼───────────────────────┼───────────────┐
+│           │        DATA LAYER                           │               │
+├───────────┼─────────────────────┼───────────────────────┼───────────────┤
+│  ┌────────▼─────────┐  ┌────────▼─────────┐  ┌──────────▼───────────┐   │
+│  │   PostgreSQL     │  │    OpenAI API    │  │   FAISS + SQLite     │   │
+│  │   (webif_db)     │  │   (Embeddings)   │  │   (Vectors)          │   │
+│  └──────────────────┘  └──────────────────┘  └──────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Main Components
+
+#### 1. **Web Interface (webif)** - Port 8302
+FastAPI web application that allows:
+- Uploading audio files for transcription
+- Configuring reusable transcription profiles
+- Monitoring job progress
+- Downloading results in HTML and SRT formats
+- Managing users and permissions
+
+#### 2. **Transcription Server (sttctranssrv)** - Port 8000
+Backend that processes transcriptions:
+- Job queue management
+- WhisperX execution with Pyannote
+- GPU resource control
+- HTML and SRT file generation
+
+#### 3. **RAG Server (sttcast_rag_service)** - Port 5500
+Artificial intelligence service:
+- Embedding generation with OpenAI
+- Answering questions about content
+- Automatic summary generation
+- GPT model integration
+
+#### 4. **Context Server (context_server)** - Port 8001
+Database management:
+- Relational database queries (SQLite)
+- Vector searches with FAISS
+- Context provision for RAG
+
+#### 5. **RAG Web Client (rag/client)** - Port 8004
+Flask web application for end users:
+- Semantic search across transcriptions
+- Speaker participation analysis
+- Intelligent query caching
+- Direct episode references
+
+## 🔧 Requirements
+
+### System
+- Python 3.10 or higher
+- FFmpeg installed in PATH
+- NVIDIA GPU with CUDA (recommended for Whisper)
+- PostgreSQL (for web interface)
+
+### Python Dependencies
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-In Windows, `python` could be `py` depending on the installation and the activation script is in `.venv\Scripts`
+## 🚀 Transcription Engines
 
-You can find [here](https://dev.to/shriekdj/how-to-create-and-activate-the-virtual-environment-for-python3-project-3g4l) detailed instructions to create and activate the virtual environment.
+### WhisperX (Primary Engine)
 
-# How does sttcast.py work
+WhisperX is the recommended engine for high-quality transcriptions. It combines:
+- **OpenAI Whisper**: For speech-to-text transcription
+- **Pyannote**: For diarization (speaker identification)
 
-As transcribing is a CPU intensive operation, **sttcast.py** makes use of multiprocessing in Python (you probably have known about GIL blues for multithreading or coroutines in Python). **sttcast.py** splits the entire work (the transcription of a podcast, perhaps of several hours) in fragments of s seconds (s is an optional paramenter, 600 seconds by default). 
+**Features:**
+- CUDA acceleration for fast processing
+- Multiple models based on quality/speed requirements
+- Multi-language support
+- Speaker identification with training file
 
-If the task is to transcribe a large number of files (clearly exceeding the number of available CPUs), sttcast.py can utilize its capacity to transcribe multiple files in parallel without splitting them, thus eliminating potential issues at the split boundaries. In this case, it is advisable to set the number of seconds to a value greater than the size of the largest file (36000 seconds, or 10 hours, should be sufficient for almost all files).
+| Model  | Required vRAM | Speed |
+|--------|---------------|-------|
+| tiny   | ~1 GB         | ~32x  |
+| base   | ~1 GB         | ~16x  |
+| small  | ~2 GB         | ~6x   |
+| medium | ~5 GB         | ~2x   |
+| large  | ~10 GB        | 1x    |
 
-**sttcast.py** converts the mp3 file to wav in order to use the vosk API. The main process pass the wav file as an argument to each one of the worker tasks, each proessing a fragment of audio (only part of the total frames of the wav file). The tasks are delivered to a pool of **c** processes (**c** is another optional paramenter, equal, by default, to the number of cpus of the system minus 2). In this way, the system may parallel **c** tasks.
+### Vosk (Alternative Engine)
 
-Each fragment is transcribed in a different HTML file. Words of the trascribed text are highlighted with different colors to display the level of conficence of the transcription. The vosk-kaldi library delivers with each word, its confidence as a number from 0 to 1. **sttcast** supports 4 configurable levels of confidence:
+Lightweight engine based on Vosk-Kaldi:
+- Runs on CPU only
+- Spanish language only
+- Lower accuracy but no GPU requirements
+- Useful for massive processing without GPU resources
 
-* Very high confidence (text is shown in black)
-* High confidence (text is shown in green)
-* Medium confidence (text is shown in orange)
-* Low confidence (text is shown in red)
+Models available at [alphacephei](https://alphacephei.com/vosk/models). Recommended: [vosk-model-es-0.42](https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip)
 
-Fragments of text are also tagged with time stamps to facilitate searching and listening from the mp3 file. If the --audio-tags option is selected, there is also an html5 audio player configured to listen to the file at the beginning of the segment.
+## 📹 Video Tutorial
 
-The tool **add_audio_tag.py** adds audio controls to a transcribed html without the **--audio-tags**. It requires:
+A [YouTube tutorial](https://www.youtube.com/watch?v=l7TtUFJio2g) is available with installation and usage instructions. It covers an earlier version and will be updated soon.
 
-* BeautifulSoup
-  ```bash
-  pip install bs4
-  ```
-Once all fragments have been transcribed, the last step is the integration of all of them in an unique html file.
+## 📖 Usage
 
-Metadata from mp3 is included in the title of the html
-
-# Use of OpenAI whisper library
-
-**sttcast** has an option (--whisper) to use the OpenAI whisper library instead of the vosk-kaldi one.
-
-If you want to make transcription with whisper, you shoud take into account:
-
-* Whisper is able to work with different models. You can see them with the --whmodel option
-* With the --whisper option, you can take advantage of the CUDA acceleration (option --whdevice cuda) or not (--whdevice cpu). Without CUDA, whisper manages multiprocessing, so you will not notice any benefits configuring multiple cpus.
-* Transcriptions are very slow without CUDA acceleration
-* CUDA acceleration requires a good CUDA platform. 
-* CUDA acceleation does benefit from multiple CPUS (option --cpu)
-
-The following table, taken from [Whisper GitHub Repository](https://github.com/openai/whisper) shows the requirements for GPU memory of whisper models:
-
-| Model | Reauired vRAM | Speed |
-|---|---|---|
-| tiny | ~1 GB | ~32x |
-| base | ~1 GB | ~16x |
-| small | ~2 GB | ¬6x |
-| medium | ~5 GB | ~2x |
-| large | ~10 GB | 1x |
-
-
-
-# Use
-## YouTube Tutorial
-
-There is [a video in YouTube](https://www.youtube.com/watch?v=l7TtUFJio2g) where you can view general instructions about how to install and use the application
-
-## CLI
-
-**sttcast.py** is a Python module that runs with the help of a 3.x interpreter. 
-
-It is has a very simple CLI interface that is autodocumented in the help (option **-h** or **--help**).
-
-You should consider the location of model files and mp3 files in RAM drives to get more speed.
+### Command Line Interface (CLI)
 
 ```bash
-$ ./sttcast.py -h
-$ ./sttcast.py -h
-usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] [-l LCONF] [-o OVERLAP]
-                  [-r RWAVFRAMES] [-w] [--whmodel WHMODEL] [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE]
-                  [--whtraining WHTRAINING] [--whsusptime WHSUSPTIME] [-a] [--html-suffix HTML_SUFFIX]
-                  [--min-offset MIN_OFFSET] [--max-gap MAX_GAP]
+# Transcription with Whisper (recommended)
+./sttcast.py -w --whlanguage es audio.mp3
+
+# Transcription with Whisper and embedded audio tags
+./sttcast.py -w -a --whlanguage es audio.mp3
+
+# Transcription with training file for diarization
+./sttcast.py -w --whtraining training.mp3 --whlanguage es audio.mp3
+
+# Transcribe entire directory
+./sttcast.py -w --whlanguage es /path/to/directory/
+
+# Transcription with Vosk (Spanish only, no GPU)
+./sttcast.py -m /path/to/vosk/model audio.mp3
+```
+
+### Complete CLI Options
+
+```
+usage: sttcast.py [-h] [-m MODEL] [-s SECONDS] [-c CPUS] [-i HCONF] [-n MCONF] 
+                  [-l LCONF] [-o OVERLAP] [-r RWAVFRAMES] [-w] [--whmodel WHMODEL] 
+                  [--whdevice {cuda,cpu}] [--whlanguage WHLANGUAGE] 
+                  [--whtraining WHTRAINING] [--whsusptime WHSUSPTIME] [-a] 
+                  [--html-suffix HTML_SUFFIX] [--min-offset MIN_OFFSET] 
+                  [--max-gap MAX_GAP] [-p PREFIX] [--calendar CALENDAR] 
+                  [-t TEMPLATES] [--pyannote-method PYANNOTE_METHOD] 
+                  [--pyannote-min-cluster-size SIZE] [--pyannote-threshold THRESHOLD]
+                  [--pyannote-min-speakers N] [--pyannote-max-speakers N]
                   fnames [fnames ...]
 
-positional arguments:
-  fnames                archivos de audio o directorios a transcribir
+Positional arguments:
+  fnames                Audio files or directories to transcribe
 
-options:
-  -h, --help            show this help message and exit
-  -m MODEL, --model MODEL
-                        modelo a utilizar. Por defecto, /mnt/ram/es/vosk-model-es-0.42
-  -s SECONDS, --seconds SECONDS
-                        segundos de cada tarea. Por defecto, 600
-  -c CPUS, --cpus CPUS  CPUs (tamaño del pool de procesos) a utilizar. Por defecto, 10
-  -i HCONF, --hconf HCONF
-                        umbral de confianza alta. Por defecto, 0.95
-  -n MCONF, --mconf MCONF
-                        umbral de confianza media. Por defecto, 0.7
-  -l LCONF, --lconf LCONF
-                        umbral de confianza baja. Por defecto, 0.5
-  -o OVERLAP, --overlap OVERLAP
-                        tiempo de solapamientro entre fragmentos. Por defecto, 2
-  -r RWAVFRAMES, --rwavframes RWAVFRAMES
-                        número de tramas en cada lectura del wav. Por defecto, 4000
-  -w, --whisper         utilización de motor whisper
-  --whmodel WHMODEL     modelo whisper a utilizar. Por defecto, small
-  --whdevice {cuda,cpu}
-                        aceleración a utilizar. Por defecto, cuda
-  --whlanguage WHLANGUAGE
-                        lenguaje a utilizar. Por defecto, es
-  --whtraining WHTRAINING
-                        nombre del fichero de entrenamiento. Por defecto, 'training.mp3'
-  --whsusptime WHSUSPTIME
-                        tiempo mínimo de intervención en el segmento. Por defecto, 60.0
-  -a, --audio-tags      inclusión de audio tags
-  --html-suffix HTML_SUFFIX
-                        sufijo para el fichero HTML con el resultado. Por defecto '_result'
-  --min-offset MIN_OFFSET
-                        diferencia mínima entre inicios de marcas de tiempo. Por defecto 30
-  --max-gap MAX_GAP     diferencia máxima entre el inicio de un segmento y el final del anterior. Por encima de
-                        esta diferencia, se pone una nueva marca de tiempo . Por defecto 0.8
+General options:
+  -h, --help            Show help
+  -s SECONDS            Seconds per task (default: 600)
+  -c CPUS               CPUs to use (default: cores - 2)
+  -a, --audio-tags      Include audio player in HTML
+  --html-suffix SUFFIX  Suffix for HTML file (default: empty)
+  -p PREFIX             Prefix for output files (default: ep)
+  --calendar FILE       CSV file with episode calendar (default: calfile)
+  -t TEMPLATES          HTML templates directory (default: templates)
 
+Vosk options:
+  -m MODEL              Path to Vosk model
+  -i HCONF              High confidence threshold (default: 0.95)
+  -n MCONF              Medium confidence threshold (default: 0.7)
+  -l LCONF              Low confidence threshold (default: 0.5)
+  -o OVERLAP            Overlap between fragments (default: 2)
+  -r RWAVFRAMES         WAV read frames (default: 4000)
 
+Whisper options:
+  -w, --whisper         Use Whisper engine (recommended)
+  --whmodel MODEL       Model: tiny|base|small|medium|large (default: small)
+  --whdevice DEVICE     Acceleration: cuda|cpu (default: cuda)
+  --whlanguage LANG     Language: es|en|fr|de... (default: es)
+  --whtraining FILE     Training MP3 file for diarization (default: training.mp3)
+  --whsusptime SECS     Minimum speaking time (default: 60.0)
+
+Pyannote options (advanced diarization):
+  --pyannote-method     Clustering method (default: ward)
+  --pyannote-min-cluster-size  Minimum cluster size (default: 15)
+  --pyannote-threshold  Clustering threshold (default: 0.7147)
+  --pyannote-min-speakers  Expected minimum number of speakers
+  --pyannote-max-speakers  Expected maximum number of speakers
 ```
 
-**add_audio_tag.py** 
+### Web Interface
+
+The web interface allows managing transcriptions from the browser:
 
 ```bash
-$ ./add_audio_tag.py -h
-usage: add_audio_tag.py [-h] [--mp3-file MP3_FILE] [-o OUTPUT] html_file
+# Start transcription server
+python -m sttctranssrv
 
-positional arguments:
-  html_file             Fichero html para añadir audio tags
-
-options:
-  -h, --help            show this help message and exit
-  --mp3-file MP3_FILE   Fichero mp3 al que se refieren los audio tags
-  -o OUTPUT, --output OUTPUT
-                        Fichero resultado tras añadir los audio tags
-
-```
-## Configuration by environment variables
-Environment variables are used to allow the storage of configuration parameters that depend on the specific installation. These environment variables can be written in plain text files located under the .env directory.
-
-These variables are read using the [Python dotenv module](https://pypi.org/project/python-dotenv/). The documentation specifies the format to be used. Below I share the configuration items I use, omitting the content of those that cannot be disclosed to third parties:
-
-.env/db.env
-```bash
-# Relational database to store fragments and embeddings
-STTCAST_DB_FILE = "/home/jmrobles/Podcasts/Coffee Break/DB/coffeebreak.db"
+# Start web interface
+python -m webif.webif --port 8302
 ```
 
-.env/faiss.env
+![Web IF](screenshots/webif-transcribing.png)
+
+## ⚙️ Environment Variables Configuration
+
+Environment variables are stored in files within the `.env/` directory:
+
+### `.env/db.env` - SQLite Database (fragments and embeddings)
 ```bash
-# Configuraton for FAISS vector database to store embeddings
-STTCAST_FAISS_FILE = "/home/jmrobles/Podcasts/Coffee Break/DB/int_index_v2.faiss"
-STTCAST_RELEVANT_FRAGMENTS = 100
+STTCAST_DB_FILE="/path/to/your/database.db"
 ```
 
-.env/openai.env
+### `.env/faiss.env` - FAISS Vector Database
 ```bash
-# OpenAI API access key and models for queries and embeddings
-OPENAI_API_KEY=*****
+STTCAST_FAISS_FILE="/path/to/your/index.faiss"
+STTCAST_RELEVANT_FRAGMENTS=100
+```
+
+### `.env/openai.env` - OpenAI API
+```bash
+OPENAI_API_KEY="sk-..."
 OPENAI_GPT_MODEL="gpt-4o-mini"
 OPENAI_EMBEDDINGS_MODEL="text-embedding-3-small"
 ```
 
-.env/podcast.env
+### `.env/podcast.env` - Podcast Collection Configuration
 ```bash
-# Configuration for the Podcast Collection
-# Calendar in CSV format
-PODCAST_CAL_FILE="/home/jmrobles/Podcasts/Coffee Break/DB/cbcal.csv"
+PODCAST_CAL_FILE="/path/to/calendar.csv"
 PODCAST_PREFIX="ep"
-PODCAST_WORKDIR="/home/jmrobles/Podcasts/Coffee Break/"
-# Directory for HTML files to render results
-PODCAST_TEMPLATES="/home/jmrobles/Podcasts/Coffee Break/templates"
+PODCAST_WORKDIR="/path/to/podcasts/"
+PODCAST_TEMPLATES="/path/to/templates/"
 ```
 
-.env/rag_client.env
+### `.env/huggingface.conf` - HuggingFace Token (for Pyannote)
 ```bash
-# Configuration for RAG client (web application)
-RAG_CLIENT_HOST = 0.0.0.0
-RAG_CLIENT_PORT = 8004
-RAG_CLIENT_STT_LANG = es-ES
-RAG_MP3_DIR = "/home/jmrobles/Podcasts/Coffee Break/Archivo"
+HUGGINGFACE_TOKEN="hf_..."
 ```
 
-.env/rag_server.env
+### `.env/pyannote.env` - Pyannote Diarization Settings
 ```bash
-# Server and port for RAG server (web application)
+PYANNOTE_METHOD=ward
+PYANNOTE_MIN_CLUSTER_SIZE=15
+PYANNOTE_THRESHOLD=0.7147
+# PYANNOTE_MIN_SPEAKERS=2
+# PYANNOTE_MAX_SPEAKERS=5
+```
+
+### `.env/rag_server.env` - RAG Server
+```bash
 RAG_SERVER_HOST="0.0.0.0"
 RAG_SERVER_PORT=5500
 ```
 
-.env/huggingface.conf
+### `.env/rag_client.env` - RAG Web Client
 ```bash
-# Access token for Hugging Face (used with pyannote)
-HUGGINGFACE_TOKEN = *****
+RAG_CLIENT_HOST="0.0.0.0"
+RAG_CLIENT_PORT=8004
+RAG_CLIENT_STT_LANG="es-ES"
+RAG_MP3_DIR="/path/to/mp3/files"
+```
+
+### `.env/webif.env` - Web Interface
+```bash
+# Server
+WEBIF_HOST=127.0.0.1
+WEBIF_PORT=8302
+WEBIF_DEBUG=false
+
+# Initial admin user
+WEBIF_ADMIN_NAME=admin
+WEBIF_ADMIN_PASSWORD=secure_password
+WEBIF_ADMIN_EMAIL=admin@example.com
+
+# PostgreSQL database
+WEBIF_DB_HOST=localhost
+WEBIF_DB_PORT=5432
+WEBIF_DB_USER=sttcast
+WEBIF_DB_PASSWORD=db_password
+WEBIF_DB_NAME=sttcast_webif
+
+# Session
+WEBIF_SECRET_KEY=random-secret-key
+WEBIF_SESSION_EXPIRE=480
+
+# File storage
+WEBIF_UPLOAD_DIR=/tmp/sttcast_webif/uploads
+WEBIF_RESULTS_DIR=/tmp/sttcast_webif/results
+WEBIF_TRAINING_DIR=/tmp/sttcast_webif/training
+WEBIF_MAX_UPLOAD_SIZE=524288000
+```
+
+### `.env/transsrv.env` - Transcription Server
+```bash
+TRANSSRV_HOST=0.0.0.0
+TRANSSRV_PORT=8000
+TRANSSRV_API_KEY=secure-hmac-key
 ```
 
 
+## 🎤 Diarization (Speaker Identification)
 
+The **Whisper/Pyannote pipeline** automatically identifies speakers. Pyannote performs voice segment clustering but does not identify real names.
 
-
-## GUI
-
-From version v2.2.0, sttcast has also a GUI interface. It can be started with:
-
-```bash
-$ python ./sttcast-gui.py
-```
-
-With this interface, you can configure the arguments (the same arguments that the CLI supports) in a graphical manner.
-
-The following snapshot is an snapshot of the interface:
-
-![](sttcast-gui.png)
-
-# Automation
-
-The whisper engine requires GPUs to avoid taking too much time. If you don't have a machine with GPU acceleration, or if you prefer not to have to install sttcasst in your environment, you can use the automation procedure explained in the ```Automation``` directory.
-
-Automation creates an AWS EC2 machine in the Amazon Cloud, provisions it installing sttcast, upload the payload and download the results. And all with just two commands: one to create the resources in the cloud and perform the work, and another to destroy the resources.
-
-Commands are executed in a VM also created with one command.
-
-## Diarization
-
-The **Whisper/Pyannote pipeline** is used to identify speakers in audio files. **Pyannote** is an AI-powered project hosted on **HuggingFace** that performs **speaker diarization**, clustering segments of speech by speaker identity. Since Pyannote performs **clustering** rather than **identification**, it does not inherently assign real names to speakers.
-
-### HuggingFace Token Requirement
-To use Pyannote, you need to obtain a **HuggingFace read access token**. This token should be stored in the **HUGGINGFACE_TOKEN** environment variable for authentication.
-
-### Assigning Real Speaker Names
-Because Pyannote clusters voices instead of identifying them explicitly, the program overcomes this limitation by appending **recognized voices** to the audio file before processing. This allows the system to **match unidentified segments to the closest known voice cluster** and assign a corresponding speaker label.
-
-### Training Metadata Storage
-The **trainingmp3.py** utility generates a **training MP3 file** containing known speaker samples. The **speaker identifiers** are stored as metadata in this training file.
+### HuggingFace Token
+Pyannote requires a **HuggingFace** read access token. Store it in the `HUGGINGFACE_TOKEN` environment variable.
 
 ### Speaker Identification Process
-The complete process follows these steps:
 
-1. **Generate identified audio samples**  
-   - Extract speaker samples and prepare training segments.  
+Since Pyannote clusters voices instead of identifying them, the program overcomes this limitation by adding **recognized voices** to the audio before processing. This allows the system to match unidentified segments with the closest known voice cluster.
 
-2. **Concatenate selected fragments into a single training MP3 file**  
-   - Configuration is defined in the **training.yml** file.  
-   - The **trainingmp3.py** module handles this task.  
-
-3. **Run sttcast with the specified training file**  
-   - The training MP3 file is used to improve speaker labeling.
-
-### Output and Analysis
-The generated **Whisper HTML files** label speech segments with speaker names and include final comments indicating the **total speaking time for each participant**.
-
-The **speakingtime.py** utility extracts this speaker time data and stores it in a **CSV file**, which can be analyzed using the **Jupyter Notebook speakingtimes.ipynb**.
-
-### Tools
-
-**trainingmp3.py** is a Python module that generates a mp3 file with identified voices which is used to correctly perform diarization
-
-```bash
-$python trainingmp3.py -h
-usage: trainingmp3.py [-h] [-c CONFIG] [-o OUTPUT] [-s SILENCE] [-t TIME]
-
-Genera un archivo de entrenamiento a partir de audios etiquetados en un YAML.
-
-options:
-  -h, --help            show this help message and exit
-  -c CONFIG, --config CONFIG
-                        Archivo YAML con la lista de hablantes y sus archivos de audio (Predeterminado: training.yml).
-  -o OUTPUT, --output OUTPUT
-                        Nombre del archivo de salida (MP3). Predeterminado: training.mp3.
-  -s SILENCE, --silence SILENCE
-                        Duración del silencio entre hablantes en segundos. (Predeterminado: 5s)
-  -t TIME, --time TIME  Duración total del fragmento en segundos. (Predeterminado: 600)
-```
-
-Example of configuration file:
+#### 1. Create training configuration file
 
 ```yaml
----
+# training.yml
 F01:
-  name: Héctor Socas
+  name: John Smith
   files:
-    - Training/Coffee Break/Héctor Socas - 1.mp3
-    - Training/Coffee Break/Héctor Socas - 2.mp3
+    - Training/John_1.mp3
+    - Training/John_2.mp3
 F02:
-  name: Héctor Vives
+  name: Jane Doe
   files:
-    - Training/Coffee Break/Héctor Vives - 1.mp3
-    - Training/Coffee Break/Héctor Vives - 2.mp3
-F03:
-  name: Sara Robisco
-  files:
-    - Training/Coffee Break/Sara Robisco - 1.mp3
-    - Training/Coffee Break/Sara Robisco - 2.mp3
-F04:
-  name: Francis Villatoro
-  files:
-    - Training/Coffee Break/Francis Villatoro - 1.mp3
-F05: # Noisy environment
-  name: Héctor Socas
-  files:
-    - Training/Coffee Break/Héctor Socas - 3.mp3
+    - Training/Jane_1.mp3
+    - Training/Jane_2.mp3
 ```
 
-
-**speakingtime.py** is a Python module that extracts the total speaking times of speakers from the Whisper HTML files generated by sttcast and saves them into a CSV file.
+#### 2. Create training MP3 file
 
 ```bash
-$ python speakingtime.py -h
-usage: speakingtime.py [-h] [-o OUTPUT] fnames [fnames ...]
-
-positional arguments:
-  fnames                Archivos con transcripciones de audio
-
-options:
-  -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        Nombre del archivo de salida
+python diarization/trainingmp3.py -c training.yml -o training.mp3
 ```
 
-## RAG (Retrieval-Augmented Generation)
-
-Retrieval-Augmented Generation (RAG) is a technology that enhances understanding and access to large volumes of text. In the context of **sttcast**, RAG is used to allow make **relevant searches**.
-
-In addition, we use the RAG server to automatically generate **summaries of transcribed podcast episodes** 
-
-To achieve this, a system was developed that leverages the **OpenAI API** to summarize the HTML files generated by **sttcast.py**, extracting key discussion topics and a brief summary of the episode.
-
-### Summaries
-
-The following components work together to get summaries:
-
-#### 1. `sttcast_rag_service`
-A **FastAPI-based REST web service** that exposes an endpoint in the port 5500 of the host through the route `/summarize`. This service:
-
-- Accepts a JSON list of episodes, each containing:
-  - `ep_id`: episode identifier
-  - `transcription`: HTML content generated by sttcast
-- Extracts the main text from the HTML (ignoring headers and metadata)
-- Generates a summary using the OpenAI API (`gpt-4o-mini` or similar)
-- Returns a JSON object with:
-  - `ep_id`
-  - `summary`: HTML summary
-  - `tokens_prompt`, `tokens_completion`, `tokens_total`
-  - `estimated_cost_usd`: estimated cost of the request
-
-The service supports block processing to avoid rate or token limit issues.
-
-To run this service it is necessary to have an OpenAI API token in the environment variable OPENAI_API_TOKEN. The OpenAI API service is not free; however, by using the gpt-4o-mini model, around 600 transcription files—corresponding to approximately 1,500 hours of audio—have been summarized for about three and a half dollars.
-
-#### 2. `get_rag_summaries.py`
-A **command-line client** that automates the process of sending transcripts and receiving summaries:
-
-- Scans a directory for files named `*_whisper_audio_es.html`
-- Groups transcriptions into configurable blocks (default: 5 files per block)
-- Sends each block to the `sttcast_rag_service`
-- For each response:
-  - Saves the HTML summary per episode (`<ep_id>_summary.html`)
-  - Saves a JSON with statistics (`<ep_id>_stats.json`)
-  - Appends a line to `summary_stats.csv` with tokens and cost
-
-``` bash
-$ python get_rag_summaries.py --help
-usage: get_rag_summaries.py [-h] -i INPUT -o OUTPUT [--url URL]
-
-Obtener resúmenes RAG de transcripciones de podcast
-
-options:
-  -h, --help            show this help message and exit
-  -i INPUT, --input INPUT
-                        Directorio de entrada con transcripciones HTML
-  -o OUTPUT, --output OUTPUT
-                        Directorio de salida para resúmenes HTML
-  --url URL             URL del servicio de resúmenes
-
+Options:
+```
+-c CONFIG   YAML file with speakers (default: training.yml)
+-o OUTPUT   Output MP3 file (default: training.mp3)
+-s SILENCE  Silence between speakers in seconds (default: 5)
+-t TIME     Total fragment duration in seconds (default: 600)
 ```
 
-#### 3. `insert_summaries.py`
-This script takes the generated summary files (`*_summary.html`) and **inserts them into the original HTML files** produced by sttcast. It is worth noting that summaries from `*_whisper_audio_es.html` files are inserted in all other html files from the same episod (vosk engine, other languages, with or without audio tags...)
-
-- Uses `BeautifulSoup` to manipulate the original HTML
-- Inserts the summary in a visible section, preserving the transcription
-- Allows integrated display of the summary, audio player, and timestamps
-
+#### 3. Transcribe with diarization
 
 ```bash
-$ python insert_summaries.py --help
-usage: insert_summaries.py [-h] -s SUMMARY_DIR -t TRANSCRIPT_DIR
-
-Inserta resúmenes en archivos de transcripción HTML.
-
-options:
-  -h, --help            show this help message and exit
-  -s SUMMARY_DIR, --summary-dir SUMMARY_DIR
-                        Directorio donde se encuentran los archivos de resumen
-  -t TRANSCRIPT_DIR, --transcript-dir TRANSCRIPT_DIR
-                        Directorio donde se encuentran los archivos de transcripción
-
+./sttcast.py -w --whtraining training.mp3 --whlanguage es podcast.mp3
 ```
-### Relevant searches
 
-Segments from transcriptions are stored both in a relational database (for structured management and conventional queries) and in a vector database (to enable efficient semantic searches using embeddings).
+### Speaking Time Analysis
 
-### Project Structure
+Generated HTML files include final comments with the total speaking time for each participant.
 
-The project is organized into three main components:
+Extract statistics to CSV:
+```bash
+python diarization/speakingtime.py -o times.csv transcriptions/*.html
+```
 
-**sttcast_rag_service**: Implemented with FastAPI, this service enables both the generation of embeddings from transcript fragments and automatic answering of questions about the content, combining vector retrieval and natural language generation.
+Analyze with the `notebooks/speakingtimes.ipynb` notebook.
 
-**context_server**: This service queries both the relational and vector databases to provide the necessary context for answering user questions, supplying the most relevant fragments from the transcriptions.
+## 🔍 RAG Semantic Search System
 
-**Web client**: A web application that leverages both context_server and sttcast_rag_service to provide detailed answers based on user queries. Answers also include direct references to podcast episodes, allowing users to easily access the relevant paragraphs within each episode.
+The RAG system enables semantic searches across transcribed podcast collections.
+
+### RAG System Architecture
+
+Transcription segments are stored in:
+- **Relational database (SQLite)**: For structured management and conventional queries
+- **Vector database (FAISS)**: For efficient semantic searches using embeddings
+
+#### sttcast_rag_service (Port 5500)
+FastAPI service that provides:
+- Embedding generation from transcription fragments
+- Automatic content question answering
+- Combination of vector retrieval and natural language generation
+- Automatic episode summary generation
+
+#### context_server (Port 8001)
+Service that queries both databases to provide context:
+- Relational database queries
+- Vector searches with FAISS
+- Relevant fragment provision for RAG
+
+#### RAG Web Client (Port 8004)
+Flask web application that provides:
+- **Semantic search**: Natural language questions about content
+- **Participation analysis**: Speaking times per speaker
+- **Query cache**: Semantic caching system storing previous queries
+- **Direct references**: Links to episodes and specific timestamps
+
+### Starting the RAG System
+
+```bash
+# Start context server
+python db/context_server.py  # Port 8001
+
+# Start RAG service
+python rag/sttcast_rag_service.py  # Port 5500
+
+# Start RAG web client
+cd rag/client && python client_rag.py  # Port 8004
+```
+
+Access at `http://localhost:8004`
+
+## 📝 Summary Generation
+
+The system generates automatic episode summaries using GPT:
+
+### 1. Get summaries
+
+```bash
+python summaries/get_rag_summaries.py -i /path/to/transcriptions -o /path/to/summaries
+```
+
+The service processes `*_whisper_audio_es.html` files in configurable blocks.
+
+### 2. Insert summaries into HTMLs
+
+```bash
+python summaries/insert_summaries.py -s /path/to/summaries -t /path/to/transcriptions
+```
+
+Summaries are inserted into all HTML files for the episode (different engines, languages, etc.).
 
 
-## To Do
+## 🛠️ Additional Tools
 
-Many modifications can be made and will be made in the future.
+### add_audio_tag.py
+Adds audio controls to an HTML transcribed without the `--audio-tags` option:
 
-* In **sttcast**, the number of **CPUs** can be configured (in **Automation**, this is done with the ```app_exec role``` variables). Each file is divided into that number of pieces and assigned to a Python process. It would be much more intelligent to divide the work to be done (several MP3s) into subsets of similar sizes and start a sttcast process with each subset with the number of **CPUs** equal to 1. This way, time would be optimized, and potential boundary issues between pieces could be avoided. **(Done 2024-07-06)**
-* Take advantage of diarization and the RAG service to implement a complete system for searching relevant information from collections of podcasts **(Done 2025-06-07)**
+```bash
+./add_audio_tag.py --mp3-file audio.mp3 -o output.html transcription.html
+```
 
-# Screenshots
+## ☁️ Cloud Automation
 
-![transcription with summary](screenshots/transcription_with_summary.png)
+If you don't have a local GPU, the `Automation/` directory contains scripts to:
+- Create AWS EC2 machines with GPU
+- Automatically provision and install STTCast
+- Process files and download results
+- Destroy resources when finished
 
-![S3 static web](screenshots/s3_web.png)
+All with just two commands: one to create and process, another to destroy.
 
-![transcription with diarization](screenshots/transcription_with_diarization.png)
+## 🖼️ Screenshots
 
-![speaking times](screenshots/speaking_times.png)
+### Transcription with Summary
+![Transcription with summary](screenshots/transcription_with_summary.png)
 
-<!-- ![](sttcast_example.png) -->
+### Transcription with Diarization
+![Transcription with diarization](screenshots/transcription_with_diarization.png)
 
-![GUI](screenshots/sttcast-gui.png)
+### Speaking Time Analysis
+![Speaking times](screenshots/speaking_times.png)
 
-<!-- ![comparation vosk - whisper](comparation_vosk_whisper.png)
+### RAG Client with Web Interface
+![RAG Client](screenshots/rag_with_web_if.png)
 
-![example audio tag](example_audio_tag.png) -->
+## 📄 License
+
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+
+---
+
+**STTCast** - Intelligent podcast transcription with AI

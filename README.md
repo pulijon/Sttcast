@@ -227,7 +227,9 @@ python -m sttctranssrv
 python -m webif.webif --port 8302
 ```
 
-![Web IF](screenshots/webif-transcribing.png)
+![Web IF - Transcribing](screenshots/webif-transcribing.png)
+
+![Web IF - Dashboard](screenshots/webif-dashboard.png)
 
 ## ⚙️ Environment Variables Configuration
 
@@ -476,8 +478,8 @@ All with just two commands: one to create and process, another to destroy.
 ### Transcription with Diarization
 ![Transcription with diarization](screenshots/transcription_with_diarization.png)
 
-### Speaking Time Analysis
-![Speaking times](screenshots/speaking_times.png)
+### Speakers Analysis
+![Speakers Analysis](screenshots/speakers-analysis.png)
 
 ### RAG Client with Web Interface
 ![RAG Client](screenshots/rag_with_web_if.png)

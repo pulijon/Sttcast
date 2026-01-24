@@ -369,9 +369,9 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_DIR="logs/batch_${TIMESTAMP}"
 mkdir -p "$LOG_DIR"
 
-PRCDIR_WHISPER_ES="${RAMDISK}/whisper_es"
-PRCDIR_WHISPER_EN="${RAMDISK}/whisper_en"
-PRCDIR_VOSK="${RAMDISK}/vosk"
+PRCDIR_WHISPER_ES="${RAMDISK}/whisper_es_$(uuidgen)"
+PRCDIR_WHISPER_EN="${RAMDISK}/whisper_en_$(uuidgen)"
+PRCDIR_VOSK="${RAMDISK}/vosk_$(uuidgen)"
 
 LOG_WHISPER_ES="${LOG_DIR}/whisper_es.log"
 LOG_WHISPER_EN="${LOG_DIR}/whisper_en.log"

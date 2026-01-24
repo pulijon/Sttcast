@@ -45,6 +45,11 @@ DEFAULT_SERVER_URL = "http://localhost:8505"
 DEFAULT_POLL_INTERVAL = 5.0
 DEFAULT_TIMEOUT = 36000  # 10 horas por defecto
 
+# Parámetros de Pyannote (valores por defecto, se sobrescriben con variables de entorno)
+DEFAULT_PYANNOTE_METHOD = "ward"
+DEFAULT_PYANNOTE_MIN_CLUSTER_SIZE = 15
+DEFAULT_PYANNOTE_THRESHOLD = 0.7147
+
 # Configuración de autenticación
 API_SECRET_KEY = os.getenv('TRANSSRV_API_KEY', '')
 
@@ -260,6 +265,23 @@ def get_pars():
     parser.add_argument("--no-download", action='store_true',
                         help="no descargar resultados automáticamente")
     
+    # Argumentos de Pyannote (para diarización)
+    pyannote_method = os.getenv('PYANNOTE_METHOD', DEFAULT_PYANNOTE_METHOD)
+    pyannote_min_cluster = int(os.getenv('PYANNOTE_MIN_CLUSTER_SIZE', DEFAULT_PYANNOTE_MIN_CLUSTER_SIZE))
+    pyannote_threshold = float(os.getenv('PYANNOTE_THRESHOLD', DEFAULT_PYANNOTE_THRESHOLD))
+    
+    parser.add_argument("--pyannote-method", type=str, default=pyannote_method,
+                        choices=['ward', 'complete', 'average', 'single'],
+                        help=f"método de clustering para Pyannote. Por defecto '{pyannote_method}'")
+    parser.add_argument("--pyannote-min-cluster-size", type=int, default=pyannote_min_cluster,
+                        help=f"tamaño mínimo del cluster. Por defecto {pyannote_min_cluster}")
+    parser.add_argument("--pyannote-threshold", type=float, default=pyannote_threshold,
+                        help=f"umbral de similitud para clustering. Por defecto {pyannote_threshold}")
+    parser.add_argument("--pyannote-min-speakers", type=int, default=None,
+                        help="número mínimo de hablantes esperados")
+    parser.add_argument("--pyannote-max-speakers", type=int, default=None,
+                        help="número máximo de hablantes esperados")
+    
     return parser.parse_args()
 
 def build_transcription_config(args) -> Dict[str, Any]:
@@ -288,7 +310,14 @@ def build_transcription_config(args) -> Dict[str, Any]:
         
         # Opciones adicionales
         'audio_tags': args.audio_tags,
-        'use_training': False  # Se activa automáticamente si se proporciona archivo
+        'use_training': False,  # Se activa automáticamente si se proporciona archivo
+        
+        # Parámetros de Pyannote (desde entorno o argumentos)
+        'pyannote_method': args.pyannote_method,
+        'pyannote_min_cluster_size': args.pyannote_min_cluster_size,
+        'pyannote_threshold': args.pyannote_threshold,
+        'pyannote_min_speakers': args.pyannote_min_speakers,
+        'pyannote_max_speakers': args.pyannote_max_speakers
     }
 
 def collect_audio_files(fnames: List[str], training_file: str = None) -> List[str]:

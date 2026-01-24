@@ -39,6 +39,19 @@ source .env/transsrv.env 2>/dev/null || {
     exit 1
 }
 
+# Cargar configuración de Pyannote para diarización
+# Estas variables se exportan y el cliente las leerá y enviará al servidor
+source .env/pyannote.env 2>/dev/null || {
+    echo "⚠️ Advertencia: No se pudo cargar .env/pyannote.env, usando valores por defecto"
+}
+
+# Exportar variables de Pyannote para que sttcastcli.py las lea
+export PYANNOTE_METHOD="${PYANNOTE_METHOD:-ward}"
+export PYANNOTE_MIN_CLUSTER_SIZE="${PYANNOTE_MIN_CLUSTER_SIZE:-15}"
+export PYANNOTE_THRESHOLD="${PYANNOTE_THRESHOLD:-0.7147}"
+export PYANNOTE_MIN_SPEAKERS="${PYANNOTE_MIN_SPEAKERS:-}"
+export PYANNOTE_MAX_SPEAKERS="${PYANNOTE_MAX_SPEAKERS:-}"
+
 SERVER_URL="http://${TRANSSRV_HOST:-127.0.0.1}:${TRANSSRV_PORT:-8000}"
 echo "🌐 Servidor REST: $SERVER_URL"
 
@@ -49,6 +62,15 @@ if ! curl -s "$SERVER_URL/" >/dev/null 2>&1; then
     exit 1
 fi
 echo "✅ Servidor REST disponible"
+echo ""
+
+# Mostrar configuración de Pyannote
+echo "🎙️ Configuración de Pyannote:"
+echo "   Método: $PYANNOTE_METHOD"
+echo "   Min cluster size: $PYANNOTE_MIN_CLUSTER_SIZE"
+echo "   Threshold: $PYANNOTE_THRESHOLD"
+[ -n "$PYANNOTE_MIN_SPEAKERS" ] && echo "   Min speakers: $PYANNOTE_MIN_SPEAKERS"
+[ -n "$PYANNOTE_MAX_SPEAKERS" ] && echo "   Max speakers: $PYANNOTE_MAX_SPEAKERS"
 echo ""
 
 # Configuración

@@ -89,6 +89,13 @@ class TranscriptionConfig(BaseModel):
     # Opciones adicionales
     audio_tags: bool = Field(False, description="Incluir audio tags en HTML")
     use_training: bool = Field(False, description="Usar archivo de entrenamiento para speaker diarization")
+    
+    # Parámetros de Pyannote para diarización (enviados desde cliente)
+    pyannote_method: str = Field("ward", description="Método de clustering para Pyannote")
+    pyannote_min_cluster_size: int = Field(15, description="Tamaño mínimo del cluster")
+    pyannote_threshold: float = Field(0.7147, description="Umbral de similitud para clustering")
+    pyannote_min_speakers: Optional[int] = Field(None, description="Número mínimo de hablantes")
+    pyannote_max_speakers: Optional[int] = Field(None, description="Número máximo de hablantes")
 
 class TranscriptionRequest(BaseModel):
     """Compatibilidad hacia atrás"""
@@ -419,6 +426,11 @@ async def transcribe_audio_endpoint(
         logging.info(f"  Training file: {training_file.filename if training_file else 'N/A'}")
         logging.info(f"  Calendar file: {calendar_file.filename if calendar_file else config_obj.calendar_file or 'N/A'}")
         logging.info(f"  Prefix: {config_obj.prefix}")
+        logging.info(f"  Pyannote method: {config_obj.pyannote_method}")
+        logging.info(f"  Pyannote min_cluster_size: {config_obj.pyannote_min_cluster_size}")
+        logging.info(f"  Pyannote threshold: {config_obj.pyannote_threshold}")
+        logging.info(f"  Pyannote min_speakers: {config_obj.pyannote_min_speakers}")
+        logging.info(f"  Pyannote max_speakers: {config_obj.pyannote_max_speakers}")
         logging.info(f"  Config completa: {json.dumps(config_dict, indent=2)}")
         logging.info("=" * 60)
     except json.JSONDecodeError as e:
@@ -525,7 +537,15 @@ async def transcribe_audio_endpoint(
         # Valores por defecto técnicos
         'model': '/mnt/ram/es/vosk-model-es-0.42',
         'whsusptime': 60.0,
-        'rwavframes': 4000
+        'rwavframes': 4000,
+        
+        # Parámetros de Pyannote (desde petición del cliente)
+        'pyannote_method': config_obj.pyannote_method,
+        'pyannote_min_cluster_size': config_obj.pyannote_min_cluster_size,
+        'pyannote_threshold': config_obj.pyannote_threshold,
+        'pyannote_min_speakers': config_obj.pyannote_min_speakers,
+        'pyannote_max_speakers': config_obj.pyannote_max_speakers,
+        'huggingface_token': os.getenv('HUGGINGFACE_TOKEN', '')
     }
     
     # Agregar archivos opcionales si se proporcionan

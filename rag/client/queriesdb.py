@@ -697,6 +697,85 @@ class RAGDatabase:
             logger.error(f"❌ Error al limpiar queries antiguas: {e}")
             return 0
 
+    async def _drop_and_recreate_database(self):
+        """
+        Elimina la base de datos existente (si existe) y la recrea.
+        Útil para hacer una restauración limpia desde un backup.
+        """
+        admin_conn = None
+        try:
+            # Conectar como administrador a la BD 'postgres'
+            admin_conn = await asyncpg.connect(
+                host=self.host,
+                port=self.port,
+                user=self.admin_user,
+                password=self.admin_password,
+                database='postgres',
+                timeout=self.query_timeout,
+            )
+            
+            # Terminar todas las conexiones a la BD antes de eliminarla
+            await admin_conn.execute(
+                f"""
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = $1
+                AND pid <> pg_backend_pid()
+                """,
+                self.database
+            )
+            logger.info(f"✅ Conexiones existentes a '{self.database}' terminadas")
+            
+            # Eliminar la base de datos si existe
+            db_exists = await admin_conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1",
+                self.database
+            )
+            
+            if db_exists:
+                # Validar nombre de BD
+                if not self.database.replace('_', '').isalnum():
+                    raise ValueError(f"Nombre de base de datos inválido: {self.database}")
+                
+                await admin_conn.execute(f"DROP DATABASE {self.database}")
+                logger.info(f"✅ Base de datos '{self.database}' eliminada")
+            
+            # Crear la base de datos nuevamente
+            if not self.database.replace('_', '').isalnum():
+                raise ValueError(f"Nombre de base de datos inválido: {self.database}")
+            
+            await admin_conn.execute(
+                f"CREATE DATABASE {self.database} OWNER {self.user}"
+            )
+            logger.info(f"✅ Base de datos '{self.database}' recreada")
+            
+            # Conectar a la nueva BD para habilitar pgvector
+            db_conn = await asyncpg.connect(
+                host=self.host,
+                port=self.port,
+                user=self.admin_user,
+                password=self.admin_password,
+                database=self.database,
+                timeout=self.query_timeout,
+            )
+            try:
+                await db_conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                logger.info(f"✅ Extensión pgvector habilitada en '{self.database}'")
+            finally:
+                await db_conn.close()
+            
+            # Otorgar privilegios
+            await admin_conn.execute(
+                f"GRANT ALL PRIVILEGES ON DATABASE {self.database} TO {self.user}"
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Error al eliminar/recrear base de datos: {e}")
+            raise
+        finally:
+            if admin_conn:
+                await admin_conn.close()
+
     async def backup_to_file(self, backup_file: str) -> bool:
         """
         Crea un backup completo de la base de datos en un archivo SQL.
@@ -780,6 +859,11 @@ class RAGDatabase:
             if create_db_and_user:
                 logger.info("📝 Creando base de datos y usuario si no existen...")
                 await self._ensure_database_and_user_exist()
+            else:
+                # Si NO estamos en modo create_db_and_user, eliminar la BD existente
+                # para asegurar una restauración limpia
+                logger.info("🗑️  Eliminando base de datos existente para hacer restauración limpia...")
+                await self._drop_and_recreate_database()
             
             # Configurar variables de entorno para psql
             env = os.environ.copy()

@@ -24,4 +24,5 @@ sups_speakers.txt
 training_mapa.yaml
 *.ipynb_checkpoint
 *.ipynb_checkpoints/
+*.tfvars
 

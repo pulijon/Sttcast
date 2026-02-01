@@ -219,7 +219,11 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
     1. Procesar en directorio temporal /processing/{job_id}/
     2. Solo mover a /completed/{job_id}/ cuando esté 100% completado
     3. Archivos finales sin UUID ni sufijos
+    4. Control mejorado del semáforo GPU con timeout
     """
+    gpu_slot_acquired = False
+    result = None
+    
     try:
         update_job_status(job_id, 
                          status="running", 
@@ -233,52 +237,91 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
         config['work_id'] = job_id
         
         # Obtener nombre original del archivo
-        # Con la nueva estructura, el archivo ya tiene su nombre original en job_dir/original_filename
         original_filename = None
         if 'fnames' in config and config['fnames']:
             original_path = Path(config['fnames'][0])
-            # El archivo ya tiene su nombre original (sin UUID)
-            original_filename = original_path.stem  # Sin extensión
+            original_filename = original_path.stem
         
         # Inyectar pool global para evitar crear procesos por trabajo
         if process_pool:
             config['executor'] = process_pool
 
-        # Si usa GPU, adquirir semáforo
+        # Si usa GPU, adquirir semáforo con timeout
         if use_gpu:
-            logging.info(f"Job {job_id}: Intentando adquirir slot GPU (slots disponibles: {gpu_semaphore._value})")
-            await gpu_semaphore.acquire()
+            gpu_timeout = 172800  # 48 horas de timeout esperando GPU
+            slots_available = gpu_semaphore._value
+            logging.warning(f"Job {job_id}: [GPU SEMÁFORO] Intentando adquirir slot (disponibles: {slots_available}/{getattr(app.state, 'gpus', SERVER_GPUS)})")
+            
             try:
-                logging.info(f"Job {job_id}: Slot GPU adquirido (slots restantes: {gpu_semaphore._value})")
-                
-                # Ejecutar transcripción Whisper
+                await asyncio.wait_for(gpu_semaphore.acquire(), timeout=gpu_timeout)
+                gpu_slot_acquired = True
+                slots_remaining = gpu_semaphore._value
+                logging.warning(f"Job {job_id}: [GPU SEMÁFORO] Slot adquirido exitosamente (restantes: {slots_remaining})")
+            except asyncio.TimeoutError:
+                raise RuntimeError(f"Job {job_id}: Timeout ({gpu_timeout}s) esperando slot GPU disponible. Slots totales: {getattr(app.state, 'gpus', SERVER_GPUS)}")
+            
+            try:
+                logging.info(f"Job {job_id}: Iniciando transcripción Whisper en GPU")
                 loop = asyncio.get_event_loop()
+                start_time = time.time()
+                
                 result = await loop.run_in_executor(
                     None,
                     sttcast_core.transcribe_audio, 
                     config
                 )
-            finally:
-                # Forzar liberación de memoria GPU
-                import gc
-                import torch
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    logging.info(f"Job {job_id}: Memoria GPU liberada")
                 
-                gpu_semaphore.release()
-                logging.info(f"Job {job_id}: Slot GPU liberado (slots disponibles: {gpu_semaphore._value})")
+                elapsed = time.time() - start_time
+                logging.info(f"Job {job_id}: Transcripción GPU completada en {elapsed:.1f}s")
+                
+            except Exception as exec_error:
+                logging.error(f"Job {job_id}: Error durante transcripción: {exec_error}", exc_info=True)
+                raise
+            finally:
+                # Sincronización agresiva de GPU ANTES de liberar semáforo
+                try:
+                    import gc
+                    gc.collect()
+                    logging.debug(f"Job {job_id}: Garbage collection ejecutado")
+                    
+                    # Importar torch solo si es necesario para limpieza GPU
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            torch.cuda.synchronize()
+                            logging.warning(f"Job {job_id}: [GPU LIMPIEZA] Memoria GPU sincronizada y liberada")
+                    except ImportError:
+                        logging.debug(f"Job {job_id}: PyTorch no disponible para limpieza GPU")
+                    except Exception as cleanup_err:
+                        logging.warning(f"Job {job_id}: Error durante limpieza GPU: {cleanup_err}")
+                        
+                except Exception as gc_error:
+                    logging.warning(f"Job {job_id}: Error en garbage collection: {gc_error}")
+                
+                # Liberar semáforo DESPUÉS de sincronizar GPU
+                if gpu_slot_acquired:
+                    gpu_semaphore.release()
+                    slots_now = gpu_semaphore._value
+                    logging.warning(f"Job {job_id}: [GPU SEMÁFORO] Slot liberado (disponibles ahora: {slots_now}/{getattr(app.state, 'gpus', SERVER_GPUS)})")
         else:
-            # Transcripción CPU (Vosk) - sin semáforo
-            logging.info(f"Job {job_id}: Ejecutando en CPU")
+            # Transcripción CPU (Vosk) - sin semáforo de GPU
+            logging.info(f"Job {job_id}: Iniciando transcripción Vosk en CPU")
             loop = asyncio.get_event_loop()
+            start_time = time.time()
+            
             result = await loop.run_in_executor(
                 None,
                 sttcast_core.transcribe_audio,
                 config
             )
+            
+            elapsed = time.time() - start_time
+            logging.info(f"Job {job_id}: Transcripción CPU completada en {elapsed:.1f}s")
+        
+        # Verificar que tenemos resultado antes de continuar
+        if not result:
+            raise RuntimeError(f"Job {job_id}: transcribe_audio retornó None o sin contenido")
         
         # Crear directorio de resultados finales
         job_result_dir = RESULTS_DIR / job_id
@@ -292,33 +335,36 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
             html_suffix = '_' + html_suffix
         
         # Mover archivos de resultado con nombres finales limpios
-        for output_file in result['output_files']:
-            html_src = Path(output_file['html'])
-            srt_src = Path(output_file['srt'])
-            
-            if html_src.exists():
-                # Nombre final con sufijo si está configurado
-                html_filename = f"{original_filename}{html_suffix}.html" if original_filename else "transcription.html"
-                html_dst = job_result_dir / html_filename
-                shutil.move(html_src, html_dst)
-                result_files.append({
-                    'type': 'html',
-                    'filename': html_filename,
-                    'path': str(html_dst),
-                    'size': html_dst.stat().st_size
-                })
-            
-            if srt_src.exists():
-                # Nombre final con sufijo si está configurado
-                srt_filename = f"{original_filename}{html_suffix}.srt" if original_filename else "transcription.srt"
-                srt_dst = job_result_dir / srt_filename
-                shutil.move(srt_src, srt_dst)
-                result_files.append({
-                    'type': 'srt', 
-                    'filename': srt_filename,
-                    'path': str(srt_dst),
-                    'size': srt_dst.stat().st_size
-                })
+        if 'output_files' not in result:
+            logging.warning(f"Job {job_id}: Resultado sin 'output_files'")
+        else:
+            for output_file in result['output_files']:
+                html_src = Path(output_file['html'])
+                srt_src = Path(output_file['srt'])
+                
+                if html_src.exists():
+                    # Nombre final con sufijo si está configurado
+                    html_filename = f"{original_filename}{html_suffix}.html" if original_filename else "transcription.html"
+                    html_dst = job_result_dir / html_filename
+                    shutil.move(html_src, html_dst)
+                    result_files.append({
+                        'type': 'html',
+                        'filename': html_filename,
+                        'path': str(html_dst),
+                        'size': html_dst.stat().st_size
+                    })
+                
+                if srt_src.exists():
+                    # Nombre final con sufijo si está configurado
+                    srt_filename = f"{original_filename}{html_suffix}.srt" if original_filename else "transcription.srt"
+                    srt_dst = job_result_dir / srt_filename
+                    shutil.move(srt_src, srt_dst)
+                    result_files.append({
+                        'type': 'srt', 
+                        'filename': srt_filename,
+                        'path': str(srt_dst),
+                        'size': srt_dst.stat().st_size
+                    })
         
         # Crear archivo de metadatos
         metadata = {
@@ -338,7 +384,7 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
         update_job_status(job_id,
                          status="completed",
                          completed_at=datetime.datetime.now(),
-                         message=f"Transcripción completada en {result['duration']}",
+                         message=f"Transcripción completada en {result.get('duration', 'N/A')}",
                          files=result_files)
         
         # Limpiar archivos temporales
@@ -347,7 +393,16 @@ async def run_transcription_task(job_id: str, config: Dict[str, Any], use_gpu: b
         logging.info(f"Job {job_id}: Completado exitosamente")
         
     except Exception as e:
-        logging.error(f"Job {job_id}: Error - {str(e)}")
+        logging.error(f"Job {job_id}: Error - {str(e)}", exc_info=True)
+        
+        # Si todavía tenemos el slot GPU por algún error, liberarlo
+        if gpu_slot_acquired and use_gpu:
+            try:
+                gpu_semaphore.release()
+                slots_now = gpu_semaphore._value
+                logging.warning(f"Job {job_id}: [LIMPIEZA ERROR] Semáforo GPU liberado tras excepción (disponibles: {slots_now})")
+            except Exception as release_err:
+                logging.error(f"Job {job_id}: Error liberando semáforo GPU en excepción: {release_err}")
         
         # Limpiar archivos temporales en caso de error
         _cleanup_temp_files(job_id, config)

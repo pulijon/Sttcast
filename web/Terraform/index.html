@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcripciones Coffee Break</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #4A6FA5;
+      --primary-dark: #344E77;
+      --secondary: #F4A261;
+      --text: #333;
+      --bg: #f5f7fa;
+      --card-bg: #fff;
+      --border: #e0e0e0;
+      --success: #2E8B57;
+      --error: #e74c3c;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 0;
+      transition: all 0.3s ease;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 15px;
+    }
+
+    header {
+      background-color: var(--primary);
+      color: white;
+      padding: 1.5rem 0;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url('/api/placeholder/1200/400') center/cover no-repeat;
+      opacity: 0.1;
+      z-index: 0;
+    }
+
+    .header-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h1 i {
+      font-size: 1.8rem;
+    }
+
+    .subtitle {
+      font-size: 1rem;
+      font-weight: normal;
+      opacity: 0.9;
+    }
+
+    main {
+      padding: 2rem 0;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      margin-bottom: 2rem;
+      overflow: hidden;
+    }
+
+    .card-header {
+      background: #f8f9fa;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-header h2 {
+      font-size: 1.2rem;
+      margin: 0;
+    }
+
+    .card-body {
+      padding: 1rem;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #555;
+    }
+
+    select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background-color: #fff;
+      font-size: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23333' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: calc(100% - 12px) center;
+      background-size: 12px;
+    }
+
+    select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.2);
+      outline: none;
+    }
+
+    .viewer-container {
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      height: 700px;
+      position: relative;
+    }
+
+    #htmlframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .status-indicator {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(4px);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-indicator i {
+      font-size: 14px;
+    }
+
+    .status-indicator.loading i {
+      animation: spin 1s linear infinite;
+    }
+
+    .status-indicator.success {
+      color: var(--success);
+    }
+
+    .status-indicator.error {
+      color: var(--error);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    footer {
+      text-align: center;
+      padding: 1.5rem 0;
+      color: #666;
+      font-size: 0.9rem;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+    }
+
+    .episode-count {
+      background: var(--secondary);
+      color: #fff;
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      margin-left: 8px;
+      font-weight: 600;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      z-index: 1000;
+      transform: translateY(-100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Responsive styles */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 1.8rem;
+      }
+
+      .filter-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .viewer-container {
+        height: 500px;
+      }
+    }
+
+    /* Dark mode */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary: #5D87C8;
+        --primary-dark: #4A6FA5;
+        --text: #e0e0e0;
+        --bg: #121212;
+        --card-bg: #1e1e1e;
+        --border: #333;
+      }
+
+      body {
+        background-color: var(--bg);
+        color: var(--text);
+      }
+
+      .card-header {
+        background: #252525;
+      }
+
+      select {
+        background-color: #2a2a2a;
+        color: var(--text);
+        border-color: #444;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23e0e0e0' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+      }
+
+      .status-indicator {
+        background: rgba(30, 30, 30, 0.9);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container header-content">
+      <h1><i class="fas fa-coffee"></i> Transcripciones Coffee Break</h1>
+      <p class="subtitle">Visualizador de transcripciones de podcast</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Filtros de Búsqueda</h2>
+        <span id="episode-counter" class="episode-count">0 episodios</span>
+      </div>
+      <div class="card-body">
+        <div class="filter-grid">
+          <div class="form-group">
+            <label for="episode"><i class="fas fa-podcast"></i> Episodio:</label>
+            <select id="episode"></select>
+          </div>
+  
+          <div class="form-group">
+            <label for="engine"><i class="fas fa-microchip"></i> Motor:</label>
+            <select id="engine">
+              <option value="whisper">Whisper</option>
+              <option value="vosk">Vosk</option>
+            </select>
+          </div>
+  
+          <div class="form-group">
+            <label for="language"><i class="fas fa-language"></i> Idioma:</label>
+            <select id="language">
+              <option value="es">Español</option>
+              <option value="en">Inglés</option>
+            </select>
+          </div>
+  
+          <div class="form-group">
+            <label for="variant"><i class="fas fa-file-alt"></i> Variante:</label>
+            <select id="variant">
+              <option value="audio">Con audio</option>
+              <option value="normal">Solo texto</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="viewer-container">
+      <iframe id="htmlframe" title="Contenido de la transcripción"></iframe>
+      <div id="loading-indicator" class="status-indicator loading">
+        <i class="fas fa-spinner"></i> Cargando...
+      </div>
+      <div id="success-indicator" class="status-indicator success hidden">
+        <i class="fas fa-check-circle"></i> <span id="success-text">Cargado correctamente</span>
+      </div>
+      <div id="error-indicator" class="status-indicator error hidden">
+        <i class="fas fa-exclamation-circle"></i> <span id="error-text">No se pudo cargar el contenido</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="container">
+    <p>© <span id="current-year">2025</span> Transcripciones Coffee Break | Visualizador de transcripciones</p>
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let files = [];
+    
+    // Establecer año actual en el footer
+    document.getElementById('current-year').textContent = new Date().getFullYear();
+
+    // Función para mostrar notificaciones toast
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast show ${type}`;
+      
+      setTimeout(() => {
+        toast.className = 'toast';
+      }, 3000);
+    }
+
+    // Función para actualizar los indicadores de estado
+    function updateStatusIndicator(status, message = '') {
+      const loadingIndicator = document.getElementById('loading-indicator');
+      const successIndicator = document.getElementById('success-indicator');
+      const errorIndicator = document.getElementById('error-indicator');
+      
+      loadingIndicator.classList.add('hidden');
+      successIndicator.classList.add('hidden');
+      errorIndicator.classList.add('hidden');
+      
+      if (status === 'loading') {
+        loadingIndicator.classList.remove('hidden');
+      } else if (status === 'success') {
+        successIndicator.classList.remove('hidden');
+        document.getElementById('success-text').textContent = message || 'Cargado correctamente';
+      } else if (status === 'error') {
+        errorIndicator.classList.remove('hidden');
+        document.getElementById('error-text').textContent = message || 'No se pudo cargar el contenido';
+      }
+    }
+
+    async function fetchFileList() {
+      try {
+        updateStatusIndicator('loading');
+        console.log("📦 Solicitando listing.json...");
+        const res = await fetch("listing.json");
+
+        if (!res.ok) {
+          throw new Error(`Error HTTP ${res.status}`);
+        }
+
+        files = await res.json();
+        console.log(`✅ ${files.length} ficheros recibidos de listing.json`);
+        logEpisodiosDetectados(files);
+        initSelects();
+        
+        updateStatusIndicator('success', `${files.length} archivos encontrados`);
+        showToast(`Se han cargado ${files.length} archivos correctamente`, 'success');
+      } catch (e) {
+        console.error("❌ No se pudo cargar listing.json:", e);
+        files = [];
+        document.getElementById("htmlframe").srcdoc = `
+          <html>
+            <head>
+              <style>
+                body { 
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                  color: #e74c3c;
+                  text-align: center;
+                  padding: 20px;
+                }
+                i { font-size: 60px; margin-bottom: 20px; }
+                h2 { margin-top: 0; }
+              </style>
+            </head>
+            <body>
+              <i class="fas fa-exclamation-triangle"></i>
+              <h2>Error al cargar el listado de episodios</h2>
+              <p>${e.message}</p>
+              <p>Comprueba que el archivo listing.json existe y es accesible.</p>
+            </body>
+          </html>
+        `;
+        updateStatusIndicator('error', 'Error al cargar listing.json');
+        showToast('No se pudo cargar el listado de episodios', 'error');
+      }
+    }
+
+    function logEpisodiosDetectados(files) {
+      console.log("📝 Episodios detectados:");
+      files.forEach(f => {
+        const match = f.match(/^(.*?)_(whisper|vosk)/);
+        if (match) {
+          console.log(`→ ${match[1]}  ←  (${f})`);
+        } else {
+          console.warn(`⚠️ No se reconoce patrón de episodio en: ${f}`);
+        }
+      });
+    }
+
+    function initSelects() {
+      const episodes = [...new Set(
+        files
+          .map(f => f.match(/^(.*?)_(whisper|vosk)/))
+          .filter(m => m)
+          .map(m => m[1])
+      )].sort().reverse();
+
+      console.log(`🎬 Episodios únicos detectados:`, episodes);
+      
+      // Actualizar contador de episodios
+      document.getElementById('episode-counter').textContent = `${episodes.length} episodios`;
+
+      const episodeSelect = document.getElementById("episode");
+      episodeSelect.innerHTML = "";
+
+      for (const ep of episodes) {
+        const opt = document.createElement("option");
+        opt.value = opt.textContent = ep;
+        episodeSelect.appendChild(opt);
+      }
+
+      if (episodes.length === 0) {
+        document.getElementById("htmlframe").srcdoc = `
+          <html>
+            <head>
+              <style>
+                body { 
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                  color: #f39c12;
+                  text-align: center;
+                  padding: 20px;
+                }
+                i { font-size: 60px; margin-bottom: 20px; }
+                h2 { margin-top: 0; }
+              </style>
+            </head>
+            <body>
+              <i class="fas fa-folder-open"></i>
+              <h2>No se han detectado episodios válidos</h2>
+              <p>Comprueba que los archivos de transcripción siguen el formato correcto.</p>
+            </body>
+          </html>
+        `;
+        updateStatusIndicator('error', 'No se detectaron episodios válidos');
+        return;
+      }
+
+      document.getElementById("episode").onchange = updateFrame;
+      document.getElementById("engine").onchange = updateFrame;
+      document.getElementById("language").onchange = updateFrame;
+      document.getElementById("variant").onchange = updateFrame;
+
+      episodeSelect.selectedIndex = 0;
+      updateFrame();
+    }
+
+    function updateFrame() {
+      updateStatusIndicator('loading');
+      
+      const ep = document.getElementById("episode").value;
+      const eng = document.getElementById("engine").value;
+      const lang = document.getElementById("language").value;
+      const varSuffix = document.getElementById("variant").value === "audio" ? `_audio_${lang}` : `_${lang}`;
+      const filename = `${ep}_${eng}${varSuffix}.html`;
+      const iframe = document.getElementById("htmlframe");
+
+      if (files.includes(filename)) {
+        console.log(`🖼️ Mostrando: ${filename}`);
+        iframe.onload = () => {
+          updateStatusIndicator('success', `Archivo ${filename} cargado`);
+        };
+        iframe.onerror = () => {
+          updateStatusIndicator('error', `No se pudo cargar ${filename}`);
+        };
+        iframe.src = filename;
+      } else {
+        console.warn(`❌ No se encontró el archivo: ${filename}`);
+        iframe.srcdoc = `
+          <html>
+            <head>
+              <style>
+                body { 
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                  color: #e74c3c;
+                  text-align: center;
+                  padding: 20px;
+                }
+                i { font-size: 60px; margin-bottom: 20px; }
+                h2 { margin-top: 0; }
+                .filename { 
+                  font-family: monospace; 
+                  background: #f8f9fa; 
+                  padding: 5px 10px; 
+                  border-radius: 4px; 
+                  margin: 10px 0; 
+                  display: inline-block;
+                }
+                @media (prefers-color-scheme: dark) {
+                  body { color: #e74c3c; }
+                  .filename { background: #2a2a2a; }
+                }
+              </style>
+            </head>
+            <body>
+              <i class="fas fa-file-excel"></i>
+              <h2>Archivo no encontrado</h2>
+              <div class="filename">${filename}</div>
+              <p>Comprueba que el archivo existe o prueba con otra combinación de filtros.</p>
+            </body>
+          </html>
+        `;
+        updateStatusIndicator('error', `No se encontró ${filename}`);
+      }
+    }
+
+    fetchFileList();
+  </script>
+</body>
+</html>

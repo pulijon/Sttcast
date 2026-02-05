@@ -41,7 +41,8 @@ class SttcastDB:
             self.conn.execute('PRAGMA busy_timeout = 30000;')  # 30 segundos
             self.conn.execute('PRAGMA cache_size = -64000;')  # Tamaño del caché en páginas (ajustable)
         self.cursor = self.conn.cursor()
-        self._cache_speaker_episode_stats = {}
+        # DEPRECATED: caché en memoria ya no se usa. Las estadísticas se obtienen directamente de cache_stats (tabla SQLite)
+        # self._cache_speaker_episode_stats = {}
         
         # Asegurar que la vista intview existe solo si la BD ya existía
         # (Si se acaba de crear, ya debería tener la vista)
@@ -49,15 +50,16 @@ class SttcastDB:
             self.ensure_intview_exists()
 
     def build_cache_speaker_episode_stats(self):
-        """Construye una caché de estadísticas de episodios por hablante para optimizar consultas repetidas."""
-        tags = self.get_tags()
-        nspeakers = len(tags)
-        logging.info(f"Construyendo caché de estadísticas para {nspeakers} intervinientes")
-        counter = 0
-        for tag in tags:
-            counter += 1
-            logging.info(f"--- Procesando tag {counter}/{nspeakers} ---")
-            self._cache_speaker_episode_stats[tag] = self._get_speaker_episode_stats(tag)
+        """⚠️  DEPRECATED: Ya no se necesita.
+        
+        Con la tabla cache_stats optimizada, todas las consultas se hacen directamente contra SQL.
+        Esta función quedó obsoleta y se mantiene solo para compatibilidad hacia atrás.
+        
+        No hace nada.
+        """
+        logging.warning("⚠️  build_cache_speaker_episode_stats() fue llamado pero está DEPRECATED. Ya no es necesario.")
+        logging.info("💡 La caché de estadísticas ahora se gestiona automáticamente en cache_stats (tabla SQLite)")
+        return
 
     def is_connected(self):
         """Comprueba si la conexión a la base de datos está activa."""
@@ -328,64 +330,50 @@ class SttcastDB:
         try:
             self.ensure_cache_stats_exists()
             
-            logging.info("Reconstruyendo tabla cache_stats completamente...")
-            # Limpiar tabla
-            self.cursor.execute("DELETE FROM cache_stats")
+            logging.info("🔄 Iniciando reconstrucción de tabla cache_stats...")
             
-            # Query para obtener todos los datos necesarios
+            # Limpiar tabla
+            logging.info("📋 Limpiando tabla cache_stats...")
+            self.cursor.execute("DELETE FROM cache_stats")
+            logging.info("✅ Tabla cache_stats limpiada")
+            
+            # Query OPTIMIZADA: Una sola pasada con window functions
+            logging.info("🔍 Ejecutando query principal para obtener datos de speakerintervention...")
             query = """
-            SELECT 
+            INSERT INTO cache_stats 
+            (tag, epname, epdate, interventions_in_episode_by_speaker, 
+             duration_in_episode_by_speaker, total_interventions_in_episode, 
+             total_duration_in_episode)
+            SELECT DISTINCT
                 st.tag,
                 e.epname,
                 e.epdate,
-                COUNT(*) as interventions_in_episode_by_speaker,
-                SUM(si.end - si.start) as duration_in_episode_by_speaker
+                COUNT(*) OVER (PARTITION BY st.tag, e.id) as interventions_in_episode_by_speaker,
+                COALESCE(SUM(si.end - si.start) OVER (PARTITION BY st.tag, e.id), 0.0) as duration_in_episode_by_speaker,
+                COUNT(*) OVER (PARTITION BY e.id) as total_interventions_in_episode,
+                COALESCE(SUM(si.end - si.start) OVER (PARTITION BY e.id), 0.0) as total_duration_in_episode
             FROM speakerintervention si
             JOIN episode e ON si.episodeid = e.id
             JOIN speakertag st ON si.tagid = st.id
             WHERE si.start IS NOT NULL 
             AND si.end IS NOT NULL
-            GROUP BY st.tag, e.id
             """
+            
             self.cursor.execute(query)
-            results = self.cursor.fetchall()
+            logging.info("✅ Query completada, insertando datos...")
             
-            # Insertar datos
-            for row in results:
-                tag = row[0]
-                epname = row[1]
-                epdate = row[2]
-                interventions = row[3] or 0
-                duration = row[4] or 0.0
-                
-                # Obtener totales del episodio
-                total_query = """
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(si.end - si.start) as total_dur
-                FROM speakerintervention si
-                WHERE si.episodeid = (SELECT id FROM episode WHERE epname = ?)
-                AND si.start IS NOT NULL 
-                AND si.end IS NOT NULL
-                """
-                self.cursor.execute(total_query, (epname,))
-                total_row = self.cursor.fetchone()
-                total_interventions = total_row[0] or 0
-                total_duration = total_row[1] or 0.0
-                
-                self.cursor.execute("""
-                INSERT INTO cache_stats 
-                (tag, epname, epdate, interventions_in_episode_by_speaker, 
-                 duration_in_episode_by_speaker, total_interventions_in_episode, 
-                 total_duration_in_episode)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (tag, epname, epdate, interventions, duration, total_interventions, total_duration))
+            # Contar entradas insertadas
+            self.cursor.execute("SELECT COUNT(*) FROM cache_stats")
+            count = self.cursor.fetchone()[0]
+            logging.info(f"📊 Se han insertado {count} entradas en cache_stats")
             
+            logging.info("💾 Confirmando cambios (COMMIT)...")
             self.conn.commit()
-            logging.info(f"Tabla cache_stats reconstruida con {len(results)} entradas")
-            return len(results)
+            logging.info(f"✅ Tabla cache_stats reconstruida exitosamente con {count} entradas")
+            return count
         except Exception as e:
-            logging.error(f"Error reconstruyendo cache_stats: {e}")
+            logging.error(f"❌ Error reconstruyendo cache_stats: {e}")
+            logging.exception("Traceback completo:")
             raise
     
     def get_tags(self):
@@ -542,6 +530,7 @@ class SttcastDB:
     def _get_speaker_episode_stats(self, tag=None, fromdate=None, todate=None):
         """
         Devuelve estadísticas sobre un hablante en episodios entre dos fechas.
+        OPTIMIZADO: Usa la tabla cache_stats en lugar de intview para máximo rendimiento.
 
         Args:
             tag (str): El tag del hablante.
@@ -552,7 +541,7 @@ class SttcastDB:
             dict: {
             'tag': str,
             'episodes': [{
-                'id': int,
+                'name': str,
                 'date': str,
                 'duration': float,
                 'interventions': int,
@@ -564,12 +553,10 @@ class SttcastDB:
             'total_episodes_in_period': int
             }
         """
-        # Se va a utilizar un cursor local para evitar problemas en entornos multihilo
-        cursor = self.conn.cursor()
+        logging.info(f"📊 Obteniendo estadísticas para tag='{tag}' desde cache_stats (optimizado)")
         
-        logging.info(f"Calculando estadísticas para el tag '{tag}' entre {fromdate} y {todate}")
-        # Base query for filtering by date
-        query = "SELECT tag,epname,epdate,start,end FROM intview WHERE tag = ?"
+        # Query optimizada que usa cache_stats directamente
+        query = "SELECT epname, epdate, interventions_in_episode_by_speaker, duration_in_episode_by_speaker, total_interventions_in_episode, total_duration_in_episode FROM cache_stats WHERE tag = ?"
         params = [tag]
 
         if fromdate:
@@ -579,130 +566,54 @@ class SttcastDB:
             query += " AND epdate <= ?"
             params.append(todate)
 
-        query += " AND start IS NOT NULL AND end IS NOT NULL"
+        logging.info(f"🔍 Ejecutando query contra cache_stats...")
+        self.cursor.execute(query, params)
+        results = self.cursor.fetchall()
+        logging.info(f"✅ Se obtuvieron {len(results)} registros de cache_stats para tag='{tag}'")
 
-        cursor.execute(query, params)
-        results = cursor.fetchall()
-
-        # Group by episode
-        episodes_dict = {}
-        episode_ids = set()
-        logging.info(f"Resultados para el tag '{tag}': {len(results)} intervenciones encontradas")
-        # logging.info(f"Resultados detallados: {[dict(row) for row in results]}")
-        for row in results:
-            episode_name = row['epname']
-            duration = (row['end'] - row['start']) if row['start'] and row['end'] else 0
-
-            if episode_name not in episodes_dict:
-                episodes_dict[episode_name] = {
-                    'name': episode_name,
-                    'date': row['epdate'],
-                    'duration': 0,
-                    'interventions': 0
-                }
-
-            episodes_dict[episode_name]['duration'] += duration
-            episodes_dict[episode_name]['interventions'] += 1
-
-        # Get total interventions and duration for each episode
+        # Construir episodes desde cache_stats
+        episodes = []
         total_interventions = 0
-        total_duration = 0
+        total_duration = 0.0
 
-        for episode_name in episodes_dict:
-            # Get all interventions for this episode
-            episode_query = """
-            SELECT COUNT(*) as total_interventions, 
-                   SUM(end - start) as total_duration
-            FROM intview 
-            WHERE epname = ? 
-            AND start IS NOT NULL 
-            AND end IS NOT NULL
-            """
-            if fromdate:
-                episode_query += " AND epdate >= ?"
-                episode_params = [episode_name, fromdate]
-            else:
-                episode_params = [episode_name]
-            if todate:
-                episode_query += " AND epdate <= ?"
-                episode_params.append(todate)
-            
-            cursor.execute(episode_query, episode_params)
-            episode_stats = cursor.fetchone()
+        for row in results:
+            episode_data = {
+                'name': row[0],           # epname
+                'date': row[1],           # epdate (ya es un datetime.date)
+                'duration': row[3] or 0.0,                           # duration_in_episode_by_speaker
+                'interventions': row[2] or 0,                        # interventions_in_episode_by_speaker
+                'total_episode_interventions': row[4] or 0,          # total_interventions_in_episode
+                'total_episode_duration': row[5] or 0.0              # total_duration_in_episode
+            }
+            episodes.append(episode_data)
+            total_interventions += episode_data['total_episode_interventions']
+            total_duration += episode_data['total_episode_duration']
 
-            episodes_dict[episode_name]['total_episode_interventions'] = episode_stats[0] or 0
-            episodes_dict[episode_name]['total_episode_duration'] = episode_stats[1] or 0
-
-            total_interventions += episodes_dict[episode_name]['total_episode_interventions']
-            total_duration += episodes_dict[episode_name]['total_episode_duration']
-            # total_episode_duration += episodes_dict[episode_name]['total_episode_duration']
-
-        # Get total episodes in the period
-        total_episodes_query = "SELECT COUNT(DISTINCT id) FROM episode WHERE 1=1"
-        total_episodes_params = []
+        total_episodes_in_period = len(episodes)
         
-        if fromdate:
-            total_episodes_query += " AND epdate >= ?"
-            total_episodes_params.append(fromdate)
-        if todate:
-            total_episodes_query += " AND epdate <= ?"
-            total_episodes_params.append(todate)
-            
-        cursor.execute(total_episodes_query, total_episodes_params)
-        total_episodes_in_period = cursor.fetchone()[0] or 0
-        
-        # Se cierra el cursor local
-        cursor.close()
-
-        episodes = list(episodes_dict.values())
+        logging.info(f"✅ Tag '{tag}': {total_episodes_in_period} episodios, {total_interventions} intervenciones totales, {total_duration:.2f}s duración")
 
         return {
             'tag': tag,
             'episodes': episodes,
             'total_interventions': total_interventions,
             'total_duration': total_duration,
-            # 'total_episode_interventions': total_episode_interventions,
-            # 'total_episode_duration': total_episode_duration,
             'total_episodes_in_period': total_episodes_in_period
         }
 
     def _filter_data(self, data, fromdate=None, todate=None):
-        if not fromdate and not todate:
-            return data
-        
-        # Pasar las fechas a objetos datetime para comparaciones precisas
-        if fromdate:
-            fromdate = datetime.strptime(fromdate, "%Y-%m-%d").date()
-        if todate:
-            todate = datetime.strptime(todate, "%Y-%m-%d").date()
-        
-        filtered_episodes = list(filter(
-            lambda ep: (not fromdate or ep['date'] >= fromdate) and (not todate or ep['date'] <= todate),
-            data['episodes']
-        ))
-        
-        total_episodes_in_period = len(filtered_episodes)
-        total_interventions = sum(ep['total_episode_interventions'] for ep in filtered_episodes)
-        total_duration = sum(ep['total_episode_duration'] for ep in filtered_episodes)
-        
-        return {
-            'tag': data['tag'],
-            'episodes': filtered_episodes,  # ¿Quizás también quieras incluir esto?
-            'total_episodes_in_period': total_episodes_in_period,
-            'total_interventions': total_interventions,
-            'total_duration': total_duration
-        }
+        """Método heredado, ya no se usa. La filtración se hace en SQL ahora."""
+        logging.warning("⚠️  _filter_data() fue llamado pero ya no se usa (filtración en SQL)")
+        return data
 
     def get_speaker_episode_stats(self, tag, fromdate=None, todate=None):
-        # Primero, intenta obtener las estadísticas de la caché
-        logging.info(f"Obteniendo estadísticas para el tag '{tag}' entre {fromdate} y {todate}")
-        if self._cache_speaker_episode_stats is None or tag not in self._cache_speaker_episode_stats:
-            logging.info(f"El tag '{tag}' no está en la caché de estadísticas")
-            self._cache_speaker_episode_stats[tag] = self._get_speaker_episode_stats(tag)
-        logging.info(f"Obteniendo estadísticas para el tag '{tag}' desde la caché")
-        speaker_data = self._cache_speaker_episode_stats[tag]
-        # Ahora hay que quitar los episodios que no estén en el rango de fechas
-        return self._filter_data(speaker_data, fromdate, todate)
+        """Obtiene estadísticas de un hablante directamente desde cache_stats (sin caché en memoria)"""
+        logging.info(f"📈 Obteniendo estadísticas para tag='{tag}' ({fromdate} a {todate})")
+        
+        # Usar directamente cache_stats sin pasar por la caché en memoria
+        stat = self._get_speaker_episode_stats(tag, fromdate, todate)
+        logging.info(f"✓ Tag '{tag}' procesado: {stat['total_episodes_in_period']} episodios, {stat['total_interventions']} intervenciones")
+        return stat
 
 
     # Función que obtiene una lista de estadísticas de una lista de hablantes entre dos fechas

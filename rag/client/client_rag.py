@@ -852,20 +852,25 @@ async def ask_question(payload: AskRequest, request: Request):
             logging.info(f"Referencias encontradas: {len(reldata['refs'])}")
             for ref in reldata["refs"]:
                 if all(k in ref for k in ['label', 'file', 'time']):
-                    if app.rag_mp3_dir:
+                    # Procesar hiperenlaces si hay directorio local o URL externa
+                    if app.rag_mp3_dir or app.transcripts_url_external:
                         logging.info(f"Procesando referencia: {ref['label']} - {ref['file']} a {ref['time']} segundos")
                         html_file = {
                             l: get_transcript_url(os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html")) for l in ['es', 'en']
                         }
-                        real_file = {
-                            l: os.path.join(app.rag_mp3_dir, f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
-                        }
+                        # Solo construir rutas locales si hay directorio configurado
+                        if app.rag_mp3_dir:
+                            real_file = {
+                                l: os.path.join(app.rag_mp3_dir, f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
+                            }
+                        else:
+                            real_file = {'es': None, 'en': None}
                         logging.info(f"Archivos HTML: {html_file}")
                         logging.info(f"Buscando ID más cercano para {ref['time']} segundos")
                         
                         # Determinar qué ruta usar: local o URL externa
                         file_to_search = None
-                        if os.path.exists(real_file['es']):
+                        if app.rag_mp3_dir and real_file['es'] and os.path.exists(real_file['es']):
                             # Usar ruta local si existe
                             file_to_search = real_file['es']
                             logging.info(f"Usando archivo local: {file_to_search}")

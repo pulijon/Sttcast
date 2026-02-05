@@ -33,7 +33,6 @@ from api.apicontext import (
 from api.apihmac import create_auth_headers, validate_hmac_auth, serialize_body
 from contextlib import asynccontextmanager
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 # Clave para autenticación HMAC del servidor
 CONTEXT_SERVER_API_KEY = None
@@ -65,7 +64,30 @@ async def lifespan(app: FastAPI):
     app.state.db = SttcastDB(db_file, create_if_not_exists=True, wal=True)  # wal=True requiere que lo hayas implementado
     app.state.db_write_lock = threading.Lock()
 
-    # ---------- Índice FAISS único ----------   
+    # ---------- Construir caché de estadísticas PRIMERO (antes de FAISS) ----------
+    # Esto es menos costoso en memoria que FAISS, así que lo hacemos primero
+    try:
+        logging.info("Iniciando construcción de caché de estadísticas...")
+        start_cache_time = datetime.now()
+        app.state.db.ensure_cache_stats_exists()
+        
+        # Verificar si la tabla está vacía (nueva BD)
+        app.state.db.cursor.execute("SELECT COUNT(*) FROM cache_stats")
+        cache_count = app.state.db.cursor.fetchone()[0]
+        
+        if cache_count == 0:
+            logging.info("Tabla cache_stats vacía, reconstruyendo desde speakerintervention...")
+            app.state.db.rebuild_cache_stats_table()
+        
+        end_cache_time = datetime.now()
+        duration = (end_cache_time - start_cache_time).total_seconds()
+        logging.info(f"✅ Caché de estadísticas lista en {duration:.2f} segundos")
+    except Exception as e:
+        logging.error(f"Error construyendo cache de estadísticas: {e}")
+        logging.exception("Traceback:")
+        raise
+    
+    # ---------- Índice FAISS único (después de la caché) ----------   
     
     index_file = os.getenv("STTCAST_FAISS_FILE", "sttcast.index")
     app.state.index_file = index_file
@@ -109,31 +131,13 @@ async def lifespan(app: FastAPI):
     # ---------- Otros parámetros ----------
     app.state.relevant_fragments = int(os.getenv("STTCAST_RELEVANT_FRAGMENTS", "100"))
     
-    # Construcción de caché de estadísticas en background (no bloqueante)
-    # La caché se construirá después de que el servidor esté listo
-    app.state.cache_ready = False
-    executor = ThreadPoolExecutor(max_workers=1)
+    # Nota: La caché de estadísticas ya está cargada (se construye de forma sincrónica arriba)
+    # No es necesario construirla en background
     
-    def build_cache_async():
-        try:
-            logging.info("Iniciando construcción de caché de estadísticas en background...")
-            app.state.db.build_cache_speaker_episode_stats()
-            app.state.cache_ready = True
-            logging.info("Caché de estadísticas construida exitosamente")
-        except Exception as e:
-            logging.error(f"Error construyendo caché de estadísticas: {e}")
-    
-    # Lanzar construcción en background sin esperar
-    executor.submit(build_cache_async)
-    logging.info("Servidor listo - la caché de estadísticas se está construyendo en background")
-
-
     # Listo para servir
     yield
 
     # ---------- Cierre ordenado ----------
-    # Esperar a que termine la construcción de caché antes de cerrar
-    executor.shutdown(wait=True, timeout=10)
     
     try:
         app.state.db.close()

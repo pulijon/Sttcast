@@ -114,6 +114,23 @@ class SttcastDB:
         );
         """)
         
+        # Crear tabla de caché de estadísticas para optimizar consultas de stats
+        temp_cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cache_stats (
+            tag TEXT NOT NULL,
+            epname TEXT NOT NULL,
+            epdate DATE NOT NULL,
+            interventions_in_episode_by_speaker INTEGER DEFAULT 0,
+            duration_in_episode_by_speaker REAL DEFAULT 0.0,
+            total_interventions_in_episode INTEGER DEFAULT 0,
+            total_duration_in_episode REAL DEFAULT 0.0,
+            PRIMARY KEY (tag, epname)
+        );
+        """)
+        temp_cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_tag ON cache_stats(tag);")
+        temp_cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_epname ON cache_stats(epname);")
+        temp_cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_epdate ON cache_stats(epdate);")
+        
         # Crear la vista intview que es necesaria para las consultas del context_server
         self.cursor.execute("""
         CREATE VIEW IF NOT EXISTS intview AS
@@ -164,8 +181,47 @@ class SttcastDB:
             logging.error(f"Error al verificar/crear la vista 'intview': {e}")
             raise
     
+    def ensure_cache_stats_exists(self):
+        """Asegura que la tabla cache_stats existe, creándola si es necesario.
+        Útil para BDs existentes sin la tabla."""
+        try:
+            # Verificar si la tabla ya existe
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cache_stats';")
+            if self.cursor.fetchone() is None:
+                logging.info("La tabla 'cache_stats' no existe, creándola...")
+                self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cache_stats (
+                    tag TEXT NOT NULL,
+                    epname TEXT NOT NULL,
+                    epdate DATE NOT NULL,
+                    interventions_in_episode_by_speaker INTEGER DEFAULT 0,
+                    duration_in_episode_by_speaker REAL DEFAULT 0.0,
+                    total_interventions_in_episode INTEGER DEFAULT 0,
+                    total_duration_in_episode REAL DEFAULT 0.0,
+                    PRIMARY KEY (tag, epname)
+                );
+                """)
+                self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_tag ON cache_stats(tag);")
+                self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_epname ON cache_stats(epname);")
+                self.cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_epdate ON cache_stats(epdate);")
+                self.conn.commit()
+                logging.info("Tabla 'cache_stats' creada exitosamente.")
+            else:
+                logging.info("La tabla 'cache_stats' ya existe.")
+        except Exception as e:
+            logging.error(f"Error al verificar/crear la tabla 'cache_stats': {e}")
+            raise
+    
     def del_episode_data(self, epid):
         """Elimina todos los datos de un episodio dado su ID."""
+        # Obtener el nombre del episodio para limpiar cache_stats
+        self.cursor.execute("SELECT epname FROM episode WHERE id = ?", (epid,))
+        ep_row = self.cursor.fetchone()
+        if ep_row:
+            epname = ep_row[0]
+            # Limpiar de cache_stats
+            self.cursor.execute("DELETE FROM cache_stats WHERE epname = ?", (epname,))
+        
         self.cursor.execute("DELETE FROM speakerintervention WHERE episodeid = ?", (epid,))
         self.cursor.execute("DELETE FROM audiofile WHERE episodeid = ?", (epid,))
         self.cursor.execute("DELETE FROM episode WHERE id = ?", (epid,))
@@ -197,10 +253,140 @@ class SttcastDB:
                 "INSERT INTO speakerintervention (tagid, episodeid, start, end, content) VALUES (?, ?, ?, ?, ?)",
                 (tag_id, episode_id, epi.get('start', None), epi.get('end', None), epi.get('content', None))
             )
-        # for tag in invalid_cache_speakers:
-        #     self._cache_speaker_episode_stats[tag] = self._get_speaker_episode_stats(tag=tag)
+        
+        # Actualizar cache_stats para este episodio
+        self.update_cache_stats_for_episode(epname, epdatestr, episode_id)
+        
         self.conn.commit()
         return episode_id
+    
+    def update_cache_stats_for_episode(self, epname: str, epdate: str, episode_id: int):
+        """Actualiza las entradas de cache_stats para un episodio específico.
+        Se ejecuta después de agregar intervenciones."""
+        try:
+            # Asegurar que la tabla existe
+            self.ensure_cache_stats_exists()
+            
+            # Obtener todos los tags y sus estadísticas para este episodio
+            query = """
+            SELECT 
+                st.tag,
+                COUNT(*) as interventions_in_episode_by_speaker,
+                SUM(si.end - si.start) as duration_in_episode_by_speaker
+            FROM speakerintervention si
+            JOIN speakertag st ON si.tagid = st.id
+            WHERE si.episodeid = ?
+            AND si.start IS NOT NULL 
+            AND si.end IS NOT NULL
+            GROUP BY st.tag
+            """
+            self.cursor.execute(query, (episode_id,))
+            speaker_stats = self.cursor.fetchall()
+            
+            # Obtener totales del episodio
+            total_query = """
+            SELECT 
+                COUNT(*) as total_interventions,
+                SUM(si.end - si.start) as total_duration
+            FROM speakerintervention si
+            WHERE si.episodeid = ?
+            AND si.start IS NOT NULL 
+            AND si.end IS NOT NULL
+            """
+            self.cursor.execute(total_query, (episode_id,))
+            total_row = self.cursor.fetchone()
+            total_interventions = total_row[0] or 0
+            total_duration = total_row[1] or 0.0
+            
+            # Insertar/actualizar en cache_stats
+            for speaker_row in speaker_stats:
+                tag = speaker_row[0]
+                interventions = speaker_row[1] or 0
+                duration = speaker_row[2] or 0.0
+                
+                self.cursor.execute("""
+                INSERT INTO cache_stats 
+                (tag, epname, epdate, interventions_in_episode_by_speaker, 
+                 duration_in_episode_by_speaker, total_interventions_in_episode, 
+                 total_duration_in_episode)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tag, epname) DO UPDATE SET
+                    interventions_in_episode_by_speaker = excluded.interventions_in_episode_by_speaker,
+                    duration_in_episode_by_speaker = excluded.duration_in_episode_by_speaker,
+                    total_interventions_in_episode = excluded.total_interventions_in_episode,
+                    total_duration_in_episode = excluded.total_duration_in_episode
+                """, (tag, epname, epdate, interventions, duration, total_interventions, total_duration))
+            
+            logging.info(f"Cache stats actualizado para episodio '{epname}' con {len(speaker_stats)} speakers")
+        except Exception as e:
+            logging.error(f"Error actualizando cache_stats para episodio '{epname}': {e}")
+            raise
+    
+    def rebuild_cache_stats_table(self):
+        """Reconstruye completamente la tabla cache_stats desde los datos de speakerintervention.
+        Útil para migrar BDs existentes sin la tabla."""
+        try:
+            self.ensure_cache_stats_exists()
+            
+            logging.info("Reconstruyendo tabla cache_stats completamente...")
+            # Limpiar tabla
+            self.cursor.execute("DELETE FROM cache_stats")
+            
+            # Query para obtener todos los datos necesarios
+            query = """
+            SELECT 
+                st.tag,
+                e.epname,
+                e.epdate,
+                COUNT(*) as interventions_in_episode_by_speaker,
+                SUM(si.end - si.start) as duration_in_episode_by_speaker
+            FROM speakerintervention si
+            JOIN episode e ON si.episodeid = e.id
+            JOIN speakertag st ON si.tagid = st.id
+            WHERE si.start IS NOT NULL 
+            AND si.end IS NOT NULL
+            GROUP BY st.tag, e.id
+            """
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            
+            # Insertar datos
+            for row in results:
+                tag = row[0]
+                epname = row[1]
+                epdate = row[2]
+                interventions = row[3] or 0
+                duration = row[4] or 0.0
+                
+                # Obtener totales del episodio
+                total_query = """
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(si.end - si.start) as total_dur
+                FROM speakerintervention si
+                WHERE si.episodeid = (SELECT id FROM episode WHERE epname = ?)
+                AND si.start IS NOT NULL 
+                AND si.end IS NOT NULL
+                """
+                self.cursor.execute(total_query, (epname,))
+                total_row = self.cursor.fetchone()
+                total_interventions = total_row[0] or 0
+                total_duration = total_row[1] or 0.0
+                
+                self.cursor.execute("""
+                INSERT INTO cache_stats 
+                (tag, epname, epdate, interventions_in_episode_by_speaker, 
+                 duration_in_episode_by_speaker, total_interventions_in_episode, 
+                 total_duration_in_episode)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (tag, epname, epdate, interventions, duration, total_interventions, total_duration))
+            
+            self.conn.commit()
+            logging.info(f"Tabla cache_stats reconstruida con {len(results)} entradas")
+            return len(results)
+        except Exception as e:
+            logging.error(f"Error reconstruyendo cache_stats: {e}")
+            raise
     
     def get_tags(self):
         logging.info("Obteniendo lista de tags de hablantes desde la base de datos")

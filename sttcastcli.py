@@ -292,6 +292,7 @@ def build_transcription_config(args) -> Dict[str, Any]:
         'whmodel': args.whmodel,
         'whdevice': args.whdevice,
         'whlanguage': args.whlanguage,
+        'whsusptime': args.whsusptime,
         
         # Configuración de colección (ahora por petición)
         'prefix': args.prefix,

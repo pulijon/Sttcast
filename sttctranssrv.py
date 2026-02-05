@@ -70,6 +70,7 @@ class TranscriptionConfig(BaseModel):
     whmodel: str = Field("small", description="Modelo Whisper")
     whdevice: str = Field("cuda", description="Dispositivo para Whisper")
     whlanguage: str = Field("es", description="Idioma")
+    whsusptime: float = Field(60.0, description="Tiempo mínimo de intervención en segundos")
     
     # Configuración de colección (antes en servidor)
     prefix: str = Field("cm", description="Prefijo para archivos de salida")
@@ -476,6 +477,7 @@ async def transcribe_audio_endpoint(
         logging.info(f"  Motor: {'whisper' if config_obj.whisper else 'vosk'}")
         logging.info(f"  Modelo Whisper: {config_obj.whmodel}")
         logging.info(f"  Idioma: {config_obj.whlanguage}")
+        logging.info(f"  whsusptime: {config_obj.whsusptime}")
         logging.info(f"  Audio tags: {config_obj.audio_tags}")
         logging.info(f"  Use training: {config_obj.use_training}")
         logging.info(f"  Training file: {training_file.filename if training_file else 'N/A'}")
@@ -591,7 +593,7 @@ async def transcribe_audio_endpoint(
         
         # Valores por defecto técnicos
         'model': '/mnt/ram/es/vosk-model-es-0.42',
-        'whsusptime': 60.0,
+        'whsusptime': config_obj.whsusptime,
         'rwavframes': 4000,
         
         # Parámetros de Pyannote (desde petición del cliente)

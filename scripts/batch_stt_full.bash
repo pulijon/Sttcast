@@ -167,7 +167,7 @@ process_whisper() {
             --whlanguage "${whlang}" \
             --html-suffix "${whisper_suffix}_${whlang}" \
             --seconds 15000 \
-            --whsusptime 30 \
+            --whsusptime 20 \
             ${training_arg} \
             "${mp3_files[@]}"
         

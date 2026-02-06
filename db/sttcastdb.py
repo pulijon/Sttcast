@@ -475,16 +475,13 @@ class SttcastDB:
             date_filter += " AND e.epdate <= ?"
             params.append(todate)
         
-        # Get total episodes
-        episodes_query = f"SELECT COUNT(DISTINCT e.id) FROM episode e {date_filter}"
-        self.cursor.execute(episodes_query, params)
-        total_episodes = self.cursor.fetchone()[0]
-        
-        # Get total duration and speakers info
+        # OPTIMIZED: Single query using window functions to avoid N+1 query problem
+        # Previously had: initial query + loop calling additional query ~200 times for total_duration
+        # Now: One query with SUM(...) OVER () window function to calculate everything at once
         stats_query = f"""
         SELECT
             COUNT(DISTINCT e.id) as total_episodes,
-            SUM(si.end - si.start) as total_duration,
+            SUM(SUM(si.end - si.start)) OVER () as total_duration,
             st.tag,
             SUM(si.end - si.start) as speaker_duration
         FROM speakerintervention si
@@ -501,6 +498,7 @@ class SttcastDB:
         
         speakers = []
         total_duration = 0
+        total_episodes = 0
         
         for row in results:
             speakers.append({
@@ -508,18 +506,9 @@ class SttcastDB:
                 'total_episodes': row[0],
                 'total_duration': row[3] or 0
             })
-            if row[0] and total_duration == 0:  # Get total duration once
-                # Calculate total duration separately to avoid duplication
-                total_query = f"""
-                SELECT SUM(si.end - si.start)
-                FROM speakerintervention si
-                JOIN episode e ON si.episodeid = e.id
-                {date_filter}
-                AND si.start IS NOT NULL 
-                AND si.end IS NOT NULL
-                """
-                self.cursor.execute(total_query, params)
-                total_duration = self.cursor.fetchone()[0] or 0
+            if total_duration == 0:  # Get total_duration and total_episodes from window function
+                total_duration = row[1] or 0
+                total_episodes = row[0] or 0
         
         return {
             'total_episodes': total_episodes,

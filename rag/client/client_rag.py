@@ -1779,7 +1779,7 @@ async def admin_suggest_categories(request: Request):
         body_str = serialize_body(suggest_payload)
         resp = requests.post(
             f"{rag_base_url}/suggest_categories",
-            data=body_str, headers=auth_headers, timeout=120
+            data=body_str, headers=auth_headers, timeout=300
         )
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=f"Error del servicio RAG: {resp.text}")

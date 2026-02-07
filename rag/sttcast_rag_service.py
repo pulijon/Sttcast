@@ -1279,7 +1279,10 @@ if __name__ == '__main__':
     # Cargar variables de entorno
     load_env_vars_from_directory(os.path.join(os.path.dirname(__file__), '../.env'))
     logging.info(os.getenv("OPENAI_API_KEY"))
-    openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    openai = OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        timeout=300.0  # 5 minutes timeout for LLM responses
+    )
     if not openai.api_key:
         logging.error("API key for OpenAI is missing.")
         raise ValueError("API key for OpenAI is missing. Please set the OPENAI_API_KEY environment variable.")

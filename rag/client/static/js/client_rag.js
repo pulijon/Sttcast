@@ -28,6 +28,18 @@
         const backToSelection = document.getElementById('backToSelection');
         const backToSelectionSpeakers = document.getElementById('backToSelectionSpeakers');
         
+        // Variables para sección FAQ
+        const faqSection = document.getElementById('faqSection');
+        const backToSelectionFaq = document.getElementById('backToSelectionFaq');
+        const faqLoading = document.getElementById('faqLoading');
+        const faqContent = document.getElementById('faqContent');
+        const faqCategories = document.getElementById('faqCategories');
+        const faqUncategorized = document.getElementById('faqUncategorized');
+        const faqUncategorizedList = document.getElementById('faqUncategorizedList');
+        const faqSearch = document.getElementById('faqSearch');
+        const faqEmpty = document.getElementById('faqEmpty');
+        const faqErrorMsg = document.getElementById('faqErrorMsg');
+
         // Variables para análisis de intervinientes
         const speakersAnalysisForm = document.getElementById('speakersAnalysisForm');
         const startDateInput = document.getElementById('startDate');
@@ -418,6 +430,10 @@
                 
                 startDateInput.value = lastMonth.toISOString().split('T')[0];
                 endDateInput.value = today.toISOString().split('T')[0];
+            } else if (selectedType.value === 'faq') {
+                // Mostrar sección de consultas destacadas (FAQ)
+                faqSection.classList.remove('hidden');
+                loadFaq();
             }
         });
         
@@ -497,7 +513,272 @@
             analyzeSpeakersBtn.disabled = true;
         });
 
+        // Botón de volver desde FAQ
+        backToSelectionFaq.addEventListener('click', () => {
+            faqSection.classList.add('hidden');
+            queryTypeSelection.classList.remove('hidden');
+            // Limpiar contenido FAQ
+            faqCategories.innerHTML = '';
+            faqUncategorizedList.innerHTML = '';
+            faqUncategorized.classList.add('hidden');
+            faqContent.classList.add('hidden');
+            faqLoading.classList.add('hidden');
+            faqEmpty.classList.add('hidden');
+            faqErrorMsg.classList.add('hidden');
+            if (faqSearch) faqSearch.value = '';
+        });
+
 // Código fuera del DOMContentLoaded - mover funciones aquí
+
+// ===== FUNCIONES FAQ (Consultas Destacadas) =====
+let faqData = null; // Datos FAQ cargados
+
+async function loadFaq() {
+    const faqLoading = document.getElementById('faqLoading');
+    const faqContent = document.getElementById('faqContent');
+    const faqEmpty = document.getElementById('faqEmpty');
+    const faqErrorMsg = document.getElementById('faqErrorMsg');
+
+    // Mostrar loading
+    faqLoading.classList.remove('hidden');
+    faqContent.classList.add('hidden');
+    faqEmpty.classList.add('hidden');
+    faqErrorMsg.classList.add('hidden');
+
+    try {
+        const response = await fetch(getApiPath('/api/faq'));
+        if (!response.ok) {
+            throw new Error('Error al cargar las consultas destacadas');
+        }
+
+        const data = await response.json();
+        faqData = data;
+
+        faqLoading.classList.add('hidden');
+
+        // Verificar si hay datos
+        const hasCategories = data.categories && data.categories.length > 0;
+        const hasGrouped = data.grouped_queries && Object.keys(data.grouped_queries).length > 0;
+        const hasUncategorized = data.uncategorized && data.uncategorized.length > 0;
+
+        if (!hasCategories && !hasGrouped && !hasUncategorized) {
+            faqEmpty.classList.remove('hidden');
+            return;
+        }
+
+        renderFaq(data);
+        faqContent.classList.remove('hidden');
+
+        // Configurar búsqueda
+        const faqSearch = document.getElementById('faqSearch');
+        if (faqSearch) {
+            faqSearch.addEventListener('input', () => filterFaq(faqSearch.value));
+        }
+
+    } catch (error) {
+        console.error('[FAQ] Error loading FAQ:', error);
+        faqLoading.classList.add('hidden');
+        faqErrorMsg.textContent = 'Error al cargar las consultas destacadas: ' + error.message;
+        faqErrorMsg.classList.remove('hidden');
+    }
+}
+
+function renderFaq(data) {
+    const faqCategories = document.getElementById('faqCategories');
+    const faqUncategorized = document.getElementById('faqUncategorized');
+    const faqUncategorizedList = document.getElementById('faqUncategorizedList');
+
+    faqCategories.innerHTML = '';
+    faqUncategorizedList.innerHTML = '';
+
+    // Renderizar categorías con sus consultas
+    if (data.categories && data.grouped_queries) {
+        data.categories.forEach((category, index) => {
+            const queries = data.grouped_queries[category.name] || [];
+            if (queries.length === 0 && (!category.children || category.children.length === 0)) return;
+
+            const categoryEl = renderFaqCategory(category, data.grouped_queries, false);
+            if (categoryEl) {
+                faqCategories.appendChild(categoryEl);
+            }
+        });
+    }
+
+    // Renderizar consultas sin categoría
+    if (data.uncategorized && data.uncategorized.length > 0) {
+        faqUncategorized.classList.remove('hidden');
+        data.uncategorized.forEach(query => {
+            faqUncategorizedList.appendChild(renderFaqQueryItem(query));
+        });
+    } else {
+        faqUncategorized.classList.add('hidden');
+    }
+}
+
+function renderFaqCategory(category, groupedQueries, expanded) {
+    const queries = groupedQueries[category.name] || [];
+    const hasChildren = category.children && category.children.length > 0;
+    const childQueries = hasChildren ? category.children.reduce((acc, child) => {
+        return acc + (groupedQueries[child.name] || []).length;
+    }, 0) : 0;
+
+    // Si no hay consultas ni hijos con consultas, no renderizar
+    if (queries.length === 0 && childQueries === 0) return null;
+
+    const totalCount = queries.length + childQueries;
+    const div = document.createElement('div');
+    div.className = 'faq-category';
+    div.dataset.categoryName = category.name.toLowerCase();
+
+    const isPrimary = category.is_primary;
+    const headerClass = isPrimary ? 'faq-category-header faq-category-primary' : 'faq-category-header';
+
+    div.innerHTML = `
+        <div class="${headerClass}" onclick="toggleFaqCategory(this)">
+            <div class="faq-category-header-left">
+                <span class="faq-category-chevron ${expanded ? 'faq-category-chevron-open' : ''}">▶</span>
+                <h3 class="faq-category-title">${escapeHtmlFaq(category.name)}</h3>
+                <span class="faq-category-count">${totalCount}</span>
+            </div>
+            ${category.description ? `<p class="faq-category-description">${escapeHtmlFaq(category.description)}</p>` : ''}
+        </div>
+        <div class="faq-category-content ${expanded ? 'faq-category-content-open' : ''}">
+            <div class="faq-category-queries"></div>
+            <div class="faq-category-children"></div>
+        </div>
+    `;
+
+    // Añadir consultas directas de esta categoría
+    const queriesContainer = div.querySelector('.faq-category-queries');
+    queries.forEach(query => {
+        queriesContainer.appendChild(renderFaqQueryItem(query));
+    });
+
+    // Añadir subcategorías
+    if (hasChildren) {
+        const childrenContainer = div.querySelector('.faq-category-children');
+        category.children.forEach(child => {
+            const childEl = renderFaqCategory(child, groupedQueries, false);
+            if (childEl) {
+                childEl.classList.add('faq-subcategory');
+                childrenContainer.appendChild(childEl);
+            }
+        });
+    }
+
+    return div;
+}
+
+function renderFaqQueryItem(query) {
+    const div = document.createElement('div');
+    div.className = 'faq-query-item';
+    div.dataset.queryText = (query.query_text || '').toLowerCase();
+
+    // Truncar respuesta para el preview
+    let responsePreview = '';
+    if (query.response_text) {
+        responsePreview = query.response_text.substring(0, 200);
+        if (query.response_text.length > 200) responsePreview += '...';
+    }
+
+    const queryUrl = getApiPath(`/savedquery/${query.uuid}`);
+
+    div.innerHTML = `
+        <a href="${queryUrl}" class="faq-query-link">
+            <div class="faq-query-question">
+                <span class="faq-query-icon">❓</span>
+                <span>${escapeHtmlFaq(query.query_text)}</span>
+            </div>
+            ${responsePreview ? `<div class="faq-query-preview">${escapeHtmlFaq(responsePreview)}</div>` : ''}
+            <div class="faq-query-meta">
+                ${query.likes > 0 ? `<span class="faq-query-likes">👍 ${query.likes}</span>` : ''}
+                <span class="faq-query-arrow">Ver respuesta →</span>
+            </div>
+        </a>
+    `;
+
+    return div;
+}
+
+function toggleFaqCategory(headerEl) {
+    const content = headerEl.nextElementSibling;
+    const chevron = headerEl.querySelector('.faq-category-chevron');
+
+    content.classList.toggle('faq-category-content-open');
+    chevron.classList.toggle('faq-category-chevron-open');
+}
+// Exponer globalmente para onclick inline
+window.toggleFaqCategory = toggleFaqCategory;
+
+function filterFaq(searchTerm) {
+    const term = searchTerm.toLowerCase().trim();
+    const categories = document.querySelectorAll('.faq-category');
+    const uncategorizedItems = document.querySelectorAll('#faqUncategorizedList .faq-query-item');
+    const faqUncategorized = document.getElementById('faqUncategorized');
+
+    if (!term) {
+        // Mostrar todo
+        categories.forEach(cat => {
+            cat.style.display = '';
+            cat.querySelectorAll('.faq-query-item').forEach(q => q.style.display = '');
+        });
+        uncategorizedItems.forEach(q => q.style.display = '');
+        if (uncategorizedItems.length > 0) faqUncategorized.classList.remove('hidden');
+        return;
+    }
+
+    // Filtrar por término
+    categories.forEach(cat => {
+        const catName = cat.dataset.categoryName || '';
+        const catMatchesName = catName.includes(term);
+        let hasVisibleQueries = false;
+
+        cat.querySelectorAll('.faq-query-item').forEach(q => {
+            const queryText = q.dataset.queryText || '';
+            if (queryText.includes(term) || catMatchesName) {
+                q.style.display = '';
+                hasVisibleQueries = true;
+            } else {
+                q.style.display = 'none';
+            }
+        });
+
+        cat.style.display = hasVisibleQueries ? '' : 'none';
+
+        // Si hay resultados, expandir la categoría
+        if (hasVisibleQueries) {
+            const content = cat.querySelector('.faq-category-content');
+            const chevron = cat.querySelector('.faq-category-chevron');
+            if (content) content.classList.add('faq-category-content-open');
+            if (chevron) chevron.classList.add('faq-category-chevron-open');
+        }
+    });
+
+    // Filtrar consultas sin categoría
+    let hasVisibleUncategorized = false;
+    uncategorizedItems.forEach(q => {
+        const queryText = q.dataset.queryText || '';
+        if (queryText.includes(term)) {
+            q.style.display = '';
+            hasVisibleUncategorized = true;
+        } else {
+            q.style.display = 'none';
+        }
+    });
+
+    if (hasVisibleUncategorized) {
+        faqUncategorized.classList.remove('hidden');
+    } else {
+        faqUncategorized.classList.add('hidden');
+    }
+}
+
+function escapeHtmlFaq(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Gestión de cookies
 function initCookies() {
     const cookieConsent = localStorage.getItem('cookieConsent');

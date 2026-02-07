@@ -12,11 +12,13 @@ env_dir = os.path.join(os.path.dirname(__file__), '..', '..')
 load_env_vars_from_directory(os.path.join(env_dir, '.env'))
 
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse, Response
+from fastapi.responses import JSONResponse, HTMLResponse, Response, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
+import secrets
 import requests
 from datetime import datetime
 from urllib.parse import urljoin
@@ -31,6 +33,10 @@ FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
 BASE_PATH = os.getenv('RAG_CLIENT_BASE_PATH', '')
 TRANSCRIPTS_URL_EXTERNAL = os.getenv('TRANSCRIPTS_URL_EXTERNAL')  # URL base de S3 u otro storage externo
+
+# Autenticación del panel de administración
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
+SESSION_SECRET = os.getenv('SESSION_SECRET', secrets.token_hex(32))
 
 # Lifespan event para inicializar BD
 from contextlib import asynccontextmanager
@@ -55,6 +61,15 @@ app = FastAPI(lifespan=lifespan)
 
 from middleware_audio_fallback import AudioFallbackMiddleware
 app.add_middleware(AudioFallbackMiddleware)
+
+# Middleware de sesiones para el panel de administración
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="sttcast_admin",
+    max_age=3600,  # 1 hora
+    same_site="strict"
+)
 
 # Las variables de entorno ya fueron cargadas al inicio del archivo
 
@@ -1512,6 +1527,389 @@ async def get_speaker_stats(request: SpeakerStatsRequest):
     except Exception as e:
         logging.error(f"Error en speaker_stats: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+# =============================================
+#  Helpers de autenticación admin
+# =============================================
+
+def require_admin(request: Request):
+    """Verifica que el usuario tiene sesión de administrador activa"""
+    if not request.session.get('is_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Requiere autenticación de administrador"
+        )
+
+# =============================================
+#  Endpoints de autenticación admin
+# =============================================
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request):
+    """Página de login del panel de administración"""
+    if request.session.get('is_admin'):
+        return RedirectResponse(url=f"{BASE_PATH}/admin", status_code=303)
+    return templates.TemplateResponse("admin_login.html", {
+        "request": request,
+        "podcast_name": app.podcast_name,
+        "base_path": BASE_PATH,
+        "error": None
+    })
+
+@app.post("/admin/login")
+async def admin_login(request: Request):
+    """Procesa el login del administrador"""
+    form = await request.form()
+    password = form.get('password', '')
+    
+    if not ADMIN_PASSWORD or password != ADMIN_PASSWORD:
+        return templates.TemplateResponse("admin_login.html", {
+            "request": request,
+            "podcast_name": app.podcast_name,
+            "base_path": BASE_PATH,
+            "error": "Contraseña incorrecta"
+        })
+    
+    request.session['is_admin'] = True
+    request.session['login_time'] = datetime.now().isoformat()
+    logging.info(f"Admin login exitoso desde {get_client_ip_from_request(request)}")
+    return RedirectResponse(url=f"{BASE_PATH}/admin", status_code=303)
+
+@app.get("/admin/logout")
+async def admin_logout(request: Request):
+    """Cierra la sesión de administrador"""
+    request.session.clear()
+    return RedirectResponse(url=f"{BASE_PATH}/", status_code=303)
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_panel(request: Request):
+    """Panel de administración de consultas destacadas y categorías"""
+    require_admin(request)
+    return templates.TemplateResponse("admin.html", {
+        "request": request,
+        "podcast_name": app.podcast_name,
+        "base_path": BASE_PATH,
+        "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
+        "admin_js_url": get_static_url("js/admin.js", base_path=BASE_PATH)
+    })
+
+# =============================================
+#  API Endpoints de administración
+# =============================================
+
+@app.get("/api/admin/queries")
+async def admin_get_queries(request: Request, limit: int = 500, offset: int = 0):
+    """Obtiene todas las consultas con info de featured y categorías"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    queries = await app.db.get_all_queries_admin(
+        podcast_name=app.podcast_name, limit=limit, offset=offset
+    )
+    # Serializar datetimes
+    for q in queries:
+        if hasattr(q.get('created_at'), 'isoformat'):
+            q['created_at'] = q['created_at'].isoformat()
+        q['uuid'] = str(q.get('uuid', ''))
+    return {"queries": queries, "total": len(queries)}
+
+@app.post("/api/admin/toggle_featured/{query_uuid}")
+async def admin_toggle_featured(query_uuid: str, request: Request):
+    """Marca/desmarca una consulta como destacada"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    query = await app.db.get_query_by_uuid(query_uuid)
+    if not query:
+        raise HTTPException(status_code=404, detail="Consulta no encontrada")
+    new_featured = not query.get('featured', False)
+    success = await app.db.update_featured(query_uuid, new_featured)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al actualizar")
+    return {"uuid": query_uuid, "featured": new_featured}
+
+@app.get("/api/admin/categories")
+async def admin_get_categories(request: Request):
+    """Obtiene el árbol de categorías"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    tree = await app.db.get_categories_tree()
+    flat = await app.db.get_all_categories_flat()
+    return {"tree": tree, "flat": flat}
+
+@app.post("/api/admin/categories")
+async def admin_create_category(request: Request):
+    """Crea una nueva categoría"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    body = await request.json()
+    
+    name = body.get('name', '').strip()
+    slug = body.get('slug', '').strip()
+    if not name or not slug:
+        raise HTTPException(status_code=400, detail="name y slug son obligatorios")
+    
+    # Calcular embedding de la categoría (nombre + descripción)
+    category_embedding = None
+    description = body.get('description', '')
+    embedding_text = f"{name}: {description}" if description else name
+    try:
+        emb_payload = {
+            "query": embedding_text,
+            "n_fragments": 1,
+            "only_embedding": True
+        }
+        auth_headers = create_auth_headers(
+            app.context_server_api_key, "POST", "/getcontext",
+            emb_payload, "client_rag_service"
+        )
+        body_str = serialize_body(emb_payload)
+        emb_resp = requests.post(app.get_context_url, data=body_str, headers=auth_headers, timeout=30)
+        if emb_resp.status_code == 200:
+            category_embedding = emb_resp.json().get('query_embedding')
+    except Exception as e:
+        logging.warning(f"No se pudo calcular embedding de categoría: {e}")
+    
+    result = await app.db.create_category(
+        name=name,
+        slug=slug,
+        description=description,
+        parent_id=body.get('parent_id'),
+        is_primary=body.get('is_primary', False),
+        display_order=body.get('display_order', 0),
+        category_embedding=category_embedding
+    )
+    if not result:
+        raise HTTPException(status_code=500, detail="Error al crear categoría")
+    return result
+
+@app.put("/api/admin/categories/{category_id}")
+async def admin_update_category(category_id: int, request: Request):
+    """Actualiza una categoría"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    body = await request.json()
+    success = await app.db.update_category(category_id, **body)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al actualizar categoría")
+    return {"success": True}
+
+@app.delete("/api/admin/categories/{category_id}")
+async def admin_delete_category(category_id: int, request: Request):
+    """Elimina una categoría"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    success = await app.db.delete_category(category_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al eliminar categoría")
+    return {"success": True}
+
+@app.post("/api/admin/assign_category")
+async def admin_assign_category(request: Request):
+    """Asigna una consulta a una categoría"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    body = await request.json()
+    query_id = body.get('query_id')
+    category_id = body.get('category_id')
+    if not query_id or not category_id:
+        raise HTTPException(status_code=400, detail="query_id y category_id son obligatorios")
+    success = await app.db.assign_query_to_category(
+        query_id, category_id, assigned_by='admin'
+    )
+    return {"success": success}
+
+@app.post("/api/admin/remove_category_assignment")
+async def admin_remove_category_assignment(request: Request):
+    """Elimina la asignación de una consulta a una categoría"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    body = await request.json()
+    success = await app.db.remove_query_from_category(
+        body.get('query_id'), body.get('category_id')
+    )
+    return {"success": success}
+
+@app.post("/api/admin/suggest_categories")
+async def admin_suggest_categories(request: Request):
+    """Solicita al LLM una propuesta de categorización"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    
+    body = await request.json()
+    selected_model = body.get('model')  # Modelo elegido por el admin
+    
+    # Obtener consultas destacadas con sus respuestas para enviar al LLM
+    featured = await app.db.get_featured_queries(podcast_name=app.podcast_name)
+    queries_for_llm = []
+    for q in featured:
+        queries_for_llm.append({
+            "id": q['id'],
+            "question": q['query_text'],
+            "answer": q.get('response_text', '')[:500]  # Limitar respuesta
+        })
+    
+    existing_categories = await app.db.get_all_categories_flat()
+    
+    # Enviar al servicio RAG para categorización con LLM
+    suggest_payload = {
+        "queries": queries_for_llm,
+        "existing_categories": [
+            {"name": c['name'], "slug": c['slug'], "description": c.get('description', ''),
+             "parent_slug": next((p['slug'] for p in existing_categories if p['id'] == c.get('parent_id')), None)}
+            for c in existing_categories
+        ]
+    }
+    if selected_model:
+        suggest_payload['model'] = selected_model
+    
+    try:
+        rag_base_url = app.relsearch_url.rsplit('/', 1)[0]
+        auth_headers = create_auth_headers(
+            app.rag_server_api_key, "POST", "/suggest_categories",
+            suggest_payload, "client_rag_service"
+        )
+        body_str = serialize_body(suggest_payload)
+        resp = requests.post(
+            f"{rag_base_url}/suggest_categories",
+            data=body_str, headers=auth_headers, timeout=120
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Error del servicio RAG: {resp.text}")
+        return resp.json()
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Timeout al solicitar categorización")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+@app.post("/api/admin/apply_categories")
+async def admin_apply_categories(request: Request):
+    """Aplica un esquema de categorías propuesto por el LLM"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    
+    body = await request.json()
+    categories = body.get('categories', [])
+    assignments = body.get('assignments', [])
+    
+    created_categories = {}
+    errors = []
+    
+    # Resolver categorías existentes por slug para reutilizarlas
+    existing_cats = await app.db.get_all_categories_flat()
+    existing_by_slug = {c['slug']: c['id'] for c in existing_cats}
+    
+    # Crear categorías primarias y sus hijos
+    for cat in categories:
+        try:
+            slug = cat['slug']
+            if slug in existing_by_slug:
+                # La categoría ya existe, reutilizar su ID
+                created_categories[slug] = existing_by_slug[slug]
+            else:
+                result = await app.db.create_category(
+                    name=cat['name'],
+                    slug=slug,
+                    description=cat.get('description', ''),
+                    is_primary=cat.get('is_primary', True),
+                    display_order=cat.get('display_order', 0),
+                    created_by='llm'
+                )
+                if result:
+                    created_categories[slug] = result['id']
+                    existing_by_slug[slug] = result['id']
+            
+            # Crear subcategorías
+            parent_id = created_categories.get(slug)
+            for child in cat.get('children', []):
+                child_slug = child['slug']
+                if child_slug in existing_by_slug:
+                    created_categories[child_slug] = existing_by_slug[child_slug]
+                else:
+                    child_result = await app.db.create_category(
+                        name=child['name'],
+                        slug=child_slug,
+                        description=child.get('description', ''),
+                        parent_id=parent_id,
+                        is_primary=False,
+                        created_by='llm'
+                    )
+                    if child_result:
+                        created_categories[child_slug] = child_result['id']
+                        existing_by_slug[child_slug] = child_result['id']
+        except Exception as e:
+            errors.append(f"Error creando categoría {cat.get('name')}: {e}")
+    
+    # Aplicar asignaciones
+    applied_count = 0
+    for assignment in assignments:
+        query_id = assignment.get('query_id')
+        for slug in assignment.get('category_slugs', []):
+            cat_id = created_categories.get(slug)
+            if cat_id and query_id:
+                success = await app.db.assign_query_to_category(
+                    query_id, cat_id,
+                    assigned_by='llm',
+                    confidence=assignment.get('confidence', 0.8)
+                )
+                if success:
+                    applied_count += 1
+    
+    # Aplicar reasignaciones de padres
+    reparents = body.get('reparents', [])
+    reparent_count = 0
+    for rp in reparents:
+        cat_slug = rp.get('category_slug')
+        new_parent_slug = rp.get('new_parent_slug')
+        cat_id = existing_by_slug.get(cat_slug) or created_categories.get(cat_slug)
+        if cat_id:
+            new_parent_id = None
+            if new_parent_slug:
+                new_parent_id = existing_by_slug.get(new_parent_slug) or created_categories.get(new_parent_slug)
+                if not new_parent_id:
+                    errors.append(f"Padre '{new_parent_slug}' no encontrado para reasignar '{cat_slug}'")
+                    continue
+            success = await app.db.update_category(cat_id, parent_id=new_parent_id if new_parent_id else -1)
+            if success:
+                reparent_count += 1
+    
+    return {
+        "created_categories": len(created_categories),
+        "applied_assignments": applied_count,
+        "applied_reparents": reparent_count,
+        "errors": errors
+    }
+
+# =============================================
+#  FAQ público (sin autenticación)
+# =============================================
+
+@app.get("/api/faq")
+async def get_faq(category_slug: str = None):
+    """
+    Endpoint público: devuelve consultas destacadas organizadas por categoría.
+    No requiere autenticación.
+    """
+    if not app.db or not app.db.is_available:
+        return {"categories": [], "grouped_queries": {}, "uncategorized": []}
+    
+    try:
+        faq_data = await app.db.get_faq_grouped(podcast_name=app.podcast_name)
+        return faq_data
+    except Exception as e:
+        logging.error(f"Error obteniendo FAQ: {e}")
+        return {"categories": [], "grouped_queries": {}, "uncategorized": []}
+
 
 @app.get("/health")
 async def health_check():

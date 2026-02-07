@@ -1131,11 +1131,145 @@ def health_check():
         "openai_status": openai_status,
         "security_protection_active": True
     }
-  
-    
-    
 
+# =============================================
+#  Categorización de consultas con LLM
+# =============================================
+
+@app.post("/suggest_categories")
+async def suggest_categories(request: Request):
+    """
+    Dado un conjunto de consultas (pregunta+respuesta), propone un esquema
+    de categorías jerárquico usando LLM. Usado por la interfaz de administración.
+    """
+    global openai
     
+    # Validar autenticación HMAC
+    body_bytes = await request.body()
+    client_id = validate_hmac_auth(request, RAG_SERVER_API_KEY, body_bytes)
+    
+    body = json.loads(body_bytes.decode('utf-8'))
+    queries = body.get('queries', [])
+    existing_categories = body.get('existing_categories', [])
+    requested_model = body.get('model')  # Modelo elegido por el admin
+    
+    if not queries:
+        raise HTTPException(status_code=400, detail="No se proporcionaron consultas")
+    
+    # Construir la lista de consultas con pregunta y respuesta
+    # Usar el ID real de BD para que las asignaciones mapeen correctamente
+    queries_text = []
+    for q in queries:
+        question = q.get('question', q) if isinstance(q, dict) else q
+        answer = q.get('answer', '') if isinstance(q, dict) else ''
+        query_id = q.get('id', 0) if isinstance(q, dict) else 0
+        # Truncar respuestas largas
+        if len(answer) > 500:
+            answer = answer[:500] + '...'
+        queries_text.append(f"[ID={query_id}] Pregunta: {question}\n   Respuesta: {answer}")
+    
+    queries_block = '\n'.join(queries_text)
+    
+    existing_block = ""
+    if existing_categories:
+        existing_block = f"""
+Categorías existentes (integrar las nuevas consultas en estas si encajan, o proponer nuevas.
+También puedes proponer reorganizar las categorías existentes cambiando sus padres):
+{json.dumps(existing_categories, ensure_ascii=False, indent=2)}
+"""
+    
+    prompt = f"""Analiza las siguientes consultas realizadas a un podcast y sus respuestas.
+Propón un esquema de categorización jerárquico basándote TANTO en la pregunta como en 
+el contenido de la respuesta, ya que muchas preguntas solo cobran sentido en el contexto 
+de las respuestas obtenidas del podcast.
+
+Consultas y respuestas:
+{queries_block}
+{existing_block}
+Responde con un JSON válido con esta estructura exacta:
+{{
+  "categories": [
+    {{
+      "name": "Nombre de categoría",
+      "slug": "nombre-categoria",
+      "description": "Descripción breve de qué incluye esta categoría",
+      "is_primary": true,
+      "children": [
+        {{
+          "name": "Subcategoría",
+          "slug": "subcategoria",
+          "description": "Descripción de la subcategoría",
+          "is_primary": false
+        }}
+      ]
+    }}
+  ],
+  "assignments": [
+    {{
+      "query_id": 1,
+      "category_slugs": ["slug-1", "slug-2"],
+      "confidence": 0.85
+    }}
+  ],
+  "reparents": [
+    {{
+      "category_slug": "slug-existente",
+      "new_parent_slug": "nuevo-padre-slug",
+      "reason": "Explicación de por qué mover esta categoría"
+    }}
+  ]
+}}
+
+Reglas:
+- Crea entre 3 y 8 categorías primarias
+- Las subcategorías son opcionales, úsalas solo si hay suficientes consultas
+- Los slugs deben ser únicos, en minúsculas, sin espacios (usar guiones)
+- Una consulta puede pertenecer a varias categorías
+- IMPORTANTE: El query_id en las asignaciones DEBE ser el número que aparece entre [ID=...] al inicio de cada consulta. NO uses números secuenciales, usa exactamente esos IDs
+- La confianza (confidence) debe reflejar qué tan seguro estás de la asignación
+- En "reparents" puedes proponer mover categorías existentes bajo un padre diferente. Usar null en new_parent_slug para convertir en raíz. Solo incluir si mejora la organización
+"""
+
+    try:
+        OPENAI_GPT_MODEL = os.getenv("OPENAI_GPT_MODEL", "gpt-4o-mini")
+        model_to_use = requested_model if requested_model else OPENAI_GPT_MODEL
+        logging.info(f"[suggest_categories] Usando modelo: {model_to_use} (solicitado: {requested_model}, default: {OPENAI_GPT_MODEL})")
+        response = openai.chat.completions.create(
+            model=model_to_use,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Eres un experto en organización de información, taxonomías y clasificación de contenido de podcasts. Respondes únicamente con JSON válido."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}
+            # temperature=0.3  # gpt-5-nano solo soporta temperature=1 (default)
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        
+        # Añadir info de costes
+        usage = response.usage
+        if usage:
+            result['usage'] = {
+                'prompt_tokens': usage.prompt_tokens,
+                'completion_tokens': usage.completion_tokens,
+                'cost_usd': calculate_cost_usd(usage.prompt_tokens, usage.completion_tokens),
+                'model_used': model_to_use
+            }
+        
+        logging.info(f"Categorización LLM completada: {len(result.get('categories', []))} categorías, "
+                     f"{len(result.get('assignments', []))} asignaciones")
+        return result
+        
+    except json.JSONDecodeError as e:
+        logging.error(f"Error parseando respuesta LLM: {e}")
+        raise HTTPException(status_code=500, detail="La respuesta del LLM no es JSON válido")
+    except Exception as e:
+        logging.error(f"Error en categorización LLM: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar categorización: {str(e)}")
+
 
 if __name__ == '__main__':
     # Configurar logging

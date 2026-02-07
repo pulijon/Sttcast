@@ -119,6 +119,14 @@
                                 <p class="text-sm text-gray-600">Analiza estadísticas y patrones de participación de los contertulios</p>
                             </div>
                         </label>
+                        <label class="flex items-start space-x-3 cursor-pointer">
+                            <input type="radio" name="queryType" value="faq" 
+                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
+                            <div>
+                                <span class="text-base font-medium text-gray-700">Consultas destacadas</span>
+                                <p class="text-sm text-gray-600">Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías</p>
+                            </div>
+                        </label>
                     </div>
                 </fieldset>
                 
@@ -435,6 +443,54 @@
 
             <!-- Mensaje de error para análisis de intervinientes -->
             <div id="speakersErrorMsg" 
+                 class="mt-8 text-red-700 font-semibold hidden" 
+                 role="alert" 
+                 aria-live="assertive"></div>
+        </section>
+
+        <!-- ==================== SECCIÓN FAQ ==================== -->
+        <section id="faqSection" class="hidden">
+            <div class="mb-4">
+                <button type="button" id="backToSelectionFaq" 
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                    ← Volver a selección de tipo de consulta
+                </button>
+            </div>
+            
+            <h2 class="text-xl font-semibold mb-4">Consultas destacadas</h2>
+            <p class="text-gray-600 mb-6">
+                Consultas seleccionadas por su interés, organizadas por categorías. 
+                Haz clic en cualquier consulta para ver la respuesta completa.
+            </p>
+            
+            <div id="faqLoading" class="text-center py-8 text-gray-500">
+                <span class="loading-spinner"></span> Cargando consultas destacadas...
+            </div>
+            
+            <div id="faqContent" class="hidden">
+                <!-- Búsqueda dentro de FAQ -->
+                <div class="mb-6">
+                    <input type="text" id="faqSearch" 
+                           placeholder="Buscar en las consultas destacadas..."
+                           class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-200 focus:border-blue-400">
+                </div>
+                
+                <!-- Categorías como acordeones -->
+                <div id="faqCategories" class="space-y-4"></div>
+                
+                <!-- Consultas sin categoría -->
+                <div id="faqUncategorized" class="hidden mt-6">
+                    <h3 class="text-lg font-semibold mb-3 text-gray-700">Otras consultas</h3>
+                    <div id="faqUncategorizedList" class="space-y-2"></div>
+                </div>
+            </div>
+            
+            <div id="faqEmpty" class="hidden text-center py-12 text-gray-500">
+                <p class="text-lg mb-2">No hay consultas destacadas disponibles</p>
+                <p class="text-sm">Las consultas destacadas aparecerán aquí cuando el administrador las seleccione.</p>
+            </div>
+
+            <div id="faqErrorMsg" 
                  class="mt-8 text-red-700 font-semibold hidden" 
                  role="alert" 
                  aria-live="assertive"></div>

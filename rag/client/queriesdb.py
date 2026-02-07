@@ -303,6 +303,98 @@ class RAGDatabase:
                 """)
                 logger.info("✅ Tabla rag_queries_access_log verificada/creada")
                 
+                # ===== FAQ / CATEGORÍAS =====
+                
+                # Columna featured en rag_queries (consultas destacadas para FAQ)
+                await conn.execute("""
+                    DO $$ 
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'rag_queries' 
+                            AND column_name = 'featured'
+                        ) THEN
+                            ALTER TABLE rag_queries ADD COLUMN featured BOOLEAN DEFAULT FALSE;
+                        END IF;
+                    END $$;
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_featured 
+                    ON rag_queries(featured) WHERE featured = TRUE;
+                """)
+                logger.info("✅ Columna featured verificada/creada")
+                
+                # Columna categorization_embedding (embedding combinado pregunta+respuesta)
+                await conn.execute("""
+                    DO $$ 
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'rag_queries' 
+                            AND column_name = 'categorization_embedding'
+                        ) THEN
+                            ALTER TABLE rag_queries ADD COLUMN categorization_embedding vector(1536);
+                        END IF;
+                    END $$;
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_categorization_embedding 
+                    ON rag_queries USING hnsw (categorization_embedding vector_cosine_ops);
+                """)
+                logger.info("✅ Columna categorization_embedding verificada/creada")
+                
+                # Tabla de categorías jerárquicas
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS rag_categories (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        slug VARCHAR(255) UNIQUE NOT NULL,
+                        description TEXT,
+                        parent_id INTEGER REFERENCES rag_categories(id) ON DELETE SET NULL,
+                        is_primary BOOLEAN DEFAULT FALSE,
+                        display_order INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        category_embedding vector(1536)
+                    );
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_category_parent 
+                    ON rag_categories(parent_id);
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_category_primary 
+                    ON rag_categories(is_primary);
+                """)
+                logger.info("✅ Tabla rag_categories verificada/creada")
+                
+                # Columna created_by en rag_categories (para distinguir origen LLM vs admin)
+                await conn.execute("""
+                    DO $$ 
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns 
+                            WHERE table_name = 'rag_categories' 
+                            AND column_name = 'created_by'
+                        ) THEN
+                            ALTER TABLE rag_categories ADD COLUMN created_by VARCHAR(50) DEFAULT 'admin';
+                        END IF;
+                    END $$;
+                """)
+                logger.info("✅ Columna created_by en rag_categories verificada/creada")
+                
+                # Tabla de relación N:M consultas-categorías
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS rag_query_categories (
+                        query_id INTEGER REFERENCES rag_queries(id) ON DELETE CASCADE,
+                        category_id INTEGER REFERENCES rag_categories(id) ON DELETE CASCADE,
+                        assigned_by VARCHAR(50) DEFAULT 'admin',
+                        confidence FLOAT DEFAULT 1.0,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        PRIMARY KEY (query_id, category_id)
+                    );
+                """)
+                logger.info("✅ Tabla rag_query_categories verificada/creada")
+                
                 return True
                 
         except Exception as e:
@@ -896,6 +988,544 @@ class RAGDatabase:
         except Exception as e:
             logger.error(f"❌ Error durante restauración: {e}")
             return False
+
+    # =============================================
+    #  FAQ: Featured queries & Categorías
+    # =============================================
+
+    async def update_featured(self, query_uuid: str, featured: bool) -> bool:
+        """Marca/desmarca una consulta como destacada para FAQ público"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                result = await conn.execute(
+                    "UPDATE rag_queries SET featured = $1 WHERE uuid = $2",
+                    featured, query_uuid
+                )
+                return result != "UPDATE 0"
+        except Exception as e:
+            logger.error(f"❌ Error al actualizar featured: {e}")
+            return False
+
+    async def get_featured_queries(
+        self,
+        podcast_name: Optional[str] = None,
+        limit: int = 200
+    ) -> List[Dict[str, Any]]:
+        """Obtiene consultas destacadas con sus categorías"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, q.podcast_name,
+                               COALESCE(
+                                   array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL),
+                                   ARRAY[]::VARCHAR[]
+                               ) as categories,
+                               COALESCE(
+                                   array_agg(DISTINCT c.slug) FILTER (WHERE c.slug IS NOT NULL),
+                                   ARRAY[]::VARCHAR[]
+                               ) as category_slugs
+                        FROM rag_queries q
+                        LEFT JOIN rag_query_categories qc ON q.id = qc.query_id
+                        LEFT JOIN rag_categories c ON qc.category_id = c.id
+                        WHERE q.featured = TRUE AND q.allowed = TRUE
+                              AND q.podcast_name = $1
+                        GROUP BY q.id
+                        ORDER BY q.likes DESC, q.created_at DESC
+                        LIMIT $2
+                    """, podcast_name, limit)
+                else:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, q.podcast_name,
+                               COALESCE(
+                                   array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL),
+                                   ARRAY[]::VARCHAR[]
+                               ) as categories,
+                               COALESCE(
+                                   array_agg(DISTINCT c.slug) FILTER (WHERE c.slug IS NOT NULL),
+                                   ARRAY[]::VARCHAR[]
+                               ) as category_slugs
+                        FROM rag_queries q
+                        LEFT JOIN rag_query_categories qc ON q.id = qc.query_id
+                        LEFT JOIN rag_categories c ON qc.category_id = c.id
+                        WHERE q.featured = TRUE AND q.allowed = TRUE
+                        GROUP BY q.id
+                        ORDER BY q.likes DESC, q.created_at DESC
+                        LIMIT $1
+                    """, limit)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener consultas destacadas: {e}")
+            return []
+
+    async def get_featured_queries_by_category(
+        self,
+        category_id: int,
+        podcast_name: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Obtiene consultas destacadas de una categoría específica"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, c.name as category_name
+                        FROM rag_queries q
+                        JOIN rag_query_categories qc ON q.id = qc.query_id
+                        JOIN rag_categories c ON qc.category_id = c.id
+                        WHERE q.featured = TRUE AND q.allowed = TRUE
+                              AND c.id = $1 AND q.podcast_name = $2
+                        ORDER BY q.likes DESC, q.created_at DESC
+                        LIMIT $3
+                    """, category_id, podcast_name, limit)
+                else:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, c.name as category_name
+                        FROM rag_queries q
+                        JOIN rag_query_categories qc ON q.id = qc.query_id
+                        JOIN rag_categories c ON qc.category_id = c.id
+                        WHERE q.featured = TRUE AND q.allowed = TRUE
+                              AND c.id = $1
+                        ORDER BY q.likes DESC, q.created_at DESC
+                        LIMIT $2
+                    """, category_id, limit)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener consultas por categoría: {e}")
+            return []
+
+    async def get_all_queries_admin(
+        self,
+        podcast_name: Optional[str] = None,
+        limit: int = 500,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Obtiene todas las consultas con info de featured y categorías (para admin)"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, q.dislikes,
+                               q.featured, q.allowed, q.podcast_name,
+                               COALESCE(
+                                   array_agg(DISTINCT jsonb_build_object(
+                                       'id', c.id, 'name', c.name, 'slug', c.slug,
+                                       'assigned_by', qc.assigned_by
+                                   ))
+                                   FILTER (WHERE c.id IS NOT NULL),
+                                   ARRAY[]::JSONB[]
+                               ) as categories
+                        FROM rag_queries q
+                        LEFT JOIN rag_query_categories qc ON q.id = qc.query_id
+                        LEFT JOIN rag_categories c ON qc.category_id = c.id
+                        WHERE q.podcast_name = $1
+                        GROUP BY q.id
+                        ORDER BY q.created_at DESC
+                        LIMIT $2 OFFSET $3
+                    """, podcast_name, limit, offset)
+                else:
+                    records = await conn.fetch("""
+                        SELECT q.id, q.uuid, q.query_text, q.response_text,
+                               q.created_at, q.likes, q.dislikes,
+                               q.featured, q.allowed, q.podcast_name,
+                               COALESCE(
+                                   array_agg(DISTINCT jsonb_build_object(
+                                       'id', c.id, 'name', c.name, 'slug', c.slug,
+                                       'assigned_by', qc.assigned_by
+                                   ))
+                                   FILTER (WHERE c.id IS NOT NULL),
+                                   ARRAY[]::JSONB[]
+                               ) as categories
+                        FROM rag_queries q
+                        LEFT JOIN rag_query_categories qc ON q.id = qc.query_id
+                        LEFT JOIN rag_categories c ON qc.category_id = c.id
+                        GROUP BY q.id
+                        ORDER BY q.created_at DESC
+                        LIMIT $1 OFFSET $2
+                    """, limit, offset)
+                result = []
+                for r in records:
+                    d = dict(r)
+                    # Parsear array de JSONB a lista de dicts
+                    import json as json_mod
+                    cats = d.get('categories', [])
+                    parsed_cats = []
+                    for c in cats:
+                        if isinstance(c, str):
+                            parsed_cats.append(json_mod.loads(c))
+                        elif isinstance(c, dict):
+                            parsed_cats.append(c)
+                    d['categories'] = parsed_cats
+                    result.append(d)
+                return result
+        except Exception as e:
+            logger.error(f"❌ Error al obtener consultas para admin: {e}")
+            return []
+
+    async def update_categorization_embedding(
+        self,
+        query_id: int,
+        embedding: List[float]
+    ) -> bool:
+        """Actualiza el embedding combinado pregunta+respuesta de una consulta"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                await conn.execute(
+                    "UPDATE rag_queries SET categorization_embedding = $1 WHERE id = $2",
+                    str(embedding), query_id
+                )
+                return True
+        except Exception as e:
+            logger.error(f"❌ Error al actualizar categorization_embedding: {e}")
+            return False
+
+    async def get_categorization_text(self, query_id: int) -> Optional[str]:
+        """
+        Construye texto combinado pregunta+respuesta para categorización.
+        La respuesta aporta el contexto semántico que la pregunta sola no tiene.
+        """
+        if not self.is_available:
+            return None
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return None
+                record = await conn.fetchrow(
+                    "SELECT query_text, response_text FROM rag_queries WHERE id = $1",
+                    query_id
+                )
+                if not record:
+                    return None
+                response_text = record['response_text'] or ''
+                response_words = response_text.split()
+                if len(response_words) > 500:
+                    response_text = ' '.join(response_words[:500])
+                return f"Pregunta: {record['query_text']}\nRespuesta: {response_text}"
+        except Exception as e:
+            logger.error(f"❌ Error al obtener texto de categorización: {e}")
+            return None
+
+    # --- Categorías ---
+
+    async def create_category(
+        self,
+        name: str,
+        slug: str,
+        description: Optional[str] = None,
+        parent_id: Optional[int] = None,
+        is_primary: bool = False,
+        display_order: int = 0,
+        category_embedding: Optional[List[float]] = None,
+        created_by: str = 'admin'
+    ) -> Optional[Dict[str, Any]]:
+        """Crea una nueva categoría"""
+        if not self.is_available:
+            return None
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return None
+                embedding_value = str(category_embedding) if category_embedding else None
+                result = await conn.fetchrow("""
+                    INSERT INTO rag_categories (name, slug, description, parent_id, is_primary, display_order, category_embedding, created_by)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    RETURNING id, name, slug, description, parent_id, is_primary, display_order, created_by
+                """, name, slug, description, parent_id, is_primary, display_order, embedding_value, created_by)
+                return dict(result) if result else None
+        except Exception as e:
+            logger.error(f"❌ Error al crear categoría: {e}")
+            return None
+
+    async def update_category(
+        self,
+        category_id: int,
+        name: Optional[str] = None,
+        slug: Optional[str] = None,
+        description: Optional[str] = None,
+        parent_id: Optional[int] = None,
+        is_primary: Optional[bool] = None,
+        display_order: Optional[int] = None
+    ) -> bool:
+        """Actualiza campos de una categoría"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                # Construir SET dinámico
+                updates = []
+                params = []
+                param_idx = 1
+                if name is not None:
+                    updates.append(f"name = ${param_idx}")
+                    params.append(name)
+                    param_idx += 1
+                if slug is not None:
+                    updates.append(f"slug = ${param_idx}")
+                    params.append(slug)
+                    param_idx += 1
+                if description is not None:
+                    updates.append(f"description = ${param_idx}")
+                    params.append(description)
+                    param_idx += 1
+                if parent_id is not None:
+                    # Usar -1 para indicar "sin padre"
+                    actual_parent = None if parent_id == -1 else parent_id
+                    updates.append(f"parent_id = ${param_idx}")
+                    params.append(actual_parent)
+                    param_idx += 1
+                if is_primary is not None:
+                    updates.append(f"is_primary = ${param_idx}")
+                    params.append(is_primary)
+                    param_idx += 1
+                if display_order is not None:
+                    updates.append(f"display_order = ${param_idx}")
+                    params.append(display_order)
+                    param_idx += 1
+                
+                if not updates:
+                    return True  # Nada que actualizar
+                
+                # Editar una categoría la convierte en 'admin' (manual)
+                updates.append(f"created_by = ${param_idx}")
+                params.append('admin')
+                param_idx += 1
+                
+                params.append(category_id)
+                query = f"UPDATE rag_categories SET {', '.join(updates)} WHERE id = ${param_idx}"
+                result = await conn.execute(query, *params)
+                return result != "UPDATE 0"
+        except Exception as e:
+            logger.error(f"❌ Error al actualizar categoría: {e}")
+            return False
+
+    async def delete_category(self, category_id: int) -> bool:
+        """
+        Elimina una categoría. Los hijos se reasignan al padre (ON DELETE SET NULL).
+        También se eliminan las asignaciones a consultas (ON DELETE CASCADE).
+        """
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                # Obtener padre de la categoría a eliminar
+                parent = await conn.fetchval(
+                    "SELECT parent_id FROM rag_categories WHERE id = $1",
+                    category_id
+                )
+                # Reasignar hijos al padre
+                await conn.execute(
+                    "UPDATE rag_categories SET parent_id = $1 WHERE parent_id = $2",
+                    parent, category_id
+                )
+                # Eliminar la categoría
+                result = await conn.execute(
+                    "DELETE FROM rag_categories WHERE id = $1",
+                    category_id
+                )
+                return result != "DELETE 0"
+        except Exception as e:
+            logger.error(f"❌ Error al eliminar categoría: {e}")
+            return False
+
+    async def get_categories_tree(self) -> List[Dict[str, Any]]:
+        """Obtiene todas las categorías como árbol jerárquico"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                records = await conn.fetch("""
+                    SELECT c.id, c.name, c.slug, c.description, c.parent_id,
+                           c.is_primary, c.display_order, c.created_by,
+                           COUNT(qc.query_id) as query_count
+                    FROM rag_categories c
+                    LEFT JOIN rag_query_categories qc ON c.id = qc.category_id
+                    LEFT JOIN rag_queries q ON qc.query_id = q.id AND q.featured = TRUE AND q.allowed = TRUE
+                    GROUP BY c.id
+                    ORDER BY c.display_order, c.name
+                """)
+                categories = [dict(r) for r in records]
+                # Construir árbol
+                by_id = {c['id']: {**c, 'children': []} for c in categories}
+                tree = []
+                for c in categories:
+                    if c['parent_id'] and c['parent_id'] in by_id:
+                        by_id[c['parent_id']]['children'].append(by_id[c['id']])
+                    else:
+                        tree.append(by_id[c['id']])
+                return tree
+        except Exception as e:
+            logger.error(f"❌ Error al obtener árbol de categorías: {e}")
+            return []
+
+    async def get_all_categories_flat(self) -> List[Dict[str, Any]]:
+        """Obtiene todas las categorías como lista plana (para selects)"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                records = await conn.fetch("""
+                    SELECT id, name, slug, description, parent_id, is_primary, display_order, created_by
+                    FROM rag_categories
+                    ORDER BY display_order, name
+                """)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener categorías: {e}")
+            return []
+
+    async def assign_query_to_category(
+        self,
+        query_id: int,
+        category_id: int,
+        assigned_by: str = 'admin',
+        confidence: float = 1.0
+    ) -> bool:
+        """Asigna una consulta a una categoría"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                await conn.execute("""
+                    INSERT INTO rag_query_categories (query_id, category_id, assigned_by, confidence)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (query_id, category_id) DO UPDATE SET
+                        assigned_by = CASE 
+                            WHEN rag_query_categories.assigned_by = 'admin' 
+                            THEN rag_query_categories.assigned_by 
+                            ELSE EXCLUDED.assigned_by 
+                        END,
+                        confidence = CASE 
+                            WHEN rag_query_categories.assigned_by = 'admin' 
+                            THEN rag_query_categories.confidence 
+                            ELSE EXCLUDED.confidence 
+                        END
+                """, query_id, category_id, assigned_by, confidence)
+                return True
+        except Exception as e:
+            logger.error(f"❌ Error al asignar consulta a categoría: {e}")
+            return False
+
+    async def remove_query_from_category(
+        self,
+        query_id: int,
+        category_id: int
+    ) -> bool:
+        """Elimina la asignación de una consulta a una categoría"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                result = await conn.execute(
+                    "DELETE FROM rag_query_categories WHERE query_id = $1 AND category_id = $2",
+                    query_id, category_id
+                )
+                return result != "DELETE 0"
+        except Exception as e:
+            logger.error(f"❌ Error al eliminar asignación: {e}")
+            return False
+
+    async def suggest_categories_for_query(
+        self,
+        embedding: List[float],
+        limit: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Sugiere categorías para una consulta usando similitud vectorial"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                records = await conn.fetch("""
+                    SELECT id, name, slug,
+                           1 - (category_embedding <=> $1::vector) AS similarity
+                    FROM rag_categories
+                    WHERE category_embedding IS NOT NULL
+                    ORDER BY category_embedding <=> $1::vector
+                    LIMIT $2
+                """, str(embedding), limit)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al sugerir categorías: {e}")
+            return []
+
+    async def get_faq_grouped(
+        self,
+        podcast_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Obtiene consultas destacadas agrupadas por categoría para el FAQ público.
+        Retorna estructura con árbol de categorías y consultas agrupadas.
+        """
+        if not self.is_available:
+            return {"categories": [], "grouped_queries": {}, "uncategorized": []}
+        try:
+            categories = await self.get_categories_tree()
+            featured = await self.get_featured_queries(podcast_name=podcast_name)
+            
+            grouped = {}
+            uncategorized = []
+            
+            for q in featured:
+                cats = q.get('categories', [])
+                query_info = {
+                    'uuid': str(q['uuid']),
+                    'query_text': q['query_text'],
+                    'likes': q.get('likes', 0),
+                    'created_at': q['created_at'].isoformat() if hasattr(q['created_at'], 'isoformat') else str(q['created_at'])
+                }
+                if not cats or cats == [None]:
+                    uncategorized.append(query_info)
+                else:
+                    for cat_name in cats:
+                        if cat_name:
+                            grouped.setdefault(cat_name, []).append(query_info)
+            
+            return {
+                "categories": categories,
+                "grouped_queries": grouped,
+                "uncategorized": uncategorized
+            }
+        except Exception as e:
+            logger.error(f"❌ Error al obtener FAQ agrupadas: {e}")
+            return {"categories": [], "grouped_queries": {}, "uncategorized": []}
 
 
 # Instancia global del gestor de BD

@@ -34,6 +34,11 @@ WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
 BASE_PATH = os.getenv('RAG_CLIENT_BASE_PATH', '')
 TRANSCRIPTS_URL_EXTERNAL = os.getenv('TRANSCRIPTS_URL_EXTERNAL')  # URL base de S3 u otro storage externo
 
+# Thresholds de similitud para clasificación de consultas similares
+QUERIES_HIGH_SIMILARITY = float(os.getenv('QUERIES_HIGH_SIMILARITY', '0.75'))
+QUERIES_MEDIUM_SIMILARITY = float(os.getenv('QUERIES_MEDIUM_SIMILARITY', '0.65'))
+QUERIES_LOW_SIMILARITY = float(os.getenv('QUERIES_LOW_SIMILARITY', '0.60'))
+
 # Autenticación del panel de administración
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 SESSION_SECRET = os.getenv('SESSION_SECRET', secrets.token_hex(32))
@@ -632,11 +637,11 @@ async def check_similar_queries(payload: CheckSimilarRequest, request: Request):
                 'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
             }
             
-            if similarity >= 0.85:  # Umbral alto para alta similitud
+            if similarity >= QUERIES_HIGH_SIMILARITY:  # Umbral alto para alta similitud
                 high_similarity.append(query_info)
-            elif similarity >= 0.70:  # Umbral medio
+            elif similarity >= QUERIES_MEDIUM_SIMILARITY:  # Umbral medio
                 medium_similarity.append(query_info)
-            elif similarity >= 0.60:  # Umbral bajo
+            elif similarity >= QUERIES_LOW_SIMILARITY:  # Umbral bajo
                 low_similarity.append(query_info)
         
         response = {
@@ -1003,11 +1008,11 @@ async def ask_question(payload: AskRequest, request: Request):
                                 'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
                             }
                             
-                            if similarity >= 0.75:
+                            if similarity >= QUERIES_HIGH_SIMILARITY:
                                 high_similarity.append(query_info)
-                            elif similarity >= 0.65:
+                            elif similarity >= QUERIES_MEDIUM_SIMILARITY:
                                 medium_similarity.append(query_info)
-                            elif similarity >= 0.60:
+                            elif similarity >= QUERIES_LOW_SIMILARITY:
                                 low_similarity.append(query_info)
                         
                         response_data['similar_queries'] = {
@@ -1127,11 +1132,11 @@ async def get_saved_query(query_uuid: str, request: Request):
                             'url': f"{BASE_PATH}/api/savedquery/{query['uuid']}"
                         }
                         
-                        if similarity >= 0.75:
+                        if similarity >= QUERIES_HIGH_SIMILARITY:
                             high_similarity.append(query_info)
-                        elif similarity >= 0.65:
+                        elif similarity >= QUERIES_MEDIUM_SIMILARITY:
                             medium_similarity.append(query_info)
-                        elif similarity >= 0.60:
+                        elif similarity >= QUERIES_LOW_SIMILARITY:
                             low_similarity.append(query_info)
                     
                     response_data['similar_queries'] = {
@@ -1270,11 +1275,11 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                             'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
                         }
                         
-                        if similarity >= 0.75:
+                        if similarity >= QUERIES_HIGH_SIMILARITY:
                             high_similarity.append(query_info)
-                        elif similarity >= 0.65:
+                        elif similarity >= QUERIES_MEDIUM_SIMILARITY:
                             medium_similarity.append(query_info)
-                        elif similarity >= 0.60:
+                        elif similarity >= QUERIES_LOW_SIMILARITY:
                             low_similarity.append(query_info)
                     
                     saved_query_data['similar_queries'] = {

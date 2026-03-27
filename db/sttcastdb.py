@@ -464,63 +464,57 @@ class SttcastDB:
             }
         """
         logging.info(f"Calculando estadísticas generales entre {fromdate} y {todate}")
-        # Filtros de fecha para la query principal (alias e) y la subconsulta (alias e2)
+        # Filtro de fechas común para consultas sobre episode (alias e)
         date_filter = "WHERE 1=1"
-        subquery_date_filter = "WHERE si2.start IS NOT NULL AND si2.end IS NOT NULL"
         params = []
-        subquery_params = []
-        
+
         if fromdate:
             date_filter += " AND e.epdate >= ?"
             params.append(fromdate)
-            subquery_date_filter += " AND e2.epdate >= ?"
-            subquery_params.append(fromdate)
         if todate:
             date_filter += " AND e.epdate <= ?"
             params.append(todate)
-            subquery_date_filter += " AND e2.epdate <= ?"
-            subquery_params.append(todate)
-        
-        # Subconsulta independiente para el total de episodios distintos en el período.
-        # No se puede usar COUNT(DISTINCT e.id) con GROUP BY st.tag porque daría el conteo
-        # por speaker, no el total global.
-        stats_query = f"""
+
+        # 1) Totales globales del período
+        totals_query = f"""
         SELECT
-            ep_totals.total_episodes,
-            SUM(SUM(si.end - si.start)) OVER () as total_duration,
+            COUNT(DISTINCT e.id) as total_episodes,
+            SUM(si.end - si.start) as total_duration
+        FROM speakerintervention si
+        JOIN episode e ON si.episodeid = e.id
+        {date_filter}
+        AND si.start IS NOT NULL
+        AND si.end IS NOT NULL
+        """
+        self.cursor.execute(totals_query, params)
+        totals_row = self.cursor.fetchone()
+        total_episodes = (totals_row[0] or 0) if totals_row else 0
+        total_duration = (totals_row[1] or 0) if totals_row else 0
+
+        # 2) Estadísticas por hablante para el selector
+        speakers_query = f"""
+        SELECT
             st.tag,
+            COUNT(DISTINCT e.id) as speaker_total_episodes,
             SUM(si.end - si.start) as speaker_duration
         FROM speakerintervention si
         JOIN episode e ON si.episodeid = e.id
         JOIN speakertag st ON si.tagid = st.id
-        JOIN (
-            SELECT COUNT(DISTINCT e2.id) as total_episodes
-            FROM speakerintervention si2
-            JOIN episode e2 ON si2.episodeid = e2.id
-            {subquery_date_filter}
-        ) ep_totals ON 1=1
         {date_filter}
-        AND si.start IS NOT NULL 
+        AND si.start IS NOT NULL
         AND si.end IS NOT NULL
         GROUP BY st.tag
         """
-        
-        self.cursor.execute(stats_query, subquery_params + params)
+        self.cursor.execute(speakers_query, params)
         results = self.cursor.fetchall()
-        
+
         speakers = []
-        total_duration = 0
-        total_episodes = 0
-        
         for row in results:
             speakers.append({
-                'tag': row[2],
-                'total_episodes': row[0],
-                'total_duration': row[3] or 0
+                'tag': row[0],
+                'total_episodes': row[1] or 0,
+                'total_duration': row[2] or 0
             })
-            if total_duration == 0:  # tomar valores globales de la primera fila (son iguales en todas)
-                total_duration = row[1] or 0
-                total_episodes = row[0] or 0
         
         return {
             'total_episodes': total_episodes,

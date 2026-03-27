@@ -64,12 +64,14 @@ class DateEstimation:
             return self.df.loc[ep_number, 'date']
         
         # Se calcula en función de los INTERESTING_YEARS anteriore
-        self.df = self.df[self.df.index <= ep_number].copy()
-        self.df = self.df[self.df['date'] >= self.df['date'].max() - pd.DateOffset(years=INTERESTING_YEARS)]
+        # Usar una copia para no modificar el DataFrame original
+        df_work = self.df[self.df.index <= ep_number].copy()
+        df_work = df_work[df_work['date'] >= df_work['date'].max() - pd.DateOffset(years=INTERESTING_YEARS)]
         
-        self.most_common_weekday = self.calculate_most_common_weekday()
-        self.period = self.calculate_period()
-        self.inactive_months = self.calculate_inactive_months()
+        self.most_common_weekday = self.calculate_most_common_weekday_from_df(df_work)
+        self.period = self.calculate_period_from_df(df_work)
+        self.inactive_months = self.calculate_inactive_months_from_df(df_work)
+        self.df_work = df_work
         return self.predict_date(ep_number)
     
     def calculate_most_common_weekday(self):
@@ -84,9 +86,35 @@ class DateEstimation:
             logging.debug("No hay un día de la semana suficientemente frecuente para ser considerado como moda.")
             return None
     
+    def calculate_most_common_weekday_from_df(self, df):
+        """Calcula el día de la semana más común en un DataFrame dado"""
+        most_common_weekday = df['weekday'].mode()[0]
+        weekday_counts = df['weekday'].value_counts()
+        if weekday_counts[most_common_weekday] > COMMON_WDAY_FREQUENCY * len(df):
+            logging.debug(f"El día de la semana más frecuente es {most_common_weekday} con {weekday_counts[most_common_weekday]} episodios.")
+            logging.debug(f"La frecuencia de la moda es {weekday_counts[most_common_weekday] / len(df) * 100:.2f}% de los episodios.")
+            return most_common_weekday
+        else:
+            logging.debug("No hay un día de la semana suficientemente frecuente para ser considerado como moda.")
+            return None
+    
     def calculate_period(self):
         """Calcula el periodo de emisión de los episodios"""
         diffs = self.df['ep_ordinal'].diff() / self.df.index.to_series().diff()
+        diffs = diffs.dropna()  # Eliminar el primer NaN
+        diffs_mode = diffs.value_counts().idxmax()
+        diffs_mode_freq = diffs.value_counts()[diffs_mode]/ len(diffs)
+        logging.debug(f"El periodo de tiempo más frecuente entre episodios es {diffs_mode} días, con una frecuencia de {diffs_mode_freq * 100:.2f}%.")
+        if diffs_mode_freq > 0.8:
+            period = diffs_mode
+        else:
+            period = diffs.mean()
+        return period
+    
+    def calculate_period_from_df(self, df):
+        """Calcula el periodo de emisión de los episodios de un DataFrame dado"""
+        diffs = df['ep_ordinal'].diff() / df.index.to_series().diff()
+        diffs = diffs.dropna()  # Eliminar el primer NaN
         diffs_mode = diffs.value_counts().idxmax()
         diffs_mode_freq = diffs.value_counts()[diffs_mode]/ len(diffs)
         logging.debug(f"El periodo de tiempo más frecuente entre episodios es {diffs_mode} días, con una frecuencia de {diffs_mode_freq * 100:.2f}%.")
@@ -101,29 +129,51 @@ class DateEstimation:
         month_counts = self.df['month'].value_counts(normalize=True)
         return month_counts[month_counts < 0.05]
     
+    def calculate_inactive_months_from_df(self, df):
+        """Calcula los meses sin episodios de un DataFrame dado"""
+        month_counts = df['month'].value_counts(normalize=True)
+        return month_counts[month_counts < 0.05]
+    
     def predict_date(self, ep_number):
         """Predice la fecha de emisión de un episodio dado su número"""
         
         # Cálculo de la fecha teórica del último episodio
-        last_episode = self.df.loc[self.df.index.max()]
+        last_episode = self.df_work.loc[self.df_work.index.max()]
         # Si hay varios episodios, se toma el último
-        if isinstance(last_episode, pd.Series):
+        if isinstance(last_episode, pd.DataFrame):
             logging.warning("Hay varios episodios con el mismo número máximo, se toma el último.")
-            last_episode = last_episode[-1]
-        # Calculamos el valor absoluto entre el día de la semana del último episodio y el día de la semana más frecuente
-        diff_weekday = self.most_common_weekday - last_episode['weekday']
+            last_episode = last_episode.iloc[-1]
+        elif isinstance(last_episode, pd.Series) and len(last_episode.shape) > 1:
+            logging.warning("Hay varios episodios con el mismo número máximo, se toma el último.")
+            last_episode = last_episode.iloc[-1]
+        
+        # Si no hay día de semana frecuente, usar el del último episodio
+        if self.most_common_weekday is None:
+            logging.warning("No hay un día de la semana frecuente, se usará el del último episodio registrado.")
+            current_weekday = last_episode['weekday']
+        else:
+            current_weekday = self.most_common_weekday
+        
+        # Calculamos el valor absoluto entre el día de la semana del último episodio y el día de la semana actual
+        diff_weekday = current_weekday - last_episode['weekday']
         last_theoretical_date = last_episode['date'] + pd.DateOffset(days=diff_weekday)
         
         ld = last_theoretical_date
-        for i in range(self.df.index.max() + 1, ep_number + 1):
+        for i in range(self.df_work.index.max() + 1, ep_number + 1):
+            # Agregar período
             ld += pd.DateOffset(days=self.period)
-            if (self.inactive_months is not None) and (ld.month in self.inactive_months.index):
-                logging.debug(f"Mes inactivo: {ld.month} - Episodio {i} no se añadirá.")
-                continue
-        if self.most_common_weekday is not None:
-            offset = self.most_common_weekday - ld.weekday()
+            
+            # Si el mes es inactivo, seguir sumando días hasta salir del mes inactivo
+            while (self.inactive_months is not None) and (ld.month in self.inactive_months.index):
+                logging.debug(f"Mes inactivo: {ld.month} - Continuando al siguiente mes.")
+                ld += pd.DateOffset(days=self.period)
+        
+        # Ajustar al día de la semana correcto
+        if current_weekday is not None:
+            offset = current_weekday - ld.weekday()
             ld += pd.DateOffset(days=offset)
-        logging.info(f"Próximo episodio teórico: {ld} (Día de la semana: {self.most_common_weekday})") 
+        
+        logging.info(f"Próximo episodio teórico: {ld} (Día de la semana: {current_weekday})") 
         return ld
 
 if __name__ == "__main__":

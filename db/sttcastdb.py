@@ -464,36 +464,48 @@ class SttcastDB:
             }
         """
         logging.info(f"Calculando estadísticas generales entre {fromdate} y {todate}")
-        # Base query for filtering by date
+        # Filtros de fecha para la query principal (alias e) y la subconsulta (alias e2)
         date_filter = "WHERE 1=1"
+        subquery_date_filter = "WHERE si2.start IS NOT NULL AND si2.end IS NOT NULL"
         params = []
+        subquery_params = []
         
         if fromdate:
             date_filter += " AND e.epdate >= ?"
             params.append(fromdate)
+            subquery_date_filter += " AND e2.epdate >= ?"
+            subquery_params.append(fromdate)
         if todate:
             date_filter += " AND e.epdate <= ?"
             params.append(todate)
+            subquery_date_filter += " AND e2.epdate <= ?"
+            subquery_params.append(todate)
         
-        # OPTIMIZED: Single query using window functions to avoid N+1 query problem
-        # Previously had: initial query + loop calling additional query ~200 times for total_duration
-        # Now: One query with SUM(...) OVER () window function to calculate everything at once
+        # Subconsulta independiente para el total de episodios distintos en el período.
+        # No se puede usar COUNT(DISTINCT e.id) con GROUP BY st.tag porque daría el conteo
+        # por speaker, no el total global.
         stats_query = f"""
         SELECT
-            COUNT(DISTINCT e.id) as total_episodes,
+            ep_totals.total_episodes,
             SUM(SUM(si.end - si.start)) OVER () as total_duration,
             st.tag,
             SUM(si.end - si.start) as speaker_duration
         FROM speakerintervention si
         JOIN episode e ON si.episodeid = e.id
         JOIN speakertag st ON si.tagid = st.id
+        JOIN (
+            SELECT COUNT(DISTINCT e2.id) as total_episodes
+            FROM speakerintervention si2
+            JOIN episode e2 ON si2.episodeid = e2.id
+            {subquery_date_filter}
+        ) ep_totals ON 1=1
         {date_filter}
         AND si.start IS NOT NULL 
         AND si.end IS NOT NULL
         GROUP BY st.tag
         """
         
-        self.cursor.execute(stats_query, params)
+        self.cursor.execute(stats_query, subquery_params + params)
         results = self.cursor.fetchall()
         
         speakers = []
@@ -506,7 +518,7 @@ class SttcastDB:
                 'total_episodes': row[0],
                 'total_duration': row[3] or 0
             })
-            if total_duration == 0:  # Get total_duration and total_episodes from window function
+            if total_duration == 0:  # tomar valores globales de la primera fila (son iguales en todas)
                 total_duration = row[1] or 0
                 total_episodes = row[0] or 0
         

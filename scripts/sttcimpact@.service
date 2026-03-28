@@ -1,0 +1,17 @@
+[Unit]
+Description=Sttcast Podcast Impact Service (%i)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/sttcast/etc/%i.env
+ExecStart=/opt/sttcast/scripts/sttcimpact.bash
+User=jmrobles
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

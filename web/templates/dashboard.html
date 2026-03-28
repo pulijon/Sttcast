@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast Stats — Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --accent: #4F46E5;
+            --accent-light: #818CF8;
+            --border: #e5e7eb;
+            --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+            --radius: 10px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        /* ── Header ────────────────────────────────────── */
+        .header {
+            background: linear-gradient(135deg, var(--accent) 0%, #7C3AED 100%);
+            color: white;
+            padding: 1.5rem 2rem 1rem;
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 700; }
+        .header .subtitle { opacity: .8; font-size: .85rem; margin-top: .2rem; }
+
+        /* ── Controls ──────────────────────────────────── */
+        .controls {
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: .8rem 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: .8rem;
+            align-items: center;
+            box-shadow: var(--shadow);
+        }
+        .controls label {
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .controls input[type="date"] {
+            padding: .4rem .6rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: .85rem;
+        }
+        .controls .toggle {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            cursor: pointer;
+        }
+        .controls .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: .5rem 1.2rem;
+            border-radius: 6px;
+            font-size: .85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .btn:hover { background: #4338CA; }
+        .btn-outline {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+        .btn-outline:hover { background: var(--accent); color: white; }
+        .presets { display: flex; gap: .3rem; margin-left: auto; }
+
+        /* ── Main layout ───────────────────────────────── */
+        .main { padding: 1.5rem 2rem 3rem; max-width: 1400px; margin: 0 auto; }
+
+        /* ── Summary cards ─────────────────────────────── */
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .kpi {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 1.2rem 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        .kpi .label { font-size: .75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; letter-spacing: .04em; }
+        .kpi .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); margin-top: .3rem; }
+        .kpi .detail { font-size: .8rem; color: var(--text-muted); margin-top: .2rem; }
+
+        /* ── Chart grid ────────────────────────────────── */
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.2rem;
+        }
+        .chart-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 1.2rem 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        .chart-card.full { grid-column: 1 / -1; }
+        .chart-card h3 {
+            font-size: .9rem;
+            font-weight: 700;
+            margin-bottom: .8rem;
+            color: var(--text);
+        }
+        .chart-wrap { position: relative; width: 100%; }
+        .chart-wrap.h300 { height: 300px; }
+        .chart-wrap.h250 { height: 250px; }
+
+        /* ── Table ─────────────────────────────────────── */
+        .data-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+        .data-table th {
+            text-align: left;
+            padding: .5rem .6rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 2px solid var(--border);
+            font-size: .75rem;
+            text-transform: uppercase;
+        }
+        .data-table td {
+            padding: .45rem .6rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+        /* ── Loading / empty ───────────────────────────── */
+        .loading { text-align: center; color: var(--text-muted); padding: 2rem; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Footer ────────────────────────────────────── */
+        .footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: .75rem;
+            padding: 1.5rem;
+        }
+
+        /* ── Responsive ────────────────────────────────── */
+        @media (max-width: 900px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .chart-card.full { grid-column: 1; }
+            .main { padding: 1rem; }
+            .header { padding: 1rem; }
+            .controls { padding: .8rem 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📊 Podcast Stats Dashboard</h1>
+    <div class="subtitle">Estadísticas de escuchas reales — descarga MP3</div>
+</div>
+
+<div class="controls">
+    <div>
+        <label for="from">Desde</label>
+        <input type="date" id="from">
+    </div>
+    <div>
+        <label for="to">Hasta</label>
+        <input type="date" id="to">
+    </div>
+    <label class="toggle">
+        <input type="checkbox" id="excludeBots" checked>
+        Excluir bots
+    </label>
+    <button class="btn" onclick="loadAll()">Aplicar</button>
+    <div class="presets">
+        <button class="btn btn-outline" onclick="setPreset(7)">7d</button>
+        <button class="btn btn-outline" onclick="setPreset(30)">30d</button>
+        <button class="btn btn-outline" onclick="setPreset(90)">90d</button>
+        <button class="btn btn-outline" onclick="setPreset(0)">Todo</button>
+    </div>
+</div>
+
+<div class="main">
+    <!-- Summary KPIs -->
+    <div class="summary">
+        <div class="kpi">
+            <div class="label">Descargas únicas</div>
+            <div class="value" id="kpi-unique">—</div>
+            <div class="detail" id="kpi-unique-detail"></div>
+        </div>
+        <div class="kpi">
+            <div class="label">Descargas totales</div>
+            <div class="value" id="kpi-total">—</div>
+            <div class="detail" id="kpi-total-detail"></div>
+        </div>
+        <div class="kpi">
+            <div class="label">Episodios</div>
+            <div class="value" id="kpi-episodes">—</div>
+        </div>
+        <div class="kpi">
+            <div class="label">Media diaria</div>
+            <div class="value" id="kpi-avg">—</div>
+            <div class="detail" id="kpi-avg-detail"></div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-grid">
+
+        <!-- Trend (full width) -->
+        <div class="chart-card full">
+            <h3>📈 Tendencia de descargas</h3>
+            <div class="chart-wrap h300">
+                <canvas id="chartTrend"></canvas>
+            </div>
+        </div>
+
+        <!-- Episodes -->
+        <div class="chart-card">
+            <h3>🎙️ Descargas por episodio</h3>
+            <div class="chart-wrap h250">
+                <canvas id="chartEpisodes"></canvas>
+            </div>
+        </div>
+
+        <!-- Platforms -->
+        <div class="chart-card">
+            <h3>📱 Plataformas</h3>
+            <div class="chart-wrap h250">
+                <canvas id="chartPlatforms"></canvas>
+            </div>
+        </div>
+
+        <!-- Countries -->
+        <div class="chart-card">
+            <h3>🌍 Top países</h3>
+            <div class="chart-wrap h250">
+                <canvas id="chartCountries"></canvas>
+            </div>
+        </div>
+
+        <!-- Cities table -->
+        <div class="chart-card">
+            <h3>🏙️ Top ciudades</h3>
+            <div id="tableCities" style="max-height:280px; overflow-y:auto;">
+                <div class="loading"><span class="spinner"></span></div>
+            </div>
+        </div>
+
+        <!-- Hours -->
+        <div class="chart-card">
+            <h3>🕐 Descargas por hora</h3>
+            <div class="chart-wrap h250">
+                <canvas id="chartHours"></canvas>
+            </div>
+        </div>
+
+        <!-- Weekdays -->
+        <div class="chart-card">
+            <h3>📅 Descargas por día de la semana</h3>
+            <div class="chart-wrap h250">
+                <canvas id="chartWeekdays"></canvas>
+            </div>
+        </div>
+
+        <!-- Engagement (full width) -->
+        <div class="chart-card full">
+            <h3>🎧 Engagement — Descargas completas vs parciales</h3>
+            <div id="tableEngagement">
+                <div class="loading"><span class="spinner"></span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="footer">
+    Podcast Stats Dashboard — Datos de podcast_stats.db
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// Config
+// ═══════════════════════════════════════════════════════════════════════════
+
+/* __ROOT_PATH__ */
+const API = (typeof API_BASE !== 'undefined') ? API_BASE : '/api/v1';
+const COLORS = [
+    '#4F46E5', '#06B6D4', '#10B981', '#F59E0B', '#EF4444',
+    '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1',
+    '#84CC16', '#0EA5E9', '#D946EF', '#22D3EE', '#A855F7',
+];
+
+// Chart instances (for destroy/rebuild)
+const charts = {};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+function fmt(n) { return (n ?? 0).toLocaleString('es-ES'); }
+
+function fmtBytes(b) {
+    if (!b) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
+    return b.toFixed(1) + ' ' + units[i];
+}
+
+function params() {
+    const p = new URLSearchParams();
+    const from = document.getElementById('from').value;
+    const to = document.getElementById('to').value;
+    const bots = document.getElementById('excludeBots').checked;
+    if (from) p.set('from_date', from);
+    if (to) p.set('to_date', to);
+    p.set('exclude_bots', bots);
+    return p.toString();
+}
+
+async function api(endpoint) {
+    const sep = endpoint.includes('?') ? '&' : '?';
+    const res = await fetch(`${API}${endpoint}${sep}${params()}`);
+    return res.json();
+}
+
+function makeChart(id, config) {
+    if (charts[id]) charts[id].destroy();
+    const ctx = document.getElementById(id).getContext('2d');
+    config.options = config.options || {};
+    config.options.responsive = true;
+    config.options.maintainAspectRatio = false;
+    charts[id] = new Chart(ctx, config);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Presets
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setPreset(days) {
+    const to = new Date();
+    document.getElementById('to').value = to.toISOString().slice(0, 10);
+    if (days > 0) {
+        const from = new Date(to);
+        from.setDate(from.getDate() - days);
+        document.getElementById('from').value = from.toISOString().slice(0, 10);
+    } else {
+        document.getElementById('from').value = '';
+    }
+    loadAll();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Load data & render
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function loadAll() {
+    // Fetch all endpoints in parallel
+    const [summary, trend, episodes, platforms, countries, cities, hours, weekdays, engagement] =
+        await Promise.all([
+            api('/summary'),
+            api('/downloads/trend'),
+            api('/downloads/by-episode'),
+            api('/platforms'),
+            api('/geo/countries'),
+            api('/geo/cities'),
+            api('/temporal/hours'),
+            api('/temporal/weekdays'),
+            api('/engagement'),
+        ]);
+
+    renderSummary(summary);
+    renderTrend(trend);
+    renderEpisodes(episodes);
+    renderPlatforms(platforms);
+    renderCountries(countries);
+    renderCities(cities);
+    renderHours(hours);
+    renderWeekdays(weekdays);
+    renderEngagement(engagement);
+}
+
+// ── Summary cards ─────────────────────────────────────────────
+
+function renderSummary(d) {
+    document.getElementById('kpi-unique').textContent = fmt(d.unique_downloads);
+    document.getElementById('kpi-unique-detail').textContent = `Estándar IAB (IP+episodio+día)`;
+    document.getElementById('kpi-total').textContent = fmt(d.total_requests);
+    document.getElementById('kpi-total-detail').textContent = fmtBytes(d.total_bytes) + ' transferidos';
+    document.getElementById('kpi-episodes').textContent = fmt(d.episodes);
+    document.getElementById('kpi-avg').textContent = d.avg_per_day;
+    document.getElementById('kpi-avg-detail').textContent = `en ${d.active_days} días activos`;
+}
+
+// ── Trend chart ───────────────────────────────────────────────
+
+function renderTrend(d) {
+    makeChart('chartTrend', {
+        type: 'line',
+        data: {
+            labels: d.dates,
+            datasets: [
+                {
+                    label: 'Descargas totales',
+                    data: d.total,
+                    borderColor: '#4F46E5',
+                    backgroundColor: 'rgba(79,70,229,.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                },
+                {
+                    label: 'Descargas únicas',
+                    data: d.unique,
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16,185,129,.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderDash: [5, 3],
+                    pointRadius: 2,
+                },
+            ],
+        },
+        options: {
+            plugins: { legend: { position: 'top' } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } },
+                x: { ticks: { maxTicksAuto: true, maxRotation: 45 } },
+            },
+        },
+    });
+}
+
+// ── Episodes ──────────────────────────────────────────────────
+
+function renderEpisodes(d) {
+    makeChart('chartEpisodes', {
+        type: 'bar',
+        data: {
+            labels: d.map(e => e.episode.replace('.mp3', '')),
+            datasets: [
+                {
+                    label: 'Únicas',
+                    data: d.map(e => e.unique),
+                    backgroundColor: '#4F46E5',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Totales',
+                    data: d.map(e => e.total),
+                    backgroundColor: '#C7D2FE',
+                    borderRadius: 4,
+                },
+            ],
+        },
+        options: {
+            indexAxis: 'y',
+            plugins: { legend: { position: 'top' } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+    });
+}
+
+// ── Platforms ─────────────────────────────────────────────────
+
+function renderPlatforms(d) {
+    makeChart('chartPlatforms', {
+        type: 'doughnut',
+        data: {
+            labels: d.map(e => e.platform),
+            datasets: [{
+                data: d.map(e => e.downloads),
+                backgroundColor: COLORS.slice(0, d.length),
+                borderWidth: 0,
+            }],
+        },
+        options: {
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+            },
+        },
+    });
+}
+
+// ── Countries ─────────────────────────────────────────────────
+
+function renderCountries(d) {
+    makeChart('chartCountries', {
+        type: 'bar',
+        data: {
+            labels: d.map(e => e.country),
+            datasets: [{
+                label: 'Descargas',
+                data: d.map(e => e.downloads),
+                backgroundColor: '#06B6D4',
+                borderRadius: 4,
+            }],
+        },
+        options: {
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+    });
+}
+
+// ── Cities table ──────────────────────────────────────────────
+
+function renderCities(d) {
+    const el = document.getElementById('tableCities');
+    if (!d.length) { el.innerHTML = '<p style="color:var(--text-muted);padding:1rem">Sin datos</p>'; return; }
+    let html = '<table class="data-table"><thead><tr><th>#</th><th>Ciudad</th><th class="num">Descargas</th></tr></thead><tbody>';
+    d.forEach((c, i) => {
+        html += `<tr><td>${i + 1}</td><td>${c.city}</td><td class="num">${fmt(c.downloads)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+// ── Hours ─────────────────────────────────────────────────────
+
+function renderHours(d) {
+    // Color gradient: azul oscuro (noche) → naranja (día) → azul oscuro
+    const colors = d.values.map((_, i) => {
+        if (i >= 7 && i <= 20) return '#F59E0B';  // día
+        return '#4F46E5';                          // noche
+    });
+
+    makeChart('chartHours', {
+        type: 'bar',
+        data: {
+            labels: d.hours,
+            datasets: [{
+                label: 'Descargas',
+                data: d.values,
+                backgroundColor: colors,
+                borderRadius: 3,
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } },
+                x: { ticks: { maxRotation: 45 } },
+            },
+        },
+    });
+}
+
+// ── Weekdays ──────────────────────────────────────────────────
+
+function renderWeekdays(d) {
+    const colors = d.values.map((_, i) =>
+        i >= 5 ? '#EF4444' : '#4F46E5'  // fin de semana en rojo
+    );
+
+    makeChart('chartWeekdays', {
+        type: 'bar',
+        data: {
+            labels: d.weekdays,
+            datasets: [{
+                label: 'Descargas',
+                data: d.values,
+                backgroundColor: colors,
+                borderRadius: 4,
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+    });
+}
+
+// ── Engagement table ──────────────────────────────────────────
+
+function renderEngagement(d) {
+    const el = document.getElementById('tableEngagement');
+    if (!d.length) { el.innerHTML = '<p style="color:var(--text-muted);padding:1rem">Sin datos</p>'; return; }
+
+    let html = `<table class="data-table">
+        <thead><tr>
+            <th>Episodio</th>
+            <th class="num">Total</th>
+            <th class="num">Completas</th>
+            <th class="num">Parciales</th>
+            <th class="num">% Completas</th>
+            <th class="num">Tamaño</th>
+        </tr></thead><tbody>`;
+
+    d.forEach(e => {
+        const barW = Math.round(e.pct_full);
+        html += `<tr>
+            <td>${e.episode.replace('.mp3', '')}</td>
+            <td class="num">${fmt(e.total)}</td>
+            <td class="num">${fmt(e.full)}</td>
+            <td class="num">${fmt(e.partial)}</td>
+            <td class="num">
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:.4rem">
+                    <div style="width:60px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                        <div style="width:${barW}%;height:100%;background:${barW > 50 ? '#10B981' : '#F59E0B'};border-radius:4px"></div>
+                    </div>
+                    ${e.pct_full}%
+                </div>
+            </td>
+            <td class="num">${fmtBytes(e.file_size)}</td>
+        </tr>`;
+    });
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function init() {
+    // Get date range from DB
+    const meta = await (await fetch(`${API}/meta/date-range`)).json();
+
+    // Default: last 30 days or all if less than 30 days
+    const maxDate = new Date(meta.max_date);
+    const minDate = new Date(meta.min_date);
+    const thirtyAgo = new Date(maxDate);
+    thirtyAgo.setDate(thirtyAgo.getDate() - 30);
+
+    const effectiveFrom = thirtyAgo > minDate ? thirtyAgo : minDate;
+
+    document.getElementById('from').value = effectiveFrom.toISOString().slice(0, 10);
+    document.getElementById('to').value = maxDate.toISOString().slice(0, 10);
+
+    // Set min/max on date inputs
+    document.getElementById('from').min = meta.min_date;
+    document.getElementById('from').max = meta.max_date;
+    document.getElementById('to').min = meta.min_date;
+    document.getElementById('to').max = meta.max_date;
+
+    loadAll();
+}
+
+init();
+</script>
+</body>
+</html>

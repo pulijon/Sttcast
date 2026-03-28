@@ -1,0 +1,15 @@
+[Unit]
+Description=Sttcast Podcast Impact Update (%i)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/sttcast/etc/%i.env
+ExecStart=/opt/sttcast/scripts/sttcimpactupdate.bash
+User=jmrobles
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

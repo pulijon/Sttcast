@@ -1,320 +1,250 @@
-# Caution
-Subir ficheros a S3 tiene un coste asociado al almacenamiento y a la transferencia de datos
+# Web Deployment
 
-**El usuario debe ser consciente de ese coste, de supervisarlo y de establecer los oportunos mecanismos para evitar incurrir en extracostes**
+## Caution
 
-# Rationale for Web
+Publishing files to AWS has an associated cost for storage, requests, data transfer, CloudFront traffic, and optional certificate-related operations.
 
-Una vez que se tienen varios audios transcritos (por ejemplo, la colección de un podcast), surge la necesidad de almacenarlos y acceder a ellos de la mejor forma posible. También la de compartir, siempre que se disponga de los permisos necesarios, con otros usuarios. Los propios productores de podcasts pueden estar interesados en una publicación que realce el trabajo realizado.
+You are responsible for monitoring those costs and applying the appropriate safeguards before running `terraform apply`.
 
-Hacer sitios web no es complejo, pero requiere un cierto conocimiento de las tecnologías web y disponer de infraestructura para desplegar el portal. La nube nos permite una forma muy sencilla y cómoda para publicar los podcasts. En el caso de Amazon AWS se pueden subir los ficheros de audio y los de transcripciones, acompañados de un indexador html que permite seleccionar lo que se quiere ver.
+## Purpose
 
-Esta parte del proyecto Sttcast automatiza todo esto para obtener un sitio web público estático con las transcripciones.
+This directory contains the infrastructure and helper scripts used to publish podcast assets and generated HTML content to AWS.
 
-# Requirements
+The deployment is driven by Terraform in [main.tf](/home/jmrobles/Podcasts/Teleconectados/Sttcast/web/main.tf) and by environment variables stored in [.env/aws.env](/home/jmrobles/Podcasts/Teleconectados/Sttcast/.env/aws.env). The helper script [load_env.sh](/home/jmrobles/Podcasts/Teleconectados/Sttcast/web/load_env.sh) converts that environment file into `terraform.tfvars`.
 
-## HW
+The design supports multiple deployment modes so different podcast collections can choose different publication strategies without maintaining separate Terraform code.
 
-* Processor with 4 cores and 2.4 MHz of clock
-* RAM: 8 GB
-* HDD: free 10 GB.
+## High-Level Structure
 
-## SW
+The Terraform file is organized into these sections:
 
-* SO windows, Linux or IOS
-* Python >= 3.10
-* Git
+1. Terraform and provider requirements.
+2. State migration blocks using `moved`.
+3. Input variables.
+4. Derived configuration in `locals`.
+5. AWS providers.
+6. Main S3 website bucket resources.
+7. CloudFront log bucket resources.
+8. ACM certificate resources.
+9. CloudFront distribution resources.
+10. Bucket access policy.
+11. Content upload helper resources.
+12. Destroy-time cleanup helper.
+13. Outputs.
 
+## Deployment Modes
 
-## AWS
-You must have an account in Amazon AWS with valid credentials (```AWS_ACCESS_KEY_ID``` and ```AWS_SECRET_ACCESS_KEY```) to boot an **EC2** instance with **GPU** (if your account does not allow you to boot that instance, you shoul open a ticket with Amazon)
+The key variable is `deployment_mode`.
 
-# User guide
-## Bajarse el software de GitHub
+Supported values are:
 
+1. `none`
+2. `s3_public`
+3. `s3_private`
+4. `cloudfront`
 
-## Copy the contents of Automation/VM
+### `none`
 
-Crear un directorio de trabajo (supongamos que se llama **workdir**)
+Terraform does not create the website bucket, CloudFront, ACM, or log buckets.
 
-Copiar los mp3 a **workdir**
+### `s3_public`
 
-Ir al directorio con la copia git (supongamos **repolocal**)
+Terraform creates a public S3 bucket configured as a static website endpoint.
 
-## Copying the mp3 files to Payload dir
+### `s3_private`
 
-The mp3 files to transcript has to be copied in the Payload subdir as it is shown in the figure
+Terraform creates a private S3 bucket but does not expose it publicly and does not create CloudFront.
 
-![](payload_dir.png)
+### `cloudfront`
 
-## Creating the Virtual Machine
+Terraform creates:
 
-With a Windows console (cmd, PowerShell, Git bash, etc.), go to that directory and execute **vagrant up**. After a bunch of lines, vagrant will indicate that everything has gone well and will display the line **Notice: Applied catalog in x seconds** 
+1. A private S3 bucket for site content.
+2. A dedicated S3 bucket for CloudFront access logs.
+3. A CloudFront Origin Access Control.
+4. A CloudFront distribution.
+5. An ACM certificate if `domain_name` is provided.
 
-```console
-C:\VagBoxes\Sttcast\VM>vagrant up
-Bringing machine 'sttcast' up with 'virtualbox' provider...
-==> sttcast: Importing base box 'bento/debian-12'...
-==> sttcast: Matching MAC address for NAT networking...
-==> sttcast: Checking if box 'bento/debian-12' version '202309.08.0' is up to date...
-==> sttcast: Setting the name of the VM: VM_sttcast_1699034156616_84360
-...
+## Input Variables
 
-...
-==> sttcast: Notice: /Stage[main]/Main/Apt::Source[terraform]/Apt::Setting[list-terraform]/File[/etc/apt/sources.list.d/terraform.list]/ensure: defined content as '{sha256}12e56579d63b0aea920f409b94d47435f834a2351cbef61cc11b8f554224d5c9'
-==> sttcast: Notice: /Stage[main]/Apt::Update/Exec[apt_update]: Triggered 'refresh' from 1 event
-==> sttcast: Notice: /Stage[main]/Main/Exec[install terraform]/returns: executed successfully
-==> sttcast: Notice: Applied catalog in 195.46 seconds
-```
+The most relevant variables in [main.tf](/home/jmrobles/Podcasts/Teleconectados/Sttcast/web/main.tf) are:
 
-## Entering the VM 
+1. `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: AWS credentials.
+2. `aws_region`: primary AWS region.
+3. `site`: local content directory.
+4. `bucket_prefix`: base name for the bucket.
+5. `deployment_mode`: deployment strategy.
+6. `domain_name`: optional base domain for CloudFront.
+7. `host_name`: optional host under the base domain.
+8. `price_class`: CloudFront price/performance class.
+9. `log_retention_days`: retention for CloudFront access logs.
 
-The VM is a Linux Debian 12 (stable distribution at the time of writing this document). To enter in it you should type  ```vagrant ssh```
+## How `locals` Drive the Configuration
 
-```console
-C:\VagBoxes\Sttcast\VM>vagrant ssh
-Linux sttcast 6.1.0-11-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.38-4 (2023-08-08) x86_64
+The `locals` block translates raw variables into booleans that decide which resources exist:
 
-This system is built by the Bento project by Chef Software
-More information can be found at https://github.com/chef/bento
+1. `create_website_bucket`
+2. `bucket_is_public`
+3. `bucket_is_private`
+4. `create_cloudfront`
+5. `create_certificate`
+6. `fqdn`
 
-The programs included with the Debian GNU/Linux system are free software;
-the exact distribution terms for each program are described in the
-individual files in /usr/share/doc/*/copyright.
+This keeps conditional logic centralized instead of scattering long expressions across all resources.
 
-Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
-permitted by applicable law.
-vagrant@sttcast:~$
-```
-<!-- This is done in the provision of the Virtual Machine
-## Initializing terraform (only the first time)
+## How Resources Are Enabled or Disabled
 
-You must go to the **Terraform** dir and execute **terraform init** . This step is only necessary with a brand new machine created.
-```bash
-vagrant@sttcast:/vagrant/Terraform$ terraform init
+Most resources use `count`.
 
-Initializing the backend...
+Typical examples:
 
-Initializing provider plugins...
-- Reusing previous version of hashicorp/aws from the dependency lock file
-- Using previously-installed hashicorp/aws v5.23.1
+1. Main website bucket: `count = local.create_website_bucket ? 1 : 0`.
+2. S3 website configuration: `count = local.bucket_is_public ? 1 : 0`.
+3. CloudFront resources: `count = local.create_cloudfront ? 1 : 0`.
+4. ACM resources: `count = local.create_certificate ? 1 : 0`.
 
-Terraform has been successfully initialized!
+## Main S3 Bucket
 
-You may now begin working with Terraform. Try running "terraform plan" to see
-any changes that are required for your infrastructure. All Terraform commands
-should now work.
+The main site bucket is defined by `aws_s3_bucket.website`.
 
-If you ever set or change modules or backend configuration for Terraform,
-rerun this command to reinitialize your working directory. If you forget, other
-commands will detect it and remind you to do so if necessary.
-```
- -->
-## Executing the job
-From the directory /vagrant/Terraform, execute ```terraform apply -auto--approve```. terraform will ask you for your AWS credentials (the program will not ask for them if you have previously configured the environment vars ```TF_VAR_AWS_ACCESS_KEY_ID``` and ```TF_VAR_AWS_SECRET_ACCESS_KEY```)
+Related resources:
 
-```bash
-vagrant@sttcast:/vagrant/Terraform$ terraform apply -auto-approve
-var.AWS_ACCESS_KEY_ID
-  Key ID for AWS
+1. `aws_s3_bucket_public_access_block.public` controls public access restrictions.
+2. `aws_s3_bucket_versioning.versioning` enables versioning.
+3. `aws_s3_bucket_website_configuration.website` exists only in `s3_public` mode.
 
-  Enter a value:
+## CloudFront Log Bucket
 
-var.AWS_SECRET_ACCESS_KEY
-  Secret Key for AWS
+When `deployment_mode = cloudfront`, Terraform creates a separate bucket for CloudFront access logs, with ownership controls, ACL, and optional retention lifecycle.
 
-  Enter a value:
+## ACM Certificates
 
+If `deployment_mode = cloudfront` and `domain_name` is not null, Terraform creates an ACM certificate in `us-east-1`.
 
-Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the
-following symbols:
-...
+The certificate validation DNS records are exposed as outputs so they can be added manually in your DNS provider.
 
-...
+## CloudFront Distribution
 
-aws_instance.sttcast: Still creating... [37m21s elapsed]
-aws_instance.sttcast: Still creating... [37m31s elapsed]
-aws_instance.sttcast: Still creating... [37m41s elapsed]
-aws_instance.sttcast: Still creating... [37m51s elapsed]
-aws_instance.sttcast: Creation complete after 37m52s [id=i-0357318d0caa302d5]
+When `deployment_mode = cloudfront`, Terraform creates:
 
-Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+1. An Origin Access Control.
+2. A CloudFront distribution pointing to the private S3 bucket.
+3. Logging to the dedicated log bucket.
+4. Optional aliases and ACM certificate binding.
 
-Outputs:
+## Bucket Policy Behavior
 
-public_ip = "X.X.X.X"
-```
+The bucket policy changes depending on the selected mode.
 
-You should see in the Payload directory the results as shown in the image:
+1. `cloudfront`: allows read access only from the specific CloudFront distribution.
+2. `s3_public`: allows anonymous read access.
+3. `s3_private`: no public read policy.
 
-![](payload_after_terraform_apply.png)
+## Upload and Destroy Helpers
 
-Filenames ended in whisper.html are the transcriptions in HTML format without player embedded. 
+Two `null_resource` blocks provide operational helpers:
 
-![](html_without_player.png)
+1. `upload_content` runs `python publish_episode.py --skip-rss` after bucket setup.
+2. `empty_bucket_on_destroy` removes bucket contents before destroy.
 
-Filenames ended in whisper_audio.html are transcriptions in HTML format with player embedded
+## Outputs
 
-![](html_with_player.png)
+The main outputs are:
 
-## Destroying the resources
+1. `deployment_mode`
+2. `bucket_name`
+3. `cloudfront_domain`
+4. `cloudfront_distribution_id`
+5. `public_base_url`
+6. `acm_dns_validation_records`
+7. `dns_records_for_cloudfront`
+8. `logs_bucket`
+9. `logs_retention_days`
 
-The terraform configuration destroy the expensive g4dn machine. However, you should realize that if the instance is not destroyed, it could be very expensive as you pay for it while it's alive. Remember the  **Caution note** at the beginning of this document. 
+Outputs return `null` or `[]` when a resource is not created in the selected mode.
 
-You have to destroy the resources with ```terraform destroy -auto--aprove```
+## How `moved` Works
 
-```bash
-vagrant@sttcast:/vagrant/Terraform$ terraform destroy -auto-approve
-var.AWS_ACCESS_KEY_ID
-  Key ID for AWS
+The `moved` blocks near the top of [main.tf](/home/jmrobles/Podcasts/Teleconectados/Sttcast/web/main.tf) are critical for safe refactoring.
 
-  Enter a value:
+### Why They Were Needed
 
-var.AWS_SECRET_ACCESS_KEY
-  Secret Key for AWS
-
-  Enter a value:
-
-aws_key_pair.vm_keypair: Refreshing state... [id=sttcast_key_pair]
-aws_security_group.sttcast: Refreshing state... [id=sg-0d7a598806daeb09e]
-...
-
-...
-aws_security_group.sttcast: Destroying... [id=sg-0d7a598806daeb09e]
-aws_key_pair.vm_keypair: Destroying... [id=sttcast_key_pair]
-aws_key_pair.vm_keypair: Destruction complete after 0s
-aws_security_group.sttcast: Destruction complete after 1s
-
-Destroy complete! Resources: 3 destroyed.
-```
-In order to be sure it has worked, the command **terraform state** should not show anything
-
-```bash
-vagrant@sttcast:/vagrant/Terraform$ terraform state list
-vagrant@sttcast:/vagrant/Terraform$
-```
-## Primer on vagrant
-
-I often tell my students that Vagrant is like "Las Vegas," or like a football dressing room. What happens in vagrant, stays in Vagrant. That is, although one might think that once the machine is created with Vagrant, you could use the VirtualBox console (the provisioner used for this project, though Vagrant can work with other hypervisors or even with containers) to start or stop the machines, this is not the case. You have to use Vagrant to start, shutdown, or reprovision.
-
-To start the VM at any time (not only the first one)
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant start
-```
-To enter in a console ssh session in the VM at any time 
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant ssh
-```
-
-To shutdown the machine, you should type:
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant halt
-```
-
-To destroy the VM
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant destroy
-```
-
-To see the status of vagrants machines
-
-```console
-C:\VagBoxes\Sttcast\VM>vagrant global-status
-```
-
-The ```status``` of VMs allows us to acces to their ```ids```, with this ids (even with the two or three firs characters, you could execute the previous commands from any directory)
-
-```
-c:\Users\jmrob>vagrant <command> <id>
-```
-
-## Shutting down the VM
-
-As stated previously, the VM can be shutted down with ```vagrant halt``` executed from the directory of the VM (or, whith the id of the machine obtained throug ```vagrant global-status```, with ```vagrant halt <id>```)
-
-```
-C:\VagBoxes\Sttcast\VM>vagrant halt
-==> sttcast: Attempting graceful shutdown of VM...
-```
-
-## Configuration
-
-Each run of ```terraform``` makes use of ```ansible``` and ```ansible``` can be configured with the file ```Ansible/vars.yml``` and the the files ```vars/main.yml``` in subdirectories from ```Automation/VM/Ansible/roles```.
-
-Specifically, the file Ansible ```/roles/app_exec/vars/main.yml``` contains the execution parameters for sttcast:
-
-```yaml
-# Configure sttcast
-whmodel:    "small"
-seconds:    "36000"
-cpus:       "6"
-min_offset: "60"
-max_gap:    "0.8"
-html_suffix: "whisper"
-mp3_extension: ".mp3"
-html_extension: "_{{ html_suffix }}.html"
-audio_extension: "_{{ html_suffix }}_audio.html"
-```
-
-Terraform has variables that could be overwritten by enfironment variables that should be named as the terraform variable prefixed by TF_VAR, so if you want to change the g4dn.2xlarge to g4dn.xlarge, you should set the environment variable TF_VAR_sttcast_instance_typo as below:
-
-```bash
-export TF_VAR_sttcast_instance_type="g4dn.xlarge"
-```
-
-Some of the terraform variables are shown here
+Before refactoring, several resources existed without `count`, for example:
 
 ```hcl
-
-
-variable "sttcast_instance_type" {
-  description = "Instance type for sttcast"
-  type        = string
-  default     = "g4dn.2xlarge"
-}
-
-variable "sttcast_spot_price" {
-  description = "Instance type for sttcast"
-  type        = string
-  default     = "0.28"
-}
-
-variable "sttcast_ami" {
-  description = "AMI for sttcast"
-  type        = string
-  # Instance CUDA TensorFlow
-  # default     = "ami-0e0d36dffd7ce3f68"
-  # Instance Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.3.0 (Ubuntu 20.04) 20240611
-  # default = "ami-0c540ca1e5211e422"
-  # Instance Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20240624
-  default     = "ami-0fa7c50f46a48ae63"
-}
-
-variable "payload_directory" {
-  description = "Local directory to upload content from"
-  type        = string
-  default     = "/vagrant/Payload"
-}
-
+aws_s3_bucket.website
+aws_cloudfront_distribution.cdn
+null_resource.upload_content
 ```
 
-You may want to change this parameters to best fit the behaviour to your needs.
+After introducing `count` for mode-based creation, addresses became indexed:
 
-## To Do
+```hcl
+aws_s3_bucket.website[0]
+aws_cloudfront_distribution.cdn[0]
+null_resource.upload_content[0]
+```
 
-Many modifications can be made and will be made in the future.
+Without `moved`, Terraform would interpret this as old resources disappearing and new resources being created, often producing replacement plans.
 
-* To save costs, the most obvious change is to use intermediate S3 storage for the **payload**. A significant portion of the execution time is spent copying the MP3 files to the target machine. The upload time from **S3** is assumed to be much faster (and therefore cheaper) for the machine with **GPU**. One could even consider **EBS**, although I would like to conduct tests. **(Done 2023-11-06)**
+### What `moved` Does
 
-  
+A block such as:
 
+```hcl
+moved {
+  from = aws_s3_bucket.website
+  to   = aws_s3_bucket.website[0]
+}
+```
 
+instructs Terraform to migrate state addresses from old to new logical addresses.
 
+This is a state mapping operation, not an infrastructure recreation.
 
+### What `moved` Does Not Do
 
+`moved` does not automatically prevent all future replacements. If you introduce a real force-replace change, Terraform may still need to recreate resources.
 
+It only solves address migration in state when resource identity remains the same.
 
+## Environment File and `load_env.sh`
+
+The file [.env/aws.env](/home/jmrobles/Podcasts/Teleconectados/Sttcast/.env/aws.env) is the human-edited source of truth.
+
+The script [load_env.sh](/home/jmrobles/Podcasts/Teleconectados/Sttcast/web/load_env.sh):
+
+1. Maps environment keys to Terraform variables.
+2. Validates `DEPLOYMENT_MODE`.
+3. Writes `null` for empty `DOMAIN_NAME` or `HOST_NAME`.
+4. Regenerates `terraform.tfvars` from scratch.
+
+Typical workflow:
+
+```bash
+cd web
+./load_env.sh
+terraform plan
+terraform apply
+```
+
+## Safe Usage Notes
+
+Before `terraform apply`:
+
+1. Run `./load_env.sh`.
+2. Inspect `terraform.tfvars`.
+3. Run `terraform plan`.
+4. Confirm there is no unexpected destruction.
+
+This is especially important when changing `deployment_mode`, because mode changes can imply real resource creation or removal depending on existing state.
+
+## Recommended Maintenance Strategy
+
+Treat this stack as three layers:
+
+1. `.env/aws.env` defines intent.
+2. `load_env.sh` translates intent into Terraform input.
+3. `main.tf` translates input into conditionally created infrastructure.
+
+This separation reduces risk and keeps collection-specific changes in environment configuration rather than Terraform logic.

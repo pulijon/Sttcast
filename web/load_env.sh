@@ -11,6 +11,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Cambiar al directorio del script
 cd "$SCRIPT_DIR"
 
+write_string_or_null() {
+    local tf_key="$1"
+    local raw_value="$2"
+
+    if [ -z "$raw_value" ]; then
+        echo "$tf_key = null" >> "$TFVARS_FILE"
+    else
+        echo "$tf_key = \"$raw_value\"" >> "$TFVARS_FILE"
+    fi
+}
+
 # Verificar que el archivo .env existe
 if [ ! -f "$ENV_FILE" ]; then
     echo "Error: No se encontró $ENV_FILE"
@@ -46,11 +57,27 @@ while IFS='=' read -r key value; do
         BUCKET_PREFIX)
             echo "bucket_prefix = \"$value\"" >> "$TFVARS_FILE"
             ;;
+        DEPLOYMENT_MODE)
+            mode="$(echo "$value" | tr '[:upper:]' '[:lower:]')"
+            case "$mode" in
+                none|s3_public|s3_private|cloudfront)
+                    echo "deployment_mode = \"$mode\"" >> "$TFVARS_FILE"
+                    ;;
+                *)
+                    echo "Error: DEPLOYMENT_MODE invalido en $ENV_FILE: $value"
+                    echo "Valores permitidos: none, s3_public, s3_private, cloudfront"
+                    exit 1
+                    ;;
+            esac
+            ;;
         DOMAIN_NAME)
-            echo "domain_name = \"$value\"" >> "$TFVARS_FILE"
+            write_string_or_null "domain_name" "$value"
             ;;
         HOST_NAME)
-            echo "host_name = \"$value\"" >> "$TFVARS_FILE"
+            write_string_or_null "host_name" "$value"
+            ;;
+        AWS_LOG_DAYS)
+            echo "log_retention_days = $value" >> "$TFVARS_FILE"
             ;;
     esac
 done < "$ENV_FILE"

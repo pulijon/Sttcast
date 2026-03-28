@@ -75,24 +75,25 @@ class SttcastDB:
             self.conn.close()
 
     def create_db(self):
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.execute('PRAGMA foreign_keys = ON;')
-        self.cursor = self.conn.cursor()
+        # Crear una conexión temporal solo para crear la estructura
+        temp_conn = sqlite3.connect(self.db_path)
+        temp_conn.execute('PRAGMA foreign_keys = ON;')
+        temp_cursor = temp_conn.cursor()
 
-        self.cursor.execute("""
+        temp_cursor.execute("""
         CREATE TABLE IF NOT EXISTS episode (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             epname VARCHAR(25) NOT NULL,
             epdate DATE NOT NULL
         );
         """)
-        self.cursor.execute("""
+        temp_cursor.execute("""
         CREATE TABLE IF NOT EXISTS speakertag (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tag VARCHAR(100) NOT NULL
         );
         """)
-        self.cursor.execute("""
+        temp_cursor.execute("""
         CREATE TABLE IF NOT EXISTS audiofile (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fname VARCHAR(256) NOT NULL,
@@ -100,7 +101,7 @@ class SttcastDB:
             FOREIGN KEY (episodeid) REFERENCES episode(id)
         );
         """)
-        self.cursor.execute("""
+        temp_cursor.execute("""
         CREATE TABLE IF NOT EXISTS speakerintervention (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tagid INTEGER NOT NULL,
@@ -134,7 +135,7 @@ class SttcastDB:
         temp_cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_stats_epdate ON cache_stats(epdate);")
         
         # Crear la vista intview que es necesaria para las consultas del context_server
-        self.cursor.execute("""
+        temp_cursor.execute("""
         CREATE VIEW IF NOT EXISTS intview AS
         SELECT si.id,
             si.start,
@@ -149,7 +150,8 @@ class SttcastDB:
         JOIN speakertag AS st on si.tagid = st.id;
         """)
         
-        self.conn.commit()
+        temp_conn.commit()
+        temp_conn.close()
         logging.info(f"Base de datos '{self.db_path}' creada con éxito, tablas y vistas definidas.")
     
     def ensure_intview_exists(self):

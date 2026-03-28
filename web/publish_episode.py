@@ -107,6 +107,8 @@ Requisitos:
                         help="Eliminar de S3 archivos que no existen localmente")
     parser.add_argument("--language", default=os.getenv('PODCAST_LANGUAGE', 'es'),
                         help="Idioma para descripciones del RSS (es, en)")
+    parser.add_argument("--edited-dir", default=os.getenv('PODCAST_EDITED_DIR'),
+                        help="Directorio con resúmenes editados en markdown (preferencia sobre resúmenes generados)")
     
     args = parser.parse_args()
     
@@ -203,6 +205,7 @@ Requisitos:
                     category=podcast_category,
                     language=args.language,
                     explicit=podcast_explicit,
+                    edited_dir=args.edited_dir,
                     dry_run=False
                 )
             except Exception as e:

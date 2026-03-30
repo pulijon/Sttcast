@@ -212,6 +212,14 @@ def format_time(seconds):
     secs = int(float(seconds) % 60)
     return f"{mins}:{secs:02d}"
 
+def build_time_anchor(seconds) -> str:
+    """Construye un id tipo time-HH-MM-SS desde segundos."""
+    total_seconds = int(max(0, float(seconds)))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+    return f"time-{hours:02d}-{minutes:02d}-{secs:02d}"
+
 async def get_transcript_file(file_path: str) -> tuple:
     """
     Obtiene archivo de transcripción desde fuente externa o local.
@@ -230,13 +238,23 @@ async def get_transcript_file(file_path: str) -> tuple:
             response = requests.get(external_url, timeout=10)
             if response.status_code == 200:
                 content_type = response.headers.get('content-type', 'application/octet-stream')
+                
+                # Forzar content-type correcto para archivos HTML
+                if file_path.lower().endswith('.html'):
+                    content_type = 'text/html; charset=utf-8'
+                elif content_type == 'application/octet-stream':
+                    # Intentar detectar por extensión si S3 no lo especificó
+                    guessed_type, _ = mimetypes.guess_type(file_path)
+                    if guessed_type:
+                        content_type = guessed_type
+                
                 # Devolver headers relevantes de S3 para Range support
                 s3_headers = {}
                 if 'content-length' in response.headers:
                     s3_headers['content-length'] = response.headers['content-length']
                 if 'accept-ranges' in response.headers:
                     s3_headers['accept-ranges'] = response.headers['accept-ranges']
-                logging.info(f"Archivo obtenido desde S3: {file_path}")
+                logging.info(f"Archivo obtenido desde S3: {file_path} (Content-Type: {content_type})")
                 return response.content, content_type, s3_headers
             elif response.status_code == 404:
                 logging.debug(f"Archivo no encontrado en S3: {file_path}")
@@ -260,7 +278,11 @@ async def get_transcript_file(file_path: str) -> tuple:
             if os.path.isfile(local_path):
                 logging.info(f"Archivo obtenido desde filesystem local: {file_path}")
                 content_type, _ = mimetypes.guess_type(local_path)
-                if content_type is None:
+                
+                # Forzar content-type correcto para archivos HTML
+                if file_path.lower().endswith('.html'):
+                    content_type = 'text/html; charset=utf-8'
+                elif content_type is None:
                     content_type = 'application/octet-stream'
                 
                 file_size = os.path.getsize(local_path)
@@ -872,47 +894,43 @@ async def ask_question(payload: AskRequest, request: Request):
             logging.info(f"Referencias encontradas: {len(reldata['refs'])}")
             for ref in reldata["refs"]:
                 if all(k in ref for k in ['label', 'file', 'time']):
-                    # Procesar hiperenlaces si hay directorio local o URL externa
-                    if app.rag_mp3_dir or app.transcripts_url_external:
-                        logging.info(f"Procesando referencia: {ref['label']} - {ref['file']} a {ref['time']} segundos")
-                        html_file = {
-                            l: get_transcript_url(os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html")) for l in ['es', 'en']
-                        }
-                        # Solo construir rutas locales si hay directorio configurado
-                        if app.rag_mp3_dir:
-                            real_file = {
-                                l: os.path.join(app.rag_mp3_dir, f"{ref['file']}_whisper_audio_{l}.html") for l in ['es', 'en']
-                            }
-                        else:
-                            real_file = {'es': None, 'en': None}
-                        logging.info(f"Archivos HTML: {html_file}")
-                        logging.info(f"Buscando ID más cercano para {ref['time']} segundos")
-                        
+                    logging.info(f"Procesando referencia: {ref['label']} - {ref['file']} a {ref['time']} segundos")
+                    html_file = {
+                        l: get_transcript_url(os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html")) for l in ['es', 'en']
+                    }
+                    logging.info(f"Archivos HTML: {html_file}")
+                    logging.info(f"Buscando ID más cercano para {ref['time']} segundos")
+
+                    nearest_id = None
+                    if app.transcripts_local_dir or app.transcripts_url_external:
                         # Determinar qué ruta usar: local o URL externa
                         file_to_search = None
-                        if app.rag_mp3_dir and real_file['es'] and os.path.exists(real_file['es']):
-                            # Usar ruta local si existe
-                            file_to_search = real_file['es']
-                            logging.info(f"Usando archivo local: {file_to_search}")
-                        elif app.transcripts_url_external:
-                            # Usar URL externa si está configurada
+                        if app.transcripts_local_dir:
+                            real_file = os.path.join(
+                                app.transcripts_local_dir,
+                                f"{ref['file']}_whisper_audio_es.html"
+                            )
+                            if os.path.exists(real_file):
+                                file_to_search = real_file
+                                logging.info(f"Usando archivo local: {file_to_search}")
+                        if not file_to_search and app.transcripts_url_external:
                             file_to_search = f"{app.transcripts_url_external}/{ref['file']}_whisper_audio_es.html"
                             logging.info(f"Usando URL externa: {file_to_search}")
-                        
+
                         if file_to_search:
-                            nearest_id = find_nearest_time_id(
-                                file_to_search, 
-                                ref['time']
-                            )
+                            nearest_id = find_nearest_time_id(file_to_search, ref['time'])
                         else:
-                            nearest_id = None
-                            logging.warning(f"No se encontró archivo local ni URL externa configurada")
-                        logging.info(f"ID más cercano encontrado: {nearest_id}")
-                        ref['hyperlink'] = {
-                            l: f"{html_file[l]}#{nearest_id}" if nearest_id else None
-                            for l in ['es', 'en']
-                        }
-                        logging.info(f"Referencia con hipervínculo: {ref['hyperlink']}")
+                            logging.warning("No se encontró archivo local ni URL externa configurada")
+
+                    if not nearest_id:
+                        nearest_id = build_time_anchor(ref['time'])
+                    logging.info(f"ID más cercano encontrado: {nearest_id}")
+
+                    ref['hyperlink'] = {
+                        l: f"{html_file[l]}#{nearest_id}" if nearest_id else html_file[l]
+                        for l in ['es', 'en']
+                    }
+                    logging.info(f"Referencia con hipervínculo: {ref['hyperlink']}")
 
                     references.append({
                         "label": ref["label"],

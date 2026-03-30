@@ -106,73 +106,137 @@
 
         logger.log(`Audio no disponible: ${audioFilename}`);
 
+        // Mostrar diálogo personalizado HTML (no confirm() que rompe el contexto)
+        mostrarDialogoPersonalizado.call(this, audioFilename, expectedTime);
+    }
+
+    /**
+     * Muestra un diálogo HTML personalizado que no rompe el contexto de interacción
+     */
+    function mostrarDialogoPersonalizado(filename, expectedTime) {
+        const audioElement = this;
+        
+        // Crear overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        
+        // Crear diálogo
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+        
         // Construir mensaje
-        const message = construirMensajeDialogo(audioFilename, expectedTime);
-
-        // Mostrar diálogo
-        if (confirm(message)) {
-            mostrarSelectorfArchivo.call(this, audioFilename, expectedTime);
-        } else {
-            // Permitir reintentar
-            this.dataset.userAskedForFile = 'false';
-            logger.log(`Usuario canceló la selección para ${audioFilename}`);
+        let mensaje = `<p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.5;">
+            El archivo de audio <strong>"${filename}"</strong> no está disponible en el servidor.
+        </p>
+        <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.5;">
+            ¿Tienes este archivo en tu equipo? Puedes seleccionarlo para escucharlo.
+        </p>`;
+        
+        if (expectedTime) {
+            mensaje += `<p style="margin: 0 0 16px 0; font-size: 13px; color: #666;">
+                Se reproducirá desde: <strong>${expectedTime}</strong>
+            </p>`;
         }
-    }
-
-    /**
-     * Construye el mensaje del diálogo de confirmación
-     */
-    function construirMensajeDialogo(filename, timestamp) {
-        let mensaje = `El archivo de audio "${filename}" no está disponible en el servidor.\n\n`;
-        mensaje += `¿Tienes este archivo en tu equipo? Puedes seleccionarlo para escucharlo.`;
-
-        if (timestamp) {
-            mensaje += `\n\nSe reproducirá desde: ${timestamp}`;
-        }
-
-        return mensaje;
-    }
-
-    /**
-     * Muestra el selector de archivo local
-     */
-    function mostrarSelectorfArchivo(filename, expectedTime) {
+        
+        // Botones
+        mensaje += `
+            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                <button id="audio-fallback-cancel" style="
+                    padding: 8px 16px;
+                    border: 1px solid #ccc;
+                    background: white;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                ">Cancelar</button>
+                <button id="audio-fallback-accept" style="
+                    padding: 8px 16px;
+                    border: none;
+                    background: #2563eb;
+                    color: white;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                ">Seleccionar archivo</button>
+            </div>
+        `;
+        
+        dialog.innerHTML = mensaje;
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        // Crear input de archivo (oculto pero listo)
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'audio/*';
         input.style.display = 'none';
-
-        const audioElement = this;
-        const audioIndex = this.dataset.audioIndex;
-
-        // Manejador cuando selecciona un archivo
+        document.body.appendChild(input);
+        
+        // Función para limpiar diálogo
+        const cerrarDialogo = () => {
+            if (document.body.contains(overlay)) {
+                document.body.removeChild(overlay);
+            }
+            if (document.body.contains(input)) {
+                document.body.removeChild(input);
+            }
+        };
+        
+        // Manejador de cambio de archivo
         input.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 cargarAudioLocal.call(audioElement, file, filename, expectedTime);
-                logger.log(`Archivo seleccionado para audio #${audioIndex}: ${file.name}`);
+                logger.log(`Archivo seleccionado: ${file.name}`);
             }
-            // Limpiar después de completar
-            document.body.removeChild(input);
+            cerrarDialogo();
         });
-
-        // Manejador cuando cancela
-        input.addEventListener('cancel', () => {
-            this.dataset.userAskedForFile = 'false';
-            logger.log(`Usuario canceló la selección de archivo`);
-            document.body.removeChild(input);
+        
+        // Botón Aceptar - disparar selector DIRECTAMENTE desde el click
+        const btnAccept = dialog.querySelector('#audio-fallback-accept');
+        btnAccept.addEventListener('click', () => {
+            cerrarDialogo();
+            // Click INMEDIATO desde el evento del usuario
+            input.click();
+            logger.log(`Selector de archivo abierto para ${filename}`);
         });
-
-        // Manejador para cuando se cierra el diálogo sin seleccionar
-        input.addEventListener('close', () => {
-            if (document.body.contains(input)) {
-                document.body.removeChild(input);
+        
+        // Botón Cancelar
+        const btnCancel = dialog.querySelector('#audio-fallback-cancel');
+        btnCancel.addEventListener('click', () => {
+            audioElement.dataset.userAskedForFile = 'false';
+            logger.log(`Usuario canceló la selección`);
+            cerrarDialogo();
+        });
+        
+        // Cerrar con ESC
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') {
+                audioElement.dataset.userAskedForFile = 'false';
+                cerrarDialogo();
+                document.removeEventListener('keydown', handleEsc);
             }
-        });
-
-        // Disparar diálogo de selección
-        document.body.appendChild(input);
-        input.click();
+        };
+        document.addEventListener('keydown', handleEsc);
     }
 
     /**

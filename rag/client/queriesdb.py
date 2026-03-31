@@ -518,7 +518,9 @@ class RAGDatabase:
                             response_text,
                             1 - (query_embedding <=> $1::vector) AS similarity,
                             created_at,
-                            podcast_name
+                            podcast_name,
+                            likes,
+                            dislikes
                         FROM rag_queries
                         WHERE podcast_name = $2 AND (query_embedding <=> $1::vector) < $3
                         ORDER BY query_embedding <=> $1::vector
@@ -540,7 +542,9 @@ class RAGDatabase:
                             response_text,
                             1 - (query_embedding <=> $1::vector) AS similarity,
                             created_at,
-                            podcast_name
+                            podcast_name,
+                            likes,
+                            dislikes
                         FROM rag_queries
                         WHERE (query_embedding <=> $1::vector) < $2
                         ORDER BY query_embedding <=> $1::vector
@@ -720,6 +724,29 @@ class RAGDatabase:
                 
         except Exception as e:
             logger.error(f"❌ Error al actualizar dislikes: {e}")
+            return False
+
+    async def set_votes(self, query_uuid: str, likes: int, dislikes: int) -> bool:
+        """Establece los valores absolutos de likes y dislikes de una query (uso admin)"""
+        if not self.is_available:
+            return False
+        
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                
+                result = await conn.execute(
+                    "UPDATE rag_queries SET likes = $1, dislikes = $2 WHERE uuid = $3",
+                    max(0, likes),
+                    max(0, dislikes),
+                    query_uuid
+                )
+                
+                return result != "UPDATE 0"
+                
+        except Exception as e:
+            logger.error(f"❌ Error al establecer votos: {e}")
             return False
 
     async def update_allowed(self, query_uuid: str, allowed: bool) -> bool:
@@ -1025,7 +1052,7 @@ class RAGDatabase:
                 if podcast_name:
                     records = await conn.fetch("""
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
-                               q.created_at, q.likes, q.podcast_name,
+                               q.created_at, q.likes, q.dislikes, q.podcast_name,
                                COALESCE(
                                    array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL),
                                    ARRAY[]::VARCHAR[]
@@ -1046,7 +1073,7 @@ class RAGDatabase:
                 else:
                     records = await conn.fetch("""
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
-                               q.created_at, q.likes, q.podcast_name,
+                               q.created_at, q.likes, q.dislikes, q.podcast_name,
                                COALESCE(
                                    array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL),
                                    ARRAY[]::VARCHAR[]
@@ -1509,6 +1536,7 @@ class RAGDatabase:
                     'uuid': str(q['uuid']),
                     'query_text': q['query_text'],
                     'likes': q.get('likes', 0),
+                    'dislikes': q.get('dislikes', 0),
                     'created_at': q['created_at'].isoformat() if hasattr(q['created_at'], 'isoformat') else str(q['created_at'])
                 }
                 if not cats or cats == [None]:

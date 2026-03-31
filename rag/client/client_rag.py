@@ -310,6 +310,9 @@ class CheckSimilarRequest(BaseModel):
     question: str
     language: str = 'es'
 
+class VoteRequest(BaseModel):
+    vote: str  # "like" o "dislike"
+
 # ------------------------
 #   Endpoints
 # ------------------------
@@ -553,6 +556,62 @@ async def get_transcript_with_range(file_path: str, range_header: str):
             detail=f"Error: {str(e)}"
         )
 
+@app.post("/api/vote/{query_uuid}")
+async def vote_query(query_uuid: str, payload: VoteRequest, request: Request):
+    """
+    Registra un voto (like/dislike) sobre una consulta.
+    El control de voto único por sesión se realiza en el frontend con sessionStorage.
+    """
+    if not app.db or not app.db.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Base de datos no disponible"
+        )
+
+    if payload.vote not in ("like", "dislike"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El voto debe ser 'like' o 'dislike'"
+        )
+
+    try:
+        # Verificar que la consulta existe
+        query_data = await app.db.get_query_by_uuid(query_uuid)
+        if not query_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No se encontró la consulta con UUID: {query_uuid}"
+            )
+
+        if payload.vote == "like":
+            success = await app.db.update_likes(query_uuid, 1)
+        else:
+            success = await app.db.update_dislikes(query_uuid, 1)
+
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al registrar el voto"
+            )
+
+        # Obtener los contadores actualizados
+        updated_query = await app.db.get_query_by_uuid(query_uuid)
+        return {
+            "success": True,
+            "uuid": query_uuid,
+            "likes": updated_query.get('likes', 0) if updated_query else 0,
+            "dislikes": updated_query.get('dislikes', 0) if updated_query else 0
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error al registrar voto: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al registrar el voto: {str(e)}"
+        )
+
 @app.post("/api/check_similar")
 async def check_similar_queries(payload: CheckSimilarRequest, request: Request):
     """
@@ -656,6 +715,8 @@ async def check_similar_queries(payload: CheckSimilarRequest, request: Request):
                 'uuid': str(query['uuid']),
                 'query_text': query['query_text'],
                 'similarity': round(similarity, 3),
+                'likes': query.get('likes', 0),
+                'dislikes': query.get('dislikes', 0),
                 'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
             }
             
@@ -736,6 +797,8 @@ async def ask_question(payload: AskRequest, request: Request):
                                 "query": query_data['query_text'],
                                 "exact_match_used": True,
                                 "uuid": str(query_data['uuid']),
+                                "likes": query_data.get('likes', 0),
+                                "dislikes": query_data.get('dislikes', 0),
                                 "saved_query_url": f"{BASE_PATH}/savedquery/{query_data['uuid']}"
                             }
                     except Exception as e:
@@ -995,6 +1058,9 @@ async def ask_question(payload: AskRequest, request: Request):
                         # Construir URL para recuperar la consulta (endpoint HTML)
                         saved_query_url = f"{BASE_PATH}/savedquery/{saved_uuid}"
                         response_data['saved_query_url'] = saved_query_url
+                        response_data['uuid'] = str(saved_uuid)
+                        response_data['likes'] = 0
+                        response_data['dislikes'] = 0
                         logging.info(f"Pregunta guardada en BD con UUID: {saved_uuid}")
                         logging.info(f"URL para recuperar: {saved_query_url}")
                     
@@ -1023,6 +1089,8 @@ async def ask_question(payload: AskRequest, request: Request):
                                 'uuid': str(query['uuid']),
                                 'query_text': query['query_text'],
                                 'similarity': round(similarity, 3),
+                                'likes': query.get('likes', 0),
+                                'dislikes': query.get('dislikes', 0),
                                 'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
                             }
                             
@@ -1098,6 +1166,8 @@ async def get_saved_query(query_uuid: str, request: Request):
                 "query": query_data['query_text'],
                 "podcast_name": query_data.get('podcast_name'),
                 "uuid": str(query_data['uuid']),
+                "likes": query_data.get('likes', 0),
+                "dislikes": query_data.get('dislikes', 0),
                 "saved_query_url": f"{BASE_PATH}/api/savedquery/{query_uuid}"
             }
         else:
@@ -1110,6 +1180,8 @@ async def get_saved_query(query_uuid: str, request: Request):
                 "query": query_data['query_text'],
                 "podcast_name": query_data.get('podcast_name'),
                 "uuid": str(query_data['uuid']),
+                "likes": query_data.get('likes', 0),
+                "dislikes": query_data.get('dislikes', 0),
                 "saved_query_url": f"{BASE_PATH}/api/savedquery/{query_uuid}"
             }
         
@@ -1147,6 +1219,8 @@ async def get_saved_query(query_uuid: str, request: Request):
                             'uuid': str(query['uuid']),
                             'query_text': query['query_text'],
                             'similarity': round(similarity, 3),
+                            'likes': query.get('likes', 0),
+                            'dislikes': query.get('dislikes', 0),
                             'url': f"{BASE_PATH}/api/savedquery/{query['uuid']}"
                         }
                         
@@ -1242,6 +1316,8 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                 "references": stored_response.get('references', []),
                 "timestamp": query_data['created_at'].isoformat(),
                 "uuid": str(query_data['uuid']),
+                "likes": query_data.get('likes', 0),
+                "dislikes": query_data.get('dislikes', 0),
                 "saved_query_url": f"{BASE_PATH}/savedquery/{query_uuid}"
             }
         else:
@@ -1252,6 +1328,8 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                 "references": [],
                 "timestamp": query_data['created_at'].isoformat(),
                 "uuid": str(query_data['uuid']),
+                "likes": query_data.get('likes', 0),
+                "dislikes": query_data.get('dislikes', 0),
                 "saved_query_url": f"{BASE_PATH}/savedquery/{query_uuid}"
             }
         
@@ -1290,6 +1368,8 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                             'uuid': str(query['uuid']),
                             'query_text': query['query_text'],
                             'similarity': round(similarity, 3),
+                            'likes': query.get('likes', 0),
+                            'dislikes': query.get('dislikes', 0),
                             'url': f"{BASE_PATH}/savedquery/{query['uuid']}"
                         }
                         
@@ -1650,6 +1730,25 @@ async def admin_toggle_featured(query_uuid: str, request: Request):
     if not success:
         raise HTTPException(status_code=500, detail="Error al actualizar")
     return {"uuid": query_uuid, "featured": new_featured}
+
+@app.post("/api/admin/set_votes/{query_uuid}")
+async def admin_set_votes(query_uuid: str, request: Request):
+    """Establece los valores de likes y dislikes de una consulta (admin)"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    body = await request.json()
+    likes = int(body.get('likes', 0))
+    dislikes = int(body.get('dislikes', 0))
+    if likes < 0 or dislikes < 0:
+        raise HTTPException(status_code=400, detail="Los votos no pueden ser negativos")
+    query = await app.db.get_query_by_uuid(query_uuid)
+    if not query:
+        raise HTTPException(status_code=404, detail="Consulta no encontrada")
+    success = await app.db.set_votes(query_uuid, likes, dislikes)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error al actualizar votos")
+    return {"uuid": query_uuid, "likes": likes, "dislikes": dislikes}
 
 @app.get("/api/admin/categories")
 async def admin_get_categories(request: Request):

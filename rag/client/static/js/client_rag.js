@@ -89,6 +89,15 @@
         let currentSimilarQueries = null; // Consultas similares encontradas
         let showingSimilarQueries = false; // Si estamos mostrando consultas similares
         let pendingQuestion = ''; // Pregunta pendiente de procesar cuando se encontraron similares
+        let currentQueryUuid = null; // UUID de la consulta actualmente mostrada
+
+        // Variables para la sección de votación
+        const voteSection = document.getElementById('voteSection');
+        const voteLikeBtn = document.getElementById('voteLikeBtn');
+        const voteDislikeBtn = document.getElementById('voteDislikeBtn');
+        const voteLikeCount = document.getElementById('voteLikeCount');
+        const voteDislikeCount = document.getElementById('voteDislikeCount');
+        const voteStatus = document.getElementById('voteStatus');
 
         // Función para actualizar el estado del botón de envío
         function updateSubmitButtonState() {
@@ -157,6 +166,7 @@
                 if (searchResult) searchResult.classList.add('hidden');
                 if (refsTable) refsTable.parentElement.classList.add('hidden');
                 if (shareUrlSection) shareUrlSection.classList.add('hidden');
+                if (voteSection) voteSection.classList.add('hidden');
                 console.log('[DEBUG] Contenido de resultados normales ocultado');
                 
                 // Crear HTML para las consultas similares
@@ -691,7 +701,10 @@ function renderFaqQueryItem(query) {
             </div>
             ${responsePreview ? `<div class="faq-query-preview">${escapeHtmlFaq(responsePreview)}</div>` : ''}
             <div class="faq-query-meta">
-                ${query.likes > 0 ? `<span class="faq-query-likes">👍 ${query.likes}</span>` : ''}
+                <span>
+                    ${query.likes > 0 ? `<span class="faq-query-likes">👍 ${query.likes}</span>` : ''}
+                    ${query.dislikes > 0 ? `<span class="faq-query-dislikes">👎 ${query.dislikes}</span>` : ''}
+                </span>
                 <span class="faq-query-arrow">Ver respuesta →</span>
             </div>
         </a>
@@ -1088,6 +1101,124 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
+    // ===== SISTEMA DE VOTACIONES =====
+
+    function getSessionVotes() {
+        try {
+            return JSON.parse(sessionStorage.getItem('sttcast_votes') || '{}');
+        } catch(e) {
+            return {};
+        }
+    }
+
+    function hasVoted(uuid) {
+        const votes = getSessionVotes();
+        return votes[uuid] || null; // 'like', 'dislike', or null
+    }
+
+    function recordVote(uuid, voteType) {
+        const votes = getSessionVotes();
+        votes[uuid] = voteType;
+        sessionStorage.setItem('sttcast_votes', JSON.stringify(votes));
+    }
+
+    async function sendVote(uuid, voteType) {
+        try {
+            const response = await fetch(getApiPath(`/api/vote/${uuid}`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vote: voteType })
+            });
+            if (!response.ok) {
+                throw new Error('Error al registrar el voto');
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('[VOTE] Error:', error);
+            return null;
+        }
+    }
+
+    function setupVoteButtons(uuid, likes, dislikes) {
+        if (!voteSection || !voteLikeBtn || !voteDislikeBtn) return;
+
+        currentQueryUuid = uuid;
+        voteLikeCount.textContent = likes || 0;
+        voteDislikeCount.textContent = dislikes || 0;
+
+        // Reset button state
+        voteLikeBtn.classList.remove('voted-like');
+        voteDislikeBtn.classList.remove('voted-dislike');
+        voteLikeBtn.disabled = false;
+        voteDislikeBtn.disabled = false;
+        if (voteStatus) voteStatus.textContent = '';
+
+        const previousVote = hasVoted(uuid);
+        if (previousVote) {
+            voteLikeBtn.disabled = true;
+            voteDislikeBtn.disabled = true;
+            if (previousVote === 'like') {
+                voteLikeBtn.classList.add('voted-like');
+            } else {
+                voteDislikeBtn.classList.add('voted-dislike');
+            }
+            if (voteStatus) voteStatus.textContent = 'Ya has votado esta consulta';
+        }
+
+        if (uuid) {
+            voteSection.classList.remove('hidden');
+        } else {
+            voteSection.classList.add('hidden');
+        }
+    }
+
+    if (voteLikeBtn) {
+        voteLikeBtn.addEventListener('click', async () => {
+            if (!currentQueryUuid || hasVoted(currentQueryUuid)) return;
+            voteLikeBtn.disabled = true;
+            voteDislikeBtn.disabled = true;
+            const result = await sendVote(currentQueryUuid, 'like');
+            if (result && result.success) {
+                recordVote(currentQueryUuid, 'like');
+                voteLikeCount.textContent = result.likes;
+                voteDislikeCount.textContent = result.dislikes;
+                voteLikeBtn.classList.add('voted-like');
+                if (voteStatus) voteStatus.textContent = '¡Gracias por tu valoración!';
+            } else {
+                voteLikeBtn.disabled = false;
+                voteDislikeBtn.disabled = false;
+                if (voteStatus) voteStatus.textContent = 'Error al registrar el voto';
+            }
+        });
+    }
+
+    if (voteDislikeBtn) {
+        voteDislikeBtn.addEventListener('click', async () => {
+            if (!currentQueryUuid || hasVoted(currentQueryUuid)) return;
+            voteLikeBtn.disabled = true;
+            voteDislikeBtn.disabled = true;
+            const result = await sendVote(currentQueryUuid, 'dislike');
+            if (result && result.success) {
+                recordVote(currentQueryUuid, 'dislike');
+                voteLikeCount.textContent = result.likes;
+                voteDislikeCount.textContent = result.dislikes;
+                voteDislikeBtn.classList.add('voted-dislike');
+                if (voteStatus) voteStatus.textContent = '¡Gracias por tu valoración!';
+            } else {
+                voteLikeBtn.disabled = false;
+                voteDislikeBtn.disabled = false;
+                if (voteStatus) voteStatus.textContent = 'Error al registrar el voto';
+            }
+        });
+    }
+
+    function buildVotesHtml(likes, dislikes) {
+        return `<span class="similar-query-votes">` +
+               `<span class="vote-count">👍 ${likes || 0}</span>` +
+               `<span class="vote-count">👎 ${dislikes || 0}</span>` +
+               `</span>`;
+    }
+
     function showResults(data, lang) {
     console.log("[DEBUG showResults] Inicio - Datos completos:", data);
     console.log("[DEBUG showResults] Lang:", lang);
@@ -1127,6 +1258,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         shareUrlSection.classList.add('hidden');
     }
 
+    // Configurar botones de votación
+    setupVoteButtons(data.uuid || null, data.likes || 0, data.dislikes || 0);
+
     // Mostrar consultas similares si están disponibles
     console.log('[DEBUG] Verificando similar_queries en data:', data.similar_queries);
     if (data.similar_queries) {
@@ -1143,6 +1277,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                         </td>
                         <td class="px-4 py-2 text-center text-sm font-semibold">
                             ${Math.round(query.similarity * 100)}%
+                        </td>
+                        <td class="px-4 py-2 text-center text-sm">
+                            ${buildVotesHtml(query.likes, query.dislikes)}
                         </td>
                     </tr>
                 `).join('');
@@ -1166,6 +1303,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                         <td class="px-4 py-2 text-center text-sm font-semibold">
                             ${Math.round(query.similarity * 100)}%
                         </td>
+                        <td class="px-4 py-2 text-center text-sm">
+                            ${buildVotesHtml(query.likes, query.dislikes)}
+                        </td>
                     </tr>
                 `).join('');
                 mediumSimilarityQueries.classList.remove('hidden');
@@ -1187,6 +1327,9 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                         </td>
                         <td class="px-4 py-2 text-center text-sm font-semibold">
                             ${Math.round(query.similarity * 100)}%
+                        </td>
+                        <td class="px-4 py-2 text-center text-sm">
+                            ${buildVotesHtml(query.likes, query.dislikes)}
                         </td>
                     </tr>
                 `).join('');

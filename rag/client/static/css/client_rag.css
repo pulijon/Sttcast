@@ -1005,6 +1005,70 @@ button:focus {
     color: var(--gray-400);
 }
 
+.faq-query-dislikes {
+    font-size: 0.75rem;
+    color: var(--gray-400);
+}
+
+/* Botones de votación */
+.vote-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 2px solid #e5e7eb;
+    background: #fff;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.vote-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+}
+
+.vote-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.vote-like:hover:not(:disabled) {
+    border-color: #22c55e;
+    background: #f0fdf4;
+}
+
+.vote-dislike:hover:not(:disabled) {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.vote-btn.voted-like {
+    border-color: #22c55e;
+    background: #dcfce7;
+}
+
+.vote-btn.voted-dislike {
+    border-color: #ef4444;
+    background: #fee2e2;
+}
+
+/* Indicadores de votos en consultas similares */
+.similar-query-votes {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-left: 0.5rem;
+}
+
+.similar-query-votes .vote-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+}
+
 .faq-query-arrow {
     font-size: 0.8125rem;
     color: var(--primary-color);

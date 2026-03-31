@@ -281,6 +281,26 @@
                     </div>
                 </div>
 
+                <!-- Sección de votación -->
+                <div id="voteSection" class="mt-6 hidden">
+                    <h3 class="text-xl font-semibold mb-2">¿Te ha resultado útil esta respuesta?</h3>
+                    <div class="flex items-center gap-4">
+                        <button type="button" id="voteLikeBtn"
+                                class="vote-btn vote-like"
+                                title="Me gusta"
+                                aria-label="Votar positivamente esta consulta">
+                            👍 <span id="voteLikeCount">0</span>
+                        </button>
+                        <button type="button" id="voteDislikeBtn"
+                                class="vote-btn vote-dislike"
+                                title="No me gusta"
+                                aria-label="Votar negativamente esta consulta">
+                            👎 <span id="voteDislikeCount">0</span>
+                        </button>
+                        <span id="voteStatus" class="text-sm text-gray-500" aria-live="polite"></span>
+                    </div>
+                </div>
+
                 <!-- Consultas similares -->
                 <div id="similarQueriesSection" class="mt-6 hidden">
                     <h3 class="text-xl font-semibold mb-3">🔍 Consultas relacionadas</h3>
@@ -297,6 +317,7 @@
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
                                         <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="highSimilarityTableBody" class="bg-green-50 divide-y divide-gray-200">
@@ -314,6 +335,7 @@
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
                                         <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mediumSimilarityTableBody" class="bg-yellow-50 divide-y divide-gray-200">
@@ -331,6 +353,7 @@
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
                                         <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="lowSimilarityTableBody" class="bg-orange-50 divide-y divide-gray-200">

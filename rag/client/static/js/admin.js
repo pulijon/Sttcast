@@ -155,7 +155,14 @@ function renderQueries(queries) {
                 </a>
             </td>
             <td class="px-3 py-2 text-gray-500 text-xs">${dateStr}</td>
-            <td class="px-3 py-2 text-center text-gray-600">${q.likes || 0}</td>
+            <td class="px-3 py-2 text-center">
+                <span class="vote-cell" data-uuid="${q.uuid}" data-field="likes" data-value="${q.likes || 0}"
+                      onclick="editVote(this)" title="Clic para editar">${q.likes || 0}</span>
+            </td>
+            <td class="px-3 py-2 text-center">
+                <span class="vote-cell" data-uuid="${q.uuid}" data-field="dislikes" data-value="${q.dislikes || 0}"
+                      onclick="editVote(this)" title="Clic para editar">${q.dislikes || 0}</span>
+            </td>
             <td class="px-3 py-2">${catBadges}</td>
             <td class="px-3 py-2 text-center">
                 <button class="assign-cat-btn text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition"
@@ -223,6 +230,75 @@ async function toggleFeatured(uuid) {
     } catch (e) {
         console.error('Error toggling featured:', e);
         showToast('Error al actualizar', 'error');
+    }
+}
+
+function editVote(cell) {
+    // Evitar abrir doble editor
+    if (cell.querySelector('input')) return;
+    
+    const currentValue = parseInt(cell.dataset.value) || 0;
+    cell.classList.add('vote-cell-editing');
+    
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.value = currentValue;
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+    
+    const finish = () => {
+        const newValue = Math.max(0, parseInt(input.value) || 0);
+        cell.classList.remove('vote-cell-editing');
+        cell.textContent = newValue;
+        cell.dataset.value = newValue;
+        
+        if (newValue !== currentValue) {
+            saveVote(cell.dataset.uuid, cell.dataset.field, newValue);
+        }
+    };
+    
+    input.addEventListener('blur', finish);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentValue; input.blur(); }
+    });
+}
+
+async function saveVote(uuid, field, value) {
+    // Obtener el otro campo del mismo row
+    const row = document.querySelector(`[data-uuid="${uuid}"][data-field="likes"]`);
+    const rowDislike = document.querySelector(`[data-uuid="${uuid}"][data-field="dislikes"]`);
+    const likes = field === 'likes' ? value : parseInt(row?.dataset.value || 0);
+    const dislikes = field === 'dislikes' ? value : parseInt(rowDislike?.dataset.value || 0);
+    
+    try {
+        const resp = await fetch(`${BASE_PATH}/api/admin/set_votes/${uuid}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ likes, dislikes })
+        });
+        if (!resp.ok) {
+            if (resp.status === 401) { window.location.href = `${BASE_PATH}/admin/login`; return; }
+            throw new Error(`Error ${resp.status}`);
+        }
+        const data = await resp.json();
+        
+        // Actualizar en el array local
+        const query = allQueries.find(q => q.uuid === uuid);
+        if (query) {
+            query.likes = data.likes;
+            query.dislikes = data.dislikes;
+        }
+        
+        showToast('Votos actualizados', 'success');
+    } catch (e) {
+        console.error('Error saving votes:', e);
+        showToast('Error al guardar votos', 'error');
+        // Re-render para restaurar valores
+        filterQueries();
     }
 }
 

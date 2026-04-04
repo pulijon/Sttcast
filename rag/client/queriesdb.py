@@ -395,6 +395,27 @@ class RAGDatabase:
                 """)
                 logger.info("✅ Tabla rag_query_categories verificada/creada")
                 
+                # Tabla de auditoría de likes/dislikes con IP
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS ip_likes (
+                        id SERIAL PRIMARY KEY,
+                        query_id INTEGER REFERENCES rag_queries(id) ON DELETE CASCADE,
+                        is_like BOOLEAN NOT NULL,
+                        date TIMESTAMP DEFAULT NOW(),
+                        ip VARCHAR(45) NOT NULL,
+                        from_admin BOOLEAN DEFAULT FALSE
+                    );
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_ip_likes_query_id
+                    ON ip_likes(query_id);
+                """)
+                # Añadir columna from_admin si no existe (migración)
+                await conn.execute("""
+                    ALTER TABLE ip_likes ADD COLUMN IF NOT EXISTS from_admin BOOLEAN DEFAULT FALSE;
+                """)
+                logger.info("✅ Tabla ip_likes verificada/creada")
+                
                 return True
                 
         except Exception as e:
@@ -1036,6 +1057,54 @@ class RAGDatabase:
         except Exception as e:
             logger.error(f"❌ Error al actualizar featured: {e}")
             return False
+
+    async def log_vote(self, query_id: int, is_like: bool, ip: str, from_admin: bool = False) -> bool:
+        """Registra un voto en la tabla de auditoría ip_likes"""
+        if not self.is_available:
+            return False
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+                await conn.execute(
+                    "INSERT INTO ip_likes (query_id, is_like, ip, from_admin) VALUES ($1, $2, $3, $4)",
+                    query_id, is_like, ip, from_admin
+                )
+                return True
+        except Exception as e:
+            logger.error(f"❌ Error al registrar voto en ip_likes: {e}")
+            return False
+
+    async def get_vote_history(self, query_id: int) -> List[Dict[str, Any]]:
+        """Obtiene el historial de votos de una consulta desde ip_likes"""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                records = await conn.fetch(
+                    """
+                    SELECT id, is_like, date, ip, from_admin
+                    FROM ip_likes
+                    WHERE query_id = $1
+                    ORDER BY date DESC
+                    """,
+                    query_id
+                )
+                return [
+                    {
+                        "id": r["id"],
+                        "is_like": r["is_like"],
+                        "date": r["date"].isoformat() if r["date"] else None,
+                        "ip": r["ip"],
+                        "from_admin": r["from_admin"]
+                    }
+                    for r in records
+                ]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener historial de votos: {e}")
+            return []
 
     async def get_featured_queries(
         self,

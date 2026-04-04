@@ -32,6 +32,10 @@
         .vote-cell:hover { background: #e5e7eb; }
         .vote-cell-editing { background: #eff6ff; }
         .vote-cell input { width: 3.5rem; text-align: center; border: 1px solid #93c5fd; border-radius: 4px; padding: 1px 2px; font-size: 0.8125rem; }
+        .vote-history-row { transition: all 0.2s ease; }
+        .vote-history-table { border-collapse: collapse; }
+        .vote-history-table th, .vote-history-table td { border-bottom: 1px solid #e5e7eb; }
+        .vote-history-btn { cursor: pointer; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -102,6 +106,7 @@
                                 <th class="px-3 py-2 text-center w-16">👎</th>
                                 <th class="px-3 py-2 text-left w-48">Categorías</th>
                                 <th class="px-3 py-2 text-center w-32">Acciones</th>
+                                <th class="px-3 py-2 text-center w-16">Hist.</th>
                             </tr>
                         </thead>
                         <tbody id="queriesTableBody" class="divide-y divide-gray-200">

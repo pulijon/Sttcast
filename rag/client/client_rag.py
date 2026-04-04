@@ -594,6 +594,15 @@ async def vote_query(query_uuid: str, payload: VoteRequest, request: Request):
                 detail="Error al registrar el voto"
             )
 
+        # Registrar en tabla de auditoría ip_likes
+        client_ip = get_client_ip_from_request(request)
+        await app.db.log_vote(
+            query_id=query_data['id'],
+            is_like=(payload.vote == "like"),
+            ip=client_ip,
+            from_admin=False
+        )
+
         # Obtener los contadores actualizados
         updated_query = await app.db.get_query_by_uuid(query_uuid)
         return {
@@ -1748,7 +1757,26 @@ async def admin_set_votes(query_uuid: str, request: Request):
     success = await app.db.set_votes(query_uuid, likes, dislikes)
     if not success:
         raise HTTPException(status_code=500, detail="Error al actualizar votos")
+
+    # Registrar cambios en tabla de auditoría ip_likes
+    old_likes = query.get('likes', 0) or 0
+    old_dislikes = query.get('dislikes', 0) or 0
+    client_ip = get_client_ip_from_request(request)
+    if likes != old_likes:
+        await app.db.log_vote(query['id'], is_like=True, ip=client_ip, from_admin=True)
+    if dislikes != old_dislikes:
+        await app.db.log_vote(query['id'], is_like=False, ip=client_ip, from_admin=True)
+
     return {"uuid": query_uuid, "likes": likes, "dislikes": dislikes}
+
+@app.get("/api/admin/vote_history/{query_id}")
+async def admin_vote_history(query_id: int, request: Request):
+    """Obtiene el historial de votos de una consulta (admin)"""
+    require_admin(request)
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=503, detail="Base de datos no disponible")
+    history = await app.db.get_vote_history(query_id)
+    return {"query_id": query_id, "votes": history}
 
 @app.get("/api/admin/categories")
 async def admin_get_categories(request: Request):

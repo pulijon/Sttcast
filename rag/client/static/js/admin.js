@@ -172,8 +172,28 @@ function renderQueries(queries) {
                     + Cat
                 </button>
             </td>
+            <td class="px-3 py-2 text-center">
+                <button class="vote-history-btn text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200 transition"
+                        data-query-id="${q.id}"
+                        title="Ver historial de votos">
+                    📋
+                </button>
+            </td>
         `;
         tbody.appendChild(tr);
+
+        // Fila colapsable para historial de votos
+        const historyTr = document.createElement('tr');
+        historyTr.id = `vote-history-row-${q.id}`;
+        historyTr.className = 'vote-history-row hidden';
+        historyTr.innerHTML = `
+            <td colspan="8" class="px-3 py-2 bg-gray-50">
+                <div class="vote-history-content text-xs text-gray-600">
+                    <span class="loading-spinner"></span> Cargando historial...
+                </div>
+            </td>
+        `;
+        tbody.appendChild(historyTr);
 
         // Bind click handler sin inline onclick (evita problemas con comillas en el texto)
         const assignBtn = tr.querySelector('.assign-cat-btn');
@@ -183,6 +203,14 @@ function renderQueries(queries) {
                     parseInt(assignBtn.dataset.queryId),
                     assignBtn.dataset.queryText
                 );
+            });
+        }
+
+        // Bind vote history toggle
+        const historyBtn = tr.querySelector('.vote-history-btn');
+        if (historyBtn) {
+            historyBtn.addEventListener('click', () => {
+                toggleVoteHistory(parseInt(historyBtn.dataset.queryId));
             });
         }
     });
@@ -299,6 +327,68 @@ async function saveVote(uuid, field, value) {
         showToast('Error al guardar votos', 'error');
         // Re-render para restaurar valores
         filterQueries();
+    }
+}
+
+// =============================================
+//  Historial de votos
+// =============================================
+async function toggleVoteHistory(queryId) {
+    const row = document.getElementById(`vote-history-row-${queryId}`);
+    if (!row) return;
+
+    if (!row.classList.contains('hidden')) {
+        row.classList.add('hidden');
+        return;
+    }
+
+    row.classList.remove('hidden');
+    const contentDiv = row.querySelector('.vote-history-content');
+    contentDiv.innerHTML = '<span class="loading-spinner"></span> Cargando historial...';
+
+    try {
+        const resp = await fetch(`${BASE_PATH}/api/admin/vote_history/${queryId}`);
+        if (!resp.ok) {
+            if (resp.status === 401) { window.location.href = `${BASE_PATH}/admin/login`; return; }
+            throw new Error(`Error ${resp.status}`);
+        }
+        const data = await resp.json();
+        const votes = data.votes || [];
+
+        if (votes.length === 0) {
+            contentDiv.innerHTML = '<em class="text-gray-400">Sin registros de votos (los votos anteriores a la auditoría no se registran)</em>';
+            return;
+        }
+
+        let html = `<table class="vote-history-table w-full text-xs">
+            <thead><tr class="bg-gray-100">
+                <th class="px-2 py-1 text-left">Fecha</th>
+                <th class="px-2 py-1 text-center">Tipo</th>
+                <th class="px-2 py-1 text-center">Origen</th>
+                <th class="px-2 py-1 text-left">IP</th>
+            </tr></thead><tbody>`;
+
+        votes.forEach(v => {
+            const dateStr = v.date ? new Date(v.date).toLocaleString('es-ES', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            }) : '';
+            const tipo = v.is_like ? '👍' : '👎';
+            const origen = v.from_admin ? '🔧 Admin' : '👤 Usuario';
+            const rowClass = v.is_like ? 'bg-green-50' : 'bg-red-50';
+            html += `<tr class="${rowClass}">
+                <td class="px-2 py-1">${dateStr}</td>
+                <td class="px-2 py-1 text-center">${tipo}</td>
+                <td class="px-2 py-1 text-center">${origen}</td>
+                <td class="px-2 py-1">${escapeHtml(v.ip || '')}</td>
+            </tr>`;
+        });
+
+        html += '</tbody></table>';
+        contentDiv.innerHTML = html;
+    } catch (e) {
+        console.error('Error loading vote history:', e);
+        contentDiv.innerHTML = '<em class="text-red-500">Error al cargar historial</em>';
     }
 }
 

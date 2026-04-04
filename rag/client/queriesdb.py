@@ -1040,7 +1040,7 @@ class RAGDatabase:
     async def get_featured_queries(
         self,
         podcast_name: Optional[str] = None,
-        limit: int = 200
+        limit: int = 2000
     ) -> List[Dict[str, Any]]:
         """Obtiene consultas destacadas con sus categorías"""
         if not self.is_available:
@@ -1067,7 +1067,7 @@ class RAGDatabase:
                         WHERE q.featured = TRUE AND q.allowed = TRUE
                               AND q.podcast_name = $1
                         GROUP BY q.id
-                        ORDER BY q.likes DESC, q.created_at DESC
+                        ORDER BY (q.likes - q.dislikes) DESC, q.created_at DESC
                         LIMIT $2
                     """, podcast_name, limit)
                 else:
@@ -1087,10 +1087,14 @@ class RAGDatabase:
                         LEFT JOIN rag_categories c ON qc.category_id = c.id
                         WHERE q.featured = TRUE AND q.allowed = TRUE
                         GROUP BY q.id
-                        ORDER BY q.likes DESC, q.created_at DESC
+                        ORDER BY (q.likes - q.dislikes) DESC, q.created_at DESC
                         LIMIT $1
                     """, limit)
-                return [dict(r) for r in records]
+                result = [dict(r) for r in records]
+                if len(result) >= limit:
+                    logger.warning(f"⚠️  get_featured_queries alcanzó el límite de {limit} consultas. "
+                                   f"Puede haber consultas destacadas que no se muestran.")
+                return result
         except Exception as e:
             logger.error(f"❌ Error al obtener consultas destacadas: {e}")
             return []

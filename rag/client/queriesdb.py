@@ -26,7 +26,56 @@ try:
 except ImportError:
     HAS_ASYNCPG = False
 
+try:
+    import geoip2.database
+    HAS_GEOIP = True
+except ImportError:
+    HAS_GEOIP = False
+
 logger = logging.getLogger(__name__)
+
+# Ruta por defecto de la base de datos GeoLite2-City
+GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+_geoip_reader = None
+
+
+def _get_geoip_reader():
+    """Obtiene (o crea) el lector GeoIP singleton."""
+    global _geoip_reader
+    if _geoip_reader is not None:
+        return _geoip_reader
+    if not HAS_GEOIP:
+        return None
+    if not os.path.exists(GEOIP_DB_PATH):
+        logger.warning(f"⚠️  Base de datos GeoIP no encontrada en {GEOIP_DB_PATH}")
+        return None
+    try:
+        _geoip_reader = geoip2.database.Reader(GEOIP_DB_PATH)
+        logger.info(f"✅ GeoIP inicializado con {GEOIP_DB_PATH}")
+        return _geoip_reader
+    except Exception as e:
+        logger.warning(f"⚠️  Error al abrir base de datos GeoIP: {e}")
+        return None
+
+
+def geoip_lookup(ip: str) -> dict:
+    """
+    Busca país y ciudad a partir de una IP usando GeoLite2.
+    Retorna {'country': ..., 'city': ...} o valores None si no se puede resolver.
+    """
+    result = {"country": None, "city": None}
+    if not ip or ip in ('unknown', '127.0.0.1', '::1'):
+        return result
+    reader = _get_geoip_reader()
+    if not reader:
+        return result
+    try:
+        response = reader.city(ip)
+        result["country"] = response.country.name
+        result["city"] = response.city.name
+    except Exception:
+        pass  # IP no encontrada en la base de datos GeoIP
+    return result
 
 
 class RAGDatabase:
@@ -416,6 +465,20 @@ class RAGDatabase:
                 """)
                 logger.info("✅ Tabla ip_likes verificada/creada")
                 
+                # ===== GeoIP: columnas ip, country, city en rag_queries =====
+                for col, col_type in [('ip', 'VARCHAR(45)'), ('country', 'VARCHAR(100)'), ('city', 'VARCHAR(100)')]:
+                    await conn.execute(f"""
+                        ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS {col} {col_type};
+                    """)
+                logger.info("✅ Columnas ip/country/city en rag_queries verificadas/creadas")
+                
+                # ===== GeoIP: columnas country, city en ip_likes =====
+                for col in ['country', 'city']:
+                    await conn.execute(f"""
+                        ALTER TABLE ip_likes ADD COLUMN IF NOT EXISTS {col} VARCHAR(100);
+                    """)
+                logger.info("✅ Columnas country/city en ip_likes verificadas/creadas")
+                
                 return True
                 
         except Exception as e:
@@ -441,7 +504,8 @@ class RAGDatabase:
         response_text: str,
         response_data: Optional[Dict[str, Any]] = None,
         query_embedding: Optional[List[float]] = None,
-        podcast_name: Optional[str] = None
+        podcast_name: Optional[str] = None,
+        ip: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Guarda una query, respuesta y embedding en la BD
@@ -452,6 +516,7 @@ class RAGDatabase:
             response_data: Dict completo con {response: {es: ..., en: ...}, references: [...]}
             query_embedding: Vector embedding de la pregunta (lista de floats)
             podcast_name: Nombre del podcast
+            ip: Dirección IP del cliente
             
         Returns:
             Dict con id y uuid de la fila insertada o None si error
@@ -475,10 +540,13 @@ class RAGDatabase:
                 import json
                 response_data_json = json.dumps(response_data) if response_data else None
                 
+                # Resolver GeoIP
+                geo = geoip_lookup(ip) if ip else {"country": None, "city": None}
+                
                 # SQL para insertar - El orden debe coincidir con el de VALUES
                 query = """
-                    INSERT INTO rag_queries (query_text, response_text, query_embedding, podcast_name, response_data, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                    INSERT INTO rag_queries (query_text, response_text, query_embedding, podcast_name, response_data, created_at, ip, country, city)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     RETURNING id, uuid;
                 """
                 
@@ -489,7 +557,10 @@ class RAGDatabase:
                     embedding_value,     # $3 -> query_embedding (vector(1536))
                     podcast_name,        # $4 -> podcast_name (VARCHAR)
                     response_data_json,  # $5 -> response_data (JSONB)
-                    datetime.now()       # $6 -> created_at (TIMESTAMP)
+                    datetime.now(),      # $6 -> created_at (TIMESTAMP)
+                    ip,                  # $7 -> ip (VARCHAR)
+                    geo["country"],      # $8 -> country (VARCHAR)
+                    geo["city"]          # $9 -> city (VARCHAR)
                 )
                 
                 if result:
@@ -645,7 +716,8 @@ class RAGDatabase:
                 if podcast_name:
                     records = await conn.fetch(
                         """
-                        SELECT id, uuid, query_text, response_text, created_at, podcast_name
+                        SELECT id, uuid, query_text, response_text, created_at, podcast_name,
+                               ip, country, city
                         FROM rag_queries
                         WHERE podcast_name = $1
                         ORDER BY created_at DESC
@@ -658,7 +730,8 @@ class RAGDatabase:
                 else:
                     records = await conn.fetch(
                         """
-                        SELECT id, uuid, query_text, response_text, created_at, podcast_name
+                        SELECT id, uuid, query_text, response_text, created_at, podcast_name,
+                               ip, country, city
                         FROM rag_queries
                         ORDER BY created_at DESC
                         LIMIT $1 OFFSET $2
@@ -1059,16 +1132,17 @@ class RAGDatabase:
             return False
 
     async def log_vote(self, query_id: int, is_like: bool, ip: str, from_admin: bool = False) -> bool:
-        """Registra un voto en la tabla de auditoría ip_likes"""
+        """Registra un voto en la tabla de auditoría ip_likes con datos GeoIP"""
         if not self.is_available:
             return False
         try:
+            geo = geoip_lookup(ip) if ip else {"country": None, "city": None}
             async with self.get_connection() as conn:
                 if conn is None:
                     return False
                 await conn.execute(
-                    "INSERT INTO ip_likes (query_id, is_like, ip, from_admin) VALUES ($1, $2, $3, $4)",
-                    query_id, is_like, ip, from_admin
+                    "INSERT INTO ip_likes (query_id, is_like, ip, from_admin, country, city) VALUES ($1, $2, $3, $4, $5, $6)",
+                    query_id, is_like, ip, from_admin, geo["country"], geo["city"]
                 )
                 return True
         except Exception as e:
@@ -1085,7 +1159,7 @@ class RAGDatabase:
                     return []
                 records = await conn.fetch(
                     """
-                    SELECT id, is_like, date, ip, from_admin
+                    SELECT id, is_like, date, ip, from_admin, country, city
                     FROM ip_likes
                     WHERE query_id = $1
                     ORDER BY date DESC
@@ -1098,7 +1172,9 @@ class RAGDatabase:
                         "is_like": r["is_like"],
                         "date": r["date"].isoformat() if r["date"] else None,
                         "ip": r["ip"],
-                        "from_admin": r["from_admin"]
+                        "from_admin": r["from_admin"],
+                        "country": r["country"],
+                        "city": r["city"]
                     }
                     for r in records
                 ]
@@ -1228,6 +1304,7 @@ class RAGDatabase:
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
+                               q.ip, q.country, q.city,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(
                                        'id', c.id, 'name', c.name, 'slug', c.slug,
@@ -1249,6 +1326,7 @@ class RAGDatabase:
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
+                               q.ip, q.country, q.city,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(
                                        'id', c.id, 'name', c.name, 'slug', c.slug,

@@ -163,6 +163,8 @@ function renderQueries(queries) {
                 <span class="vote-cell" data-uuid="${q.uuid}" data-field="dislikes" data-value="${q.dislikes || 0}"
                       onclick="editVote(this)" title="Clic para editar">${q.dislikes || 0}</span>
             </td>
+            <td class="px-3 py-2 text-gray-500 text-xs">${escapeHtml(q.ip || '')}</td>
+            <td class="px-3 py-2 text-gray-500 text-xs">${escapeHtml(q.country || '')}${q.country && q.city ? ' / ' : ''}${escapeHtml(q.city || '')}</td>
             <td class="px-3 py-2">${catBadges}</td>
             <td class="px-3 py-2 text-center">
                 <button class="assign-cat-btn text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition"
@@ -187,7 +189,7 @@ function renderQueries(queries) {
         historyTr.id = `vote-history-row-${q.id}`;
         historyTr.className = 'vote-history-row hidden';
         historyTr.innerHTML = `
-            <td colspan="8" class="px-3 py-2 bg-gray-50">
+            <td colspan="10" class="px-3 py-2 bg-gray-50">
                 <div class="vote-history-content text-xs text-gray-600">
                     <span class="loading-spinner"></span> Cargando historial...
                 </div>
@@ -366,6 +368,8 @@ async function toggleVoteHistory(queryId) {
                 <th class="px-2 py-1 text-center">Tipo</th>
                 <th class="px-2 py-1 text-center">Origen</th>
                 <th class="px-2 py-1 text-left">IP</th>
+                <th class="px-2 py-1 text-left">País</th>
+                <th class="px-2 py-1 text-left">Ciudad</th>
             </tr></thead><tbody>`;
 
         votes.forEach(v => {
@@ -381,6 +385,8 @@ async function toggleVoteHistory(queryId) {
                 <td class="px-2 py-1 text-center">${tipo}</td>
                 <td class="px-2 py-1 text-center">${origen}</td>
                 <td class="px-2 py-1">${escapeHtml(v.ip || '')}</td>
+                <td class="px-2 py-1">${escapeHtml(v.country || '')}</td>
+                <td class="px-2 py-1">${escapeHtml(v.city || '')}</td>
             </tr>`;
         });
 

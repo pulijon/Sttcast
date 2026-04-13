@@ -1055,12 +1055,14 @@ async def ask_question(payload: AskRequest, request: Request):
                     }
                     
                     # Guardar en BD con estructura completa
+                    client_ip = get_client_ip_from_request(request)
                     result = await app.db.save_query(
                         query_text=question,
                         response_text=reldata["search"].get("es", ""),  # Español como texto plano
                         response_data=response_data_to_save,
                         query_embedding=query_embedding,
-                        podcast_name=app.podcast_name
+                        podcast_name=app.podcast_name,
+                        ip=client_ip
                     )
                     if result and result.get('uuid'):
                         saved_uuid = result['uuid']
@@ -1520,6 +1522,9 @@ async def list_all_queries(clave: str, request: Request):
                 <th>#</th>
                 <th>Fecha</th>
                 <th>Consulta</th>
+                <th>IP</th>
+                <th>Pa\u00eds</th>
+                <th>Ciudad</th>
                 <th>URL Persistente</th>
             </tr>
         </thead>
@@ -1531,6 +1536,9 @@ async def list_all_queries(clave: str, request: Request):
             query_uuid = query.get('uuid', '')
             query_text = query.get('query_text', '')
             created_at = query.get('created_at', '')
+            query_ip = query.get('ip', '') or ''
+            query_country = query.get('country', '') or ''
+            query_city = query.get('city', '') or ''
             
             # Construir URL persistente usando el UUID
             query_url = f"{BASE_PATH}/savedquery/{query_uuid}"
@@ -1546,6 +1554,9 @@ async def list_all_queries(clave: str, request: Request):
                 <td>{idx}</td>
                 <td class="timestamp">{formatted_date}</td>
                 <td class="query-text">{query_text}</td>
+                <td>{query_ip}</td>
+                <td>{query_country}</td>
+                <td>{query_city}</td>
                 <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
 """

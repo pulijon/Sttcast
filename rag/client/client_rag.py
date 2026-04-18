@@ -21,6 +21,7 @@ from typing import List, Optional
 import secrets
 import requests
 from datetime import datetime
+from html import escape
 from urllib.parse import urljoin
 from api.apihmac import create_auth_headers, serialize_body
 from findtime import find_nearest_time_id
@@ -1576,6 +1577,106 @@ async def list_all_queries(clave: str, request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener las consultas: {str(e)}"
         )
+
+
+@app.get("/queries/city/{city}", response_class=HTMLResponse)
+async def list_queries_by_city(city: str, request: Request,
+                                likes_threshold: int = 0):
+    """
+    Endpoint público: lista las consultas mejor valoradas desde una ciudad.
+    No muestra IPs ni requiere autenticación.
+    """
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Base de datos no disponible")
+
+    try:
+        from urllib.parse import unquote
+        decoded_city = unquote(city)
+        queries = await app.db.get_queries_by_city(
+            city=decoded_city,
+            podcast_name=app.podcast_name,
+            likes_threshold=likes_threshold,
+        )
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultas desde {escape(decoded_city)} - {escape(app.podcast_name)}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+        h1 {{ color: #333; }}
+        table {{ width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        th {{ background-color: #4CAF50; color: white; padding: 12px; text-align: left; font-weight: bold; }}
+        td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+        a {{ color: #1976d2; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .query-text {{ max-width: 600px; word-wrap: break-word; }}
+        .timestamp {{ white-space: nowrap; color: #666; }}
+        .total-count {{ margin: 10px 0; color: #666; }}
+    </style>
+</head>
+<body>
+    <h1>Consultas desde {escape(decoded_city)} - {escape(app.podcast_name)}</h1>
+    <div class="total-count">Total de consultas: {len(queries)}</div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>Consulta</th>
+                <th>Pa\u00eds</th>
+                <th>Ciudad</th>
+                <th>Likes</th>
+                <th>URL Persistente</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+        for idx, q in enumerate(queries, 1):
+            query_uuid = q.get('uuid', '')
+            query_text = escape(str(q.get('query_text', '')))
+            created_at = q.get('created_at', '')
+            q_country = escape(str(q.get('country', '') or ''))
+            q_city = escape(str(q.get('city', '') or ''))
+            q_likes = q.get('likes', 0) or 0
+            q_dislikes = q.get('dislikes', 0) or 0
+            score = q_likes - q_dislikes
+            query_url = f"{BASE_PATH}/savedquery/{query_uuid}"
+            if isinstance(created_at, datetime):
+                formatted_date = created_at.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                formatted_date = str(created_at)
+            html_content += f"""
+            <tr>
+                <td>{idx}</td>
+                <td class="timestamp">{formatted_date}</td>
+                <td class="query-text">{query_text}</td>
+                <td>{q_country}</td>
+                <td>{q_city}</td>
+                <td>{score}</td>
+                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+            </tr>
+"""
+        html_content += """
+        </tbody>
+    </table>
+</body>
+</html>
+"""
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        logging.error(f"Error al listar consultas por ciudad: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener las consultas: {str(e)}"
+        )
+
 
 # Función que pregunta al endpoint de context server gen_stats para obtener estadísticas generales
 # a partir de dos fechas

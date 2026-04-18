@@ -1286,6 +1286,94 @@ class RAGDatabase:
             logger.error(f"❌ Error al obtener consultas por categoría: {e}")
             return []
 
+    async def get_queries_geo_summary(
+        self,
+        podcast_name: Optional[str] = None,
+        likes_threshold: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Obtiene un resumen geográfico de consultas agrupadas por ciudad.
+
+        Filtra consultas cuyo (likes - dislikes) >= likes_threshold.
+        Retorna una lista de dicts con country, city, query_count y sample_ip
+        (una IP representativa para resolver coordenadas localmente vía GeoIP).
+        """
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT country, city, COUNT(*) AS query_count,
+                               MIN(ip) AS sample_ip
+                        FROM rag_queries
+                        WHERE podcast_name = $1
+                          AND city IS NOT NULL
+                          AND ip IS NOT NULL
+                          AND (likes - dislikes) >= $2
+                        GROUP BY country, city
+                        ORDER BY query_count DESC
+                    """, podcast_name, likes_threshold)
+                else:
+                    records = await conn.fetch("""
+                        SELECT country, city, COUNT(*) AS query_count,
+                               MIN(ip) AS sample_ip
+                        FROM rag_queries
+                        WHERE city IS NOT NULL
+                          AND ip IS NOT NULL
+                          AND (likes - dislikes) >= $1
+                        GROUP BY country, city
+                        ORDER BY query_count DESC
+                    """, likes_threshold)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener resumen geográfico: {e}")
+            return []
+
+    async def get_queries_by_city(
+        self,
+        city: str,
+        podcast_name: Optional[str] = None,
+        likes_threshold: int = 0,
+        limit: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Obtiene consultas realizadas desde una ciudad específica.
+
+        Filtra consultas cuyo (likes - dislikes) >= likes_threshold.
+        No devuelve la IP (privacidad).
+        """
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT id, uuid, query_text, response_text, created_at,
+                               podcast_name, country, city, likes, dislikes
+                        FROM rag_queries
+                        WHERE city = $1 AND podcast_name = $2
+                          AND (likes - dislikes) >= $3
+                        ORDER BY created_at DESC
+                        LIMIT $4
+                    """, city, podcast_name, likes_threshold, limit)
+                else:
+                    records = await conn.fetch("""
+                        SELECT id, uuid, query_text, response_text, created_at,
+                               podcast_name, country, city, likes, dislikes
+                        FROM rag_queries
+                        WHERE city = $1
+                          AND (likes - dislikes) >= $2
+                        ORDER BY created_at DESC
+                        LIMIT $3
+                    """, city, likes_threshold, limit)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener consultas por ciudad: {e}")
+            return []
+
     async def get_all_queries_admin(
         self,
         podcast_name: Optional[str] = None,

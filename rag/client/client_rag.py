@@ -1678,6 +1678,258 @@ async def list_queries_by_city(city: str, request: Request,
         )
 
 
+@app.get("/queries/country/{country}", response_class=HTMLResponse)
+async def list_queries_by_country(country: str, request: Request,
+                                  likes_threshold: int = 0):
+    """Endpoint público: lista las consultas mejor valoradas desde un país."""
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Base de datos no disponible")
+
+    try:
+        from urllib.parse import unquote
+        decoded_country = unquote(country)
+        queries = await app.db.get_queries_by_country(
+            country=decoded_country,
+            podcast_name=app.podcast_name,
+            likes_threshold=likes_threshold,
+        )
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultas desde {escape(decoded_country)} - {escape(app.podcast_name)}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
+        h1 {{ color: #333; }}
+        table {{ width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        th {{ background-color: #4CAF50; color: white; padding: 12px; text-align: left; font-weight: bold; }}
+        td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+        a {{ color: #1976d2; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+        .query-text {{ max-width: 600px; word-wrap: break-word; }}
+        .timestamp {{ white-space: nowrap; color: #666; }}
+        .total-count {{ margin: 10px 0; color: #666; }}
+    </style>
+</head>
+<body>
+    <h1>Consultas desde {escape(decoded_country)} - {escape(app.podcast_name)}</h1>
+    <div class="total-count">Total de consultas: {len(queries)}</div>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>Consulta</th>
+                <th>País</th>
+                <th>Ciudad</th>
+                <th>Likes</th>
+                <th>URL Persistente</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+        for idx, q in enumerate(queries, 1):
+            query_uuid = q.get('uuid', '')
+            query_text = escape(str(q.get('query_text', '')))
+            created_at = q.get('created_at', '')
+            q_country = escape(str(q.get('country', '') or ''))
+            q_city = escape(str(q.get('city', '') or ''))
+            q_likes = q.get('likes', 0) or 0
+            q_dislikes = q.get('dislikes', 0) or 0
+            score = q_likes - q_dislikes
+            query_url = f"{BASE_PATH}/savedquery/{query_uuid}"
+            if isinstance(created_at, datetime):
+                formatted_date = created_at.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                formatted_date = str(created_at)
+            html_content += f"""
+            <tr>
+                <td>{idx}</td>
+                <td class="timestamp">{formatted_date}</td>
+                <td class="query-text">{query_text}</td>
+                <td>{q_country}</td>
+                <td>{q_city}</td>
+                <td>{score}</td>
+                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+            </tr>
+"""
+        html_content += """
+        </tbody>
+    </table>
+</body>
+</html>
+"""
+        return HTMLResponse(content=html_content)
+
+    except Exception as e:
+        logging.error(f"Error al listar consultas por país: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener las consultas: {str(e)}"
+        )
+
+
+def _public_query_location_url(country: str = '', city: str = '', likes_threshold: int = 0) -> str:
+    """Construye la URL pública para una localización del mapa."""
+    from urllib.parse import quote
+
+    if city:
+        return f"{BASE_PATH}/queries/city/{quote(city)}?likes_threshold={likes_threshold}"
+    if country:
+        return f"{BASE_PATH}/queries/country/{quote(country)}?likes_threshold={likes_threshold}"
+    return ""
+
+
+async def _resolve_geo_summary_points(likes_threshold: int = 0):
+    """Obtiene los puntos geográficos resolviendo coordenadas desde sample_ip."""
+    if not app.db or not app.db.is_available:
+        return []
+
+    geo_data = await app.db.get_queries_geo_summary(
+        podcast_name=app.podcast_name,
+        likes_threshold=likes_threshold,
+    )
+    if not geo_data:
+        return []
+
+    try:
+        import geoip2.database
+    except ImportError:
+        logging.error("geoip2 no disponible para resolver coordenadas del mapa")
+        return []
+
+    geoip_db_path = os.getenv("GEOIP_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+    if not os.path.exists(geoip_db_path):
+        logging.error(f"Base de datos GeoIP no encontrada en {geoip_db_path}")
+        return []
+
+    resolved = []
+    reader = geoip2.database.Reader(geoip_db_path)
+    try:
+        for item in geo_data:
+            sample_ip = item.get("sample_ip")
+            if not sample_ip:
+                continue
+            try:
+                resp = reader.city(sample_ip)
+                lat = resp.location.latitude
+                lon = resp.location.longitude
+                if lat is None or lon is None:
+                    continue
+                resolved.append({
+                    **item,
+                    "latitude": lat,
+                    "longitude": lon,
+                    "location_name": item.get("city") or item.get("country") or "Desconocida",
+                })
+            except Exception:
+                logging.debug(f"No se pudieron resolver coordenadas para {item.get('country')} / {item.get('city')}")
+    finally:
+        reader.close()
+
+    return resolved
+
+
+@app.get("/queries/map", response_class=HTMLResponse)
+async def public_queries_map(request: Request, likes_threshold: int = 0):
+    """Mapa público e interactivo de consultas geolocalizadas."""
+    if not app.db or not app.db.is_available:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Base de datos no disponible")
+
+    try:
+        import folium
+    except ImportError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail="folium no está instalado")
+
+    try:
+        points = await _resolve_geo_summary_points(likes_threshold=likes_threshold)
+        if not points:
+            return HTMLResponse(content="""
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Mapa de consultas</title></head>
+<body style="font-family: Arial, sans-serif; margin: 2rem; background: #f8fafc; color: #1f2937;">
+<h1>Mapa de consultas</h1>
+<p>No hay datos geográficos disponibles para mostrar.</p>
+</body></html>
+""")
+
+        total = sum(int(p.get("query_count", 0)) for p in points)
+        avg_lat = sum(float(p["latitude"]) * int(p.get("query_count", 0)) for p in points) / total
+        avg_lon = sum(float(p["longitude"]) * int(p.get("query_count", 0)) for p in points) / total
+        m = folium.Map(location=[avg_lat, avg_lon], zoom_start=3,
+                       tiles="CartoDB positron", control_scale=True)
+
+        max_count = max(int(p.get("query_count", 0)) for p in points) or 1
+        bounds = []
+        for point in points:
+            lat = float(point["latitude"])
+            lon = float(point["longitude"])
+            bounds.append([lat, lon])
+            location_name = escape(str(point.get("location_name") or point.get("city") or point.get("country") or "Desconocida"))
+            country = escape(str(point.get("country") or ""))
+            count = int(point.get("query_count", 0))
+            radius = max(5, 25 * (count / max_count))
+            location_url = _public_query_location_url(
+                country=str(point.get("country") or ""),
+                city=str(point.get("city") or ""),
+                likes_threshold=likes_threshold,
+            )
+            popup_html = (
+                f"<b>{location_name}</b>"
+                f"{'<br>' + country if country and country != location_name else ''}"
+                f"<br>Consultas: {count}"
+                + (f'<br><a href="{location_url}" target="_blank">Ver consultas</a>' if location_url else '')
+            )
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=radius,
+                popup=folium.Popup(popup_html, max_width=260),
+                tooltip=f"{location_name} ({count})",
+                color="#e94560",
+                fill=True,
+                fill_color="#e94560",
+                fill_opacity=0.65,
+            ).add_to(m)
+
+        if len(bounds) > 1:
+            m.fit_bounds(bounds, padding=(20, 20))
+
+        map_html = m._repr_html_()
+        page_html = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de consultas - {escape(app.podcast_name or 'RAG')}</title>
+</head>
+<body style="font-family: Arial, sans-serif; margin: 0; background: #f5f5f5; color: #1f2937;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 1rem;">
+        <h1 style="margin-bottom: 0.3rem;">Mapa de consultas</h1>
+        <p style="margin-top: 0; color: #4b5563;">Consultas destacadas por ciudad o país. Base cartográfica © OpenStreetMap contributors · © CARTO.</p>
+        <p><a href="{BASE_PATH or '/'}" style="color: #2563eb; text-decoration: none;">← Volver al cliente RAG</a></p>
+        {map_html}
+    </div>
+</body>
+</html>
+"""
+        return HTMLResponse(content=page_html)
+
+    except Exception as e:
+        logging.error(f"Error generando el mapa público de consultas: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar el mapa: {str(e)}"
+        )
+
+
 # Función que pregunta al endpoint de context server gen_stats para obtener estadísticas generales
 # a partir de dos fechas
 class GenStatsRequest(BaseModel):

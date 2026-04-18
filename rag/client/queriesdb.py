@@ -1291,11 +1291,12 @@ class RAGDatabase:
         podcast_name: Optional[str] = None,
         likes_threshold: int = 0
     ) -> List[Dict[str, Any]]:
-        """Obtiene un resumen geográfico de consultas agrupadas por ciudad.
+        """Obtiene un resumen geográfico de consultas agrupadas por ciudad o país.
 
         Filtra consultas cuyo (likes - dislikes) >= likes_threshold.
         Retorna una lista de dicts con country, city, query_count y sample_ip
         (una IP representativa para resolver coordenadas localmente vía GeoIP).
+        Si falta la ciudad, la entrada se mantiene usando el país.
         """
         if not self.is_available:
             return []
@@ -1309,7 +1310,7 @@ class RAGDatabase:
                                MIN(ip) AS sample_ip
                         FROM rag_queries
                         WHERE podcast_name = $1
-                          AND city IS NOT NULL
+                          AND country IS NOT NULL
                           AND ip IS NOT NULL
                           AND (likes - dislikes) >= $2
                         GROUP BY country, city
@@ -1320,7 +1321,7 @@ class RAGDatabase:
                         SELECT country, city, COUNT(*) AS query_count,
                                MIN(ip) AS sample_ip
                         FROM rag_queries
-                        WHERE city IS NOT NULL
+                        WHERE country IS NOT NULL
                           AND ip IS NOT NULL
                           AND (likes - dislikes) >= $1
                         GROUP BY country, city
@@ -1372,6 +1373,45 @@ class RAGDatabase:
                 return [dict(r) for r in records]
         except Exception as e:
             logger.error(f"❌ Error al obtener consultas por ciudad: {e}")
+            return []
+
+    async def get_queries_by_country(
+        self,
+        country: str,
+        podcast_name: Optional[str] = None,
+        likes_threshold: int = 0,
+        limit: int = 500
+    ) -> List[Dict[str, Any]]:
+        """Obtiene consultas realizadas desde un país específico."""
+        if not self.is_available:
+            return []
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+                if podcast_name:
+                    records = await conn.fetch("""
+                        SELECT id, uuid, query_text, response_text, created_at,
+                               podcast_name, country, city, likes, dislikes
+                        FROM rag_queries
+                        WHERE country = $1 AND podcast_name = $2
+                          AND (likes - dislikes) >= $3
+                        ORDER BY created_at DESC
+                        LIMIT $4
+                    """, country, podcast_name, likes_threshold, limit)
+                else:
+                    records = await conn.fetch("""
+                        SELECT id, uuid, query_text, response_text, created_at,
+                               podcast_name, country, city, likes, dislikes
+                        FROM rag_queries
+                        WHERE country = $1
+                          AND (likes - dislikes) >= $2
+                        ORDER BY created_at DESC
+                        LIMIT $3
+                    """, country, likes_threshold, limit)
+                return [dict(r) for r in records]
+        except Exception as e:
+            logger.error(f"❌ Error al obtener consultas por país: {e}")
             return []
 
     async def get_all_queries_admin(

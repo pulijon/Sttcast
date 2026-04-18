@@ -24,6 +24,11 @@ mutagen
 pydub
 seaborn
 fastapi
+itsdangerous
+folium
+geoip2
+pillow
+requests
 openai
 pydantic
 uvicorn

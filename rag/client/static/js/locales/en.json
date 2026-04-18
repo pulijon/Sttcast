@@ -1,0 +1,171 @@
+{
+  "pageTitle": "Relevant queries in the podcast collection of {podcast_name}",
+  "nav": {
+    "skipLink": "Skip to main content"
+  },
+  "cookies": {
+    "title": "Cookie Usage",
+    "text": "This website uses necessary technical cookies for its operation and analytics cookies to improve the user experience. By continuing to browse, you accept the use of cookies.",
+    "moreInfo": "More information",
+    "reject": "Reject",
+    "accept": "Accept",
+    "configure": "Configure"
+  },
+  "a11y": {
+    "increaseFontTitle": "Increase font size",
+    "decreaseFontTitle": "Decrease font size",
+    "contrast": "Contrast",
+    "contrastTitle": "Toggle high contrast",
+    "infoLink": "Accessibility information",
+    "required": "Required field"
+  },
+  "main": {
+    "title": "Query system for the podcast collection of {podcast_name}"
+  },
+  "queryType": {
+    "legend": "What type of query do you want to perform?",
+    "topicsTitle": "Submit a query",
+    "topicsDesc": "Search for specific information about topics discussed in the podcasts",
+    "speakersTitle": "Speaker analysis",
+    "speakersDesc": "Analyze statistics and participation patterns of the speakers",
+    "faqTitle": "Featured queries",
+    "faqDesc": "Explore the most interesting queries made previously, organized by categories",
+    "continue": "Continue",
+    "noTypeSelected": "Please select a query type."
+  },
+  "topics": {
+    "back": "← Back to query type selection",
+    "heading": "Topic queries",
+    "questionLabel": "Enter your question:",
+    "questionPlaceholder": "Enter your question about {podcast_name} podcasts...",
+    "questionHelp": "Describe what you want to know about {podcast_name} podcasts. You can use voice with the microphone button.",
+    "micAriaLabel": "Use voice recognition to type the question",
+    "micTitle": "Voice question",
+    "diagAriaLabel": "Show microphone diagnostic information",
+    "diagTitle": "Voice diagnostics",
+    "micHint": "💡 If you have microphone issues, use the diagnostic button (ℹ️)",
+    "langLegend": "Response language:",
+    "langHelp": "Select the language in which you want to receive the answer",
+    "submitHelp": "Press Enter or click to send your query"
+  },
+  "submit": {
+    "submit": "Search",
+    "processing": "Processing...",
+    "noQuestion": "Enter your question",
+    "modifyQuestion": "Modify the question to submit",
+    "selectOption": "Select an option above",
+    "querying": "Querying ... ({countdown}s)"
+  },
+  "results": {
+    "heading": "Result",
+    "ariaLabel": "Query result",
+    "refsHeading": "References",
+    "refsAriaLabel": "Audio references table",
+    "refsSpeaker": "Speaker",
+    "refsDesc": "Description",
+    "refsAudio": "Audio",
+    "refsTime": "Time (mm:ss)",
+    "noRefs": "No references.",
+    "noResponse": "No response available for this language."
+  },
+  "share": {
+    "heading": "🔗 Share this query",
+    "desc": "You can share this query with others using this URL:",
+    "copy": "📋 Copy",
+    "copied": "✅ Copied",
+    "ariaLabel": "URL to share",
+    "copyConfirmation": "✅ URL copied to clipboard",
+    "copyError": "Could not copy the URL. Please copy it manually."
+  },
+  "vote": {
+    "heading": "Was this response useful to you?",
+    "likeTitle": "Like",
+    "likeAriaLabel": "Vote this query positively",
+    "dislikeTitle": "Dislike",
+    "dislikeAriaLabel": "Vote this query negatively",
+    "thanks": "Thank you for your feedback!",
+    "alreadyVoted": "You have already voted on this query",
+    "error": "Error registering vote"
+  },
+  "similar": {
+    "heading": "🔍 Related queries",
+    "desc": "Other semantically similar queries that might interest you:",
+    "highTitle": "High similarity (≥75%)",
+    "mediumTitle": "Medium similarity (65-75%)",
+    "lowTitle": "Low similarity (60-65%)",
+    "thQuestion": "Question",
+    "thSimilarity": "Similarity",
+    "thVotes": "Votes",
+    "foundHeading": "Similar queries found",
+    "searchAgain": "Search again",
+    "highSimilarity": "High similarity (85%+)",
+    "mediumSimilarity": "Medium similarity (70-84%)",
+    "lowSimilarity": "Low similarity (60-69%)",
+    "useThis": "Use this answer",
+    "similarityPct": "Similarity: {pct}%"
+  },
+  "speakers": {
+    "back": "← Back to query type selection",
+    "heading": "Speaker analysis",
+    "startDateLabel": "Start date:",
+    "endDateLabel": "End date:",
+    "startDateHelp": "Select the start date of the period to analyze",
+    "endDateHelp": "Select the end date of the period to analyze",
+    "speakersLabel": "Select speakers:",
+    "speakersPlaceholder": "Select dates first to load speakers",
+    "speakersSelectedTitle": "Selected speakers:",
+    "speakersHelp": "Hold Ctrl (Cmd on Mac) to select multiple speakers. Speakers will load when you select the dates.",
+    "speakersHelpLoaded": "Hold Ctrl (Cmd on Mac) to select multiple speakers.",
+    "loading": "Loading speakers...",
+    "analyze": "Generate analysis",
+    "analyzingText": "Analyzing...",
+    "chartsHeading": "Speaker analysis",
+    "timelineChart": "Episode and participation timeline"
+  },
+  "faq": {
+    "back": "← Back to query type selection",
+    "heading": "Featured queries",
+    "desc": "Queries selected for their interest, organized by categories. Click on any query to see the full answer.",
+    "mapLink": "🗺️ View query map",
+    "loading": "Loading featured queries...",
+    "searchPlaceholder": "Search featured queries...",
+    "uncategorized": "Other queries",
+    "emptyTitle": "No featured queries available",
+    "emptyDesc": "Featured queries will appear here when the administrator selects them.",
+    "viewAnswer": "View answer →",
+    "loadError": "Error loading featured queries",
+    "loadErrorDetail": "Error loading featured queries: {message}"
+  },
+  "errors": {
+    "noQuestion": "Please enter a question.",
+    "emptyQuestion": "Please enter a question.",
+    "timeout": "The query took too long. Please try again.",
+    "queryError": "Query error: {message}",
+    "loadSavedQueryError": "Error loading saved query: {message}",
+    "showSimilarError": "Error displaying similar queries: {message}",
+    "faqLoadError": "Error loading featured queries",
+    "loadSpeakersError": "Error loading speakers",
+    "voiceNotAvailable": "Voice recognition is not available in this browser"
+  },
+  "voice": {
+    "listening": "Listening... Speak now",
+    "detected": "Detected text: \"{transcript}\""
+  },
+  "footer": {
+    "privacy": "Privacy Policy",
+    "legal": "Legal Notice",
+    "cookies": "Cookie Policy",
+    "accessibility": "Accessibility",
+    "copyright": "© 2025 José Miguel Robles Román. All rights reserved.",
+    "suggestions": "Suggestions / Queries",
+    "wcagText": "This website complies with the",
+    "wcagLink": "WCAG 2.1 Level AA Accessibility Guidelines"
+  },
+  "legal": {
+    "privacy": "Privacy Policy:\n\nThis application processes your queries to provide relevant answers. Data is processed in accordance with GDPR and LOPDGDD. For more information, contact the data controller.",
+    "notice": "Legal Notice:\n\nThis website belongs to José Miguel Robles Román. Use is subject to terms and conditions. For legal questions, contact the administrator. - José Miguel Robles Román - NIF: 11735610-K - e-mail: webmaster@awebaos.org",
+    "cookiePolicy": "Cookie Policy:\n\nWe use technical cookies necessary for the website to function and analytics cookies to improve the experience. You can configure your preferences at any time.",
+    "a11yInfo": "Accessibility Information:\n\nThis website complies with WCAG 2.1 Level AA Guidelines. It has accessibility controls, keyboard navigation and screen reader compatibility. To report accessibility issues, contact support.",
+    "cookieConfig": "Cookie Settings:\n\nTechnical cookies: Required (cannot be disabled)\nAnalytics cookies: Can be enabled/disabled\nPersonalization cookies: Can be enabled/disabled"
+  }
+}

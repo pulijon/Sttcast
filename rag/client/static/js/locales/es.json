@@ -1,0 +1,171 @@
+{
+  "pageTitle": "Consultas relevantes en la colección de podcasts de {podcast_name}",
+  "nav": {
+    "skipLink": "Saltar al contenido principal"
+  },
+  "cookies": {
+    "title": "Uso de Cookies",
+    "text": "Esta web utiliza cookies técnicas necesarias para su funcionamiento y cookies de análisis para mejorar la experiencia del usuario. Al continuar navegando, acepta el uso de cookies.",
+    "moreInfo": "Más información",
+    "reject": "Rechazar",
+    "accept": "Aceptar",
+    "configure": "Configurar"
+  },
+  "a11y": {
+    "increaseFontTitle": "Aumentar tamaño de fuente",
+    "decreaseFontTitle": "Reducir tamaño de fuente",
+    "contrast": "Contraste",
+    "contrastTitle": "Alternar alto contraste",
+    "infoLink": "Información de accesibilidad",
+    "required": "Campo obligatorio"
+  },
+  "main": {
+    "title": "Sistema de consultas en la colección de podcasts de {podcast_name}"
+  },
+  "queryType": {
+    "legend": "¿Qué tipo de consulta deseas realizar?",
+    "topicsTitle": "Realizar una consulta",
+    "topicsDesc": "Busca información específica sobre los contenidos y temas discutidos en los podcasts",
+    "speakersTitle": "Análisis de intervinientes",
+    "speakersDesc": "Analiza estadísticas y patrones de participación de los contertulios",
+    "faqTitle": "Consultas destacadas",
+    "faqDesc": "Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías",
+    "continue": "Continuar",
+    "noTypeSelected": "Por favor, selecciona un tipo de consulta."
+  },
+  "topics": {
+    "back": "← Volver a selección de tipo de consulta",
+    "heading": "Consultas sobre temas tratados",
+    "questionLabel": "Escribe tu pregunta:",
+    "questionPlaceholder": "Introduce tu pregunta sobre los podcasts de {podcast_name}...",
+    "questionHelp": "Describe lo que quieres saber sobre los podcasts de {podcast_name}. Puedes utilizar la voz con el botón de micrófono.",
+    "micAriaLabel": "Usar reconocimiento de voz para escribir la pregunta",
+    "micTitle": "Pregunta por voz",
+    "diagAriaLabel": "Mostrar información de diagnóstico del micrófono",
+    "diagTitle": "Diagnóstico de voz",
+    "micHint": "💡 Si tienes problemas con el micrófono, usa el botón de diagnóstico (ℹ️)",
+    "langLegend": "Idioma de respuesta:",
+    "langHelp": "Selecciona el idioma en que quieres recibir la respuesta",
+    "submitHelp": "Presiona Enter o haz clic para enviar tu consulta"
+  },
+  "submit": {
+    "submit": "Consultar",
+    "processing": "Procesando...",
+    "noQuestion": "Introduce tu pregunta",
+    "modifyQuestion": "Modifica la pregunta para enviar",
+    "selectOption": "Selecciona una opción arriba",
+    "querying": "Consultando ... ({countdown}s)"
+  },
+  "results": {
+    "heading": "Resultado",
+    "ariaLabel": "Resultado de la consulta",
+    "refsHeading": "Referencias",
+    "refsAriaLabel": "Tabla de referencias de audio",
+    "refsSpeaker": "Contertulio",
+    "refsDesc": "Descripción",
+    "refsAudio": "Audio",
+    "refsTime": "Tiempo (mm:ss)",
+    "noRefs": "No hay referencias.",
+    "noResponse": "No hay respuesta para este idioma."
+  },
+  "share": {
+    "heading": "🔗 Compartir esta consulta",
+    "desc": "Puedes compartir esta consulta con otras personas usando esta URL:",
+    "copy": "📋 Copiar",
+    "copied": "✅ Copiado",
+    "ariaLabel": "URL para compartir",
+    "copyConfirmation": "✅ URL copiada al portapapeles",
+    "copyError": "No se pudo copiar la URL. Por favor, cópiala manualmente."
+  },
+  "vote": {
+    "heading": "¿Te ha resultado útil esta respuesta?",
+    "likeTitle": "Me gusta",
+    "likeAriaLabel": "Votar positivamente esta consulta",
+    "dislikeTitle": "No me gusta",
+    "dislikeAriaLabel": "Votar negativamente esta consulta",
+    "thanks": "¡Gracias por tu valoración!",
+    "alreadyVoted": "Ya has votado esta consulta",
+    "error": "Error al registrar el voto"
+  },
+  "similar": {
+    "heading": "🔍 Consultas relacionadas",
+    "desc": "Otras consultas semánticamente similares que podrían interesarte:",
+    "highTitle": "Alta similitud (≥75%)",
+    "mediumTitle": "Similitud media (65-75%)",
+    "lowTitle": "Similitud baja (60-65%)",
+    "thQuestion": "Pregunta",
+    "thSimilarity": "Similitud",
+    "thVotes": "Votos",
+    "foundHeading": "Consultas similares encontradas",
+    "searchAgain": "Buscar de nuevo",
+    "highSimilarity": "Alta similitud (85%+)",
+    "mediumSimilarity": "Similitud media (70-84%)",
+    "lowSimilarity": "Baja similitud (60-69%)",
+    "useThis": "Usar esta respuesta",
+    "similarityPct": "Similitud: {pct}%"
+  },
+  "speakers": {
+    "back": "← Volver a selección de tipo de consulta",
+    "heading": "Análisis de intervinientes",
+    "startDateLabel": "Fecha de inicio:",
+    "endDateLabel": "Fecha de fin:",
+    "startDateHelp": "Selecciona la fecha de inicio del período a analizar",
+    "endDateHelp": "Selecciona la fecha de fin del período a analizar",
+    "speakersLabel": "Seleccionar intervinientes:",
+    "speakersPlaceholder": "Selecciona primero las fechas para cargar los intervinientes",
+    "speakersSelectedTitle": "Intervinientes seleccionados:",
+    "speakersHelp": "Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples intervinientes. Los intervinientes se cargarán al seleccionar las fechas.",
+    "speakersHelpLoaded": "Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples intervinientes.",
+    "loading": "Cargando intervinientes...",
+    "analyze": "Generar análisis",
+    "analyzingText": "Analizando...",
+    "chartsHeading": "Análisis de intervinientes",
+    "timelineChart": "Línea de tiempo de episodios e intervenciones"
+  },
+  "faq": {
+    "back": "← Volver a selección de tipo de consulta",
+    "heading": "Consultas destacadas",
+    "desc": "Consultas seleccionadas por su interés, organizadas por categorías. Haz clic en cualquier consulta para ver la respuesta completa.",
+    "mapLink": "🗺️ Ver mapa de consultas",
+    "loading": "Cargando consultas destacadas...",
+    "searchPlaceholder": "Buscar en las consultas destacadas...",
+    "uncategorized": "Otras consultas",
+    "emptyTitle": "No hay consultas destacadas disponibles",
+    "emptyDesc": "Las consultas destacadas aparecerán aquí cuando el administrador las seleccione.",
+    "viewAnswer": "Ver respuesta →",
+    "loadError": "Error al cargar las consultas destacadas",
+    "loadErrorDetail": "Error al cargar las consultas destacadas: {message}"
+  },
+  "errors": {
+    "noQuestion": "Por favor, introduce una pregunta.",
+    "emptyQuestion": "Por favor, introduce una pregunta.",
+    "timeout": "La consulta ha tardado demasiado tiempo. Por favor, inténtalo de nuevo.",
+    "queryError": "Error en la consulta: {message}",
+    "loadSavedQueryError": "Error al cargar la consulta guardada: {message}",
+    "showSimilarError": "Error al mostrar consultas similares: {message}",
+    "faqLoadError": "Error al cargar las consultas destacadas",
+    "loadSpeakersError": "Error al cargar los intervinientes",
+    "voiceNotAvailable": "El reconocimiento de voz no está disponible en este navegador"
+  },
+  "voice": {
+    "listening": "Escuchando... Habla ahora",
+    "detected": "Texto detectado: \"{transcript}\""
+  },
+  "footer": {
+    "privacy": "Política de Privacidad",
+    "legal": "Aviso Legal",
+    "cookies": "Política de Cookies",
+    "accessibility": "Accesibilidad",
+    "copyright": "© 2025 José Miguel Robles Román. Todos los derechos reservados.",
+    "suggestions": "Sugerencias / Consultas",
+    "wcagText": "Esta web cumple con las",
+    "wcagLink": "Pautas de Accesibilidad WCAG 2.1 nivel AA"
+  },
+  "legal": {
+    "privacy": "Política de Privacidad:\n\nEsta aplicación procesa sus consultas para proporcionar respuestas relevantes. Los datos se procesan de acuerdo con el RGPD y la LOPDGDD. Para más información, contacte con el responsable del tratamiento.",
+    "notice": "Aviso Legal:\n\nEsta web pertenece a José Miguel Robles Román. Uso sujeto a términos y condiciones. Para dudas legales, contacte con el administrador. - José Miguel Robles Román - NIF: 11735610-K - e-mail: webmaster@awebaos.org",
+    "cookiePolicy": "Política de Cookies:\n\nUtilizamos cookies técnicas necesarias para el funcionamiento de la web y cookies de análisis para mejorar la experiencia. Puede configurar sus preferencias en cualquier momento.",
+    "a11yInfo": "Información de Accesibilidad:\n\nEsta web cumple con las Pautas WCAG 2.1 nivel AA. Dispone de controles de accesibilidad, navegación por teclado y compatibilidad con lectores de pantalla. Para reportar problemas de accesibilidad, contacte con soporte.",
+    "cookieConfig": "Configuración de Cookies:\n\nCookies técnicas: Necesarias (no se pueden desactivar)\nCookies de análisis: Pueden activarse/desactivarse\nCookies de personalización: Pueden activarse/desactivarse"
+  }
+}

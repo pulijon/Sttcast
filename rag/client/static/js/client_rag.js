@@ -111,15 +111,15 @@
             
             // Actualizar texto del botón según el estado
             if (isProcessingQuery) {
-                submitText.textContent = 'Procesando...';
+                submitText.textContent = t('submit.processing');
             } else if (!hasText) {
-                submitText.textContent = 'Introduce tu pregunta';
+                submitText.textContent = t('submit.noQuestion');
             } else if (!questionHasChanged) {
-                submitText.textContent = 'Modifica la pregunta para enviar';
+                submitText.textContent = t('submit.modifyQuestion');
             } else if (showingSimilarQueries) {
-                submitText.textContent = 'Selecciona una opción arriba';
+                submitText.textContent = t('submit.selectOption');
             } else {
-                submitText.textContent = 'Consultar';
+                submitText.textContent = t('submit.submit');
             }
         }
 
@@ -179,14 +179,14 @@
                             </svg>
                         </div>
                         <div class="ml-3">
-                            <h3 class="text-sm font-medium text-blue-800">Consultas similares encontradas</h3>
+                            <h3 class="text-sm font-medium text-blue-800">${t('similar.foundHeading')}</h3>
                             <div class="mt-2 text-sm text-blue-700">
                                 <p>${message}</p>
                             </div>
                             <div class="mt-4">
                                 <div class="flex space-x-2">
                                     <button id="continueNewSearch" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
-                                        Buscar de nuevo
+                                        ${t('similar.searchAgain')}
                                     </button>
                                 </div>
                             </div>
@@ -204,9 +204,9 @@
                 console.log(`[DEBUG] Procesando nivel ${level}, queries:`, queries.length);
                     if (queries.length > 0) {
                     const levelNames = {
-                        'high': 'Alta similitud (85%+)',
-                        'medium': 'Similitud media (70-84%)', 
-                        'low': 'Baja similitud (60-69%)'
+                        'high': t('similar.highSimilarity'),
+                        'medium': t('similar.mediumSimilarity'),
+                        'low': t('similar.lowSimilarity')
                     };
                     
                     const levelColors = {
@@ -229,10 +229,10 @@
                             <div class="bg-white p-3 rounded border">
                                 <p class="text-sm text-gray-700 mb-2">${query.query_text}</p>
                                 <div class="flex justify-between items-center">
-                                    <span class="text-xs text-gray-500">Similitud: ${(query.similarity * 100).toFixed(1)}%</span>
+                                    <span class="text-xs text-gray-500">${t('similar.similarityPct', { pct: (query.similarity * 100).toFixed(1) })}</span>
                                     <button onclick="loadSavedQuery('${query.uuid}')" 
                                             class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs">
-                                        Usar esta respuesta
+                                        ${t('similar.useThis')}
                                     </button>
                                 </div>
                             </div>
@@ -274,7 +274,7 @@
                 console.error('[FATAL ERROR] Error general en showSimilarQueries:', error);
                 console.error('[FATAL ERROR] Stack:', error.stack);
                 // Mostrar error al usuario
-                errorMsg.textContent = 'Error al mostrar consultas similares: ' + error.message;
+                errorMsg.textContent = t('errors.showSimilarError', { message: error.message });
                 errorMsg.classList.remove('hidden');
                 isProcessingQuery = false;
                 updateSubmitButtonState();
@@ -308,7 +308,7 @@
                 
                 const response = await fetch(getApiPath(`/api/savedquery/${uuid}`));
                 if (!response.ok) {
-                    throw new Error('Error al cargar la consulta guardada');
+                    throw new Error(t('errors.loadSavedQueryError', { message: '' }));
                 }
                 
                 const data = await response.json();
@@ -323,7 +323,7 @@
                 
             } catch (error) {
                 console.error('Error loading saved query:', error);
-                errorMsg.textContent = 'Error al cargar la consulta guardada: ' + error.message;
+                errorMsg.textContent = t('errors.loadSavedQueryError', { message: error.message });
                 errorMsg.classList.remove('hidden');
             } finally {
                 isProcessingQuery = false;
@@ -341,7 +341,7 @@
             console.log('[PROCESS NEW] pendingQuestion:', pendingQuestion);
 
             if (!question) {
-                errorMsg.textContent = 'Por favor, introduce una pregunta.';
+                errorMsg.textContent = t('errors.emptyQuestion');
                 errorMsg.classList.remove('hidden');
                 return;
             }
@@ -395,9 +395,9 @@
             } catch (error) {
                 console.error('Error in new search:', error);
                 if (error.name === 'AbortError') {
-                    errorMsg.textContent = 'La consulta ha tardado demasiado tiempo. Por favor, inténtalo de nuevo.';
+                    errorMsg.textContent = t('errors.timeout');
                 } else {
-                    errorMsg.textContent = 'Error en la consulta: ' + error.message;
+                    errorMsg.textContent = t('errors.queryError', { message: error.message });
                 }
                 errorMsg.classList.remove('hidden');
             } finally {
@@ -558,7 +558,7 @@ async function loadFaq() {
     try {
         const response = await fetch(getApiPath('/api/faq'));
         if (!response.ok) {
-            throw new Error('Error al cargar las consultas destacadas');
+            throw new Error(t('errors.faqLoadError'));
         }
 
         const data = await response.json();
@@ -588,7 +588,7 @@ async function loadFaq() {
     } catch (error) {
         console.error('[FAQ] Error loading FAQ:', error);
         faqLoading.classList.add('hidden');
-        faqErrorMsg.textContent = 'Error al cargar las consultas destacadas: ' + error.message;
+        faqErrorMsg.textContent = t('errors.faqLoadError') + ': ' + error.message;
         faqErrorMsg.classList.remove('hidden');
     }
 }
@@ -705,7 +705,7 @@ function renderFaqQueryItem(query) {
                     ${query.likes > 0 ? `<span class="faq-query-likes">👍 ${query.likes}</span>` : ''}
                     ${query.dislikes > 0 ? `<span class="faq-query-dislikes">👎 ${query.dislikes}</span>` : ''}
                 </span>
-                <span class="faq-query-arrow">Ver respuesta →</span>
+                <span class="faq-query-arrow">${t('faq.viewAnswer')}</span>
             </div>
         </a>
     `;
@@ -868,12 +868,12 @@ copyUrlBtn.addEventListener('click', async () => {
         
         // Mostrar confirmación
         copyConfirmation.classList.remove('hidden');
-        copyUrlBtn.textContent = '✅ Copiado';
+        copyUrlBtn.textContent = t('share.copied');
         
         // Resetear después de 2 segundos
         setTimeout(() => {
             copyConfirmation.classList.add('hidden');
-            copyUrlBtn.textContent = '📋 Copiar';
+            copyUrlBtn.textContent = t('share.copy');
         }, 2000);
     } catch (err) {
         // Fallback para navegadores antiguos
@@ -883,15 +883,15 @@ copyUrlBtn.addEventListener('click', async () => {
         try {
             document.execCommand('copy');
             copyConfirmation.classList.remove('hidden');
-            copyUrlBtn.textContent = '✅ Copiado';
+            copyUrlBtn.textContent = t('share.copied');
             
             setTimeout(() => {
                 copyConfirmation.classList.add('hidden');
-                copyUrlBtn.textContent = '📋 Copiar';
+                copyUrlBtn.textContent = t('share.copy');
             }, 2000);
         } catch (err2) {
             console.error('Error al copiar:', err2);
-            alert('No se pudo copiar la URL. Por favor, cópiala manualmente.');
+            alert(t('share.copyError'));
         }
     }
 });
@@ -916,7 +916,7 @@ askForm.addEventListener('submit', async (e) => {
     const language = languageSelect.value;
 
     if (!question) {
-        errorMsg.textContent = 'Por favor, introduce una pregunta.';
+        errorMsg.textContent = t('errors.emptyQuestion');
         errorMsg.classList.remove('hidden');
         return;
     }
@@ -990,9 +990,9 @@ askForm.addEventListener('submit', async (e) => {
         setLoadingState(false);
         
         if (error.name === 'AbortError') {
-            errorMsg.textContent = 'La consulta ha tardado demasiado tiempo. Por favor, inténtalo de nuevo.';
+            errorMsg.textContent = t('errors.timeout');
         } else {
-            errorMsg.textContent = 'Error en la consulta: ' + error.message;
+            errorMsg.textContent = t('errors.queryError', { message: error.message });
         }
         errorMsg.classList.remove('hidden');
     } finally {
@@ -1048,6 +1048,11 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     // Inicialización de cookies
     initCookies();
 
+    // Actualizar botón de envío cuando cambie el idioma de la UI
+    window.addEventListener('localeChanged', () => {
+        updateSubmitButtonState();
+    });
+
     // Funciones de utilidad dentro del scope del DOMContentLoaded
     
     function setLoadingState(loading) {
@@ -1056,7 +1061,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             let countdown = 59;
             // Mantener el spinner visible pero ajustar el texto para que sea más claro
             loadingSpinner.classList.remove('hidden');
-            submitText.textContent = `Consultando ... (${countdown}s)`;
+            submitText.textContent = t('submit.querying', { countdown: countdown });
             submitBtn.setAttribute('aria-busy', 'true');
             
             // Limpiar cualquier intervalo anterior
@@ -1068,7 +1073,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             countdownInterval = setInterval(() => {
                 countdown--;
                 if (countdown >= 0) {
-                    submitText.textContent = `Consultando ... (${countdown}s)`;
+                    submitText.textContent = t('submit.querying', { countdown: countdown });
                 } else {
                     // Si llega a 0, mostrar puntos suspensivos
                     submitText.textContent = '...';
@@ -1077,7 +1082,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 }
             }, 1000);
         } else {
-            submitText.textContent = 'Consultar';
+            submitText.textContent = t('submit.submit');
             loadingSpinner.classList.add('hidden');
             submitBtn.setAttribute('aria-busy', 'false');
             
@@ -1162,7 +1167,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             } else {
                 voteDislikeBtn.classList.add('voted-dislike');
             }
-            if (voteStatus) voteStatus.textContent = 'Ya has votado esta consulta';
+            if (voteStatus) voteStatus.textContent = t('vote.alreadyVoted');
         }
 
         if (uuid) {
@@ -1183,11 +1188,11 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 voteLikeCount.textContent = result.likes;
                 voteDislikeCount.textContent = result.dislikes;
                 voteLikeBtn.classList.add('voted-like');
-                if (voteStatus) voteStatus.textContent = '¡Gracias por tu valoración!';
+                if (voteStatus) voteStatus.textContent = t('vote.thanks');
             } else {
                 voteLikeBtn.disabled = false;
                 voteDislikeBtn.disabled = false;
-                if (voteStatus) voteStatus.textContent = 'Error al registrar el voto';
+                if (voteStatus) voteStatus.textContent = t('vote.error');
             }
         });
     }
@@ -1203,11 +1208,11 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 voteLikeCount.textContent = result.likes;
                 voteDislikeCount.textContent = result.dislikes;
                 voteDislikeBtn.classList.add('voted-dislike');
-                if (voteStatus) voteStatus.textContent = '¡Gracias por tu valoración!';
+                if (voteStatus) voteStatus.textContent = t('vote.thanks');
             } else {
                 voteLikeBtn.disabled = false;
                 voteDislikeBtn.disabled = false;
-                if (voteStatus) voteStatus.textContent = 'Error al registrar el voto';
+                if (voteStatus) voteStatus.textContent = t('vote.error');
             }
         });
     }
@@ -1224,7 +1229,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     console.log("[DEBUG showResults] Lang:", lang);
     console.log("[DEBUG showResults] data.similar_queries:", data.similar_queries);
 
-    searchResult.innerHTML = data.response[lang] || "No hay respuesta para este idioma.";
+    searchResult.innerHTML = data.response[lang] || t('results.noResponse');;
 
     refsTable.innerHTML = '';
     if (data.references && data.references.length > 0) {
@@ -1244,7 +1249,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             `;
         });
     } else {
-        refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">No hay referencias.</td></tr>`;
+        refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">${t('results.noRefs')}</td></tr>`;
     }
 
     // Mostrar URL compartible si está disponible
@@ -1459,7 +1464,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         recognizing = true;
         micBtn.classList.add('bg-green-200');
         micBtn.setAttribute('aria-pressed', 'true');
-        micStatus.textContent = '🎤 Escuchando... Habla ahora';
+        micStatus.textContent = '🎤 ' + t('voice.listening');
         console.log('[VoiceRecognition] Reconocimiento iniciado correctamente');
     };
     
@@ -1556,7 +1561,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         const transcript = event.results[0][0].transcript;
         questionInput.value = transcript;
         questionInput.focus();
-        micStatus.textContent = `Texto detectado: "${transcript}"`;
+        micStatus.textContent = t('voice.detected', { transcript: transcript });
         
         // Disparar evento 'input' para actualizar el estado del botón de envío
         questionInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1765,10 +1770,10 @@ if ('serviceWorker' in navigator) {
             
             // Actualizar texto de ayuda con límite de selección
             const helpText = document.getElementById('speakers-help');
-            helpText.textContent = 'Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples intervinientes.';
+            helpText.textContent = t('speakers.speakersHelpLoaded');
             })
             .catch(error => {
-            speakersErrorMsg.textContent = error.message || 'Error al cargar los intervinientes';
+            speakersErrorMsg.textContent = error.message || t('errors.loadSpeakersError');
             speakersErrorMsg.classList.remove('hidden');
             speakersLoading.classList.add('hidden');
             });
@@ -1840,7 +1845,7 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
     const speakersErrorMsg = document.getElementById('speakersErrorMsg');
     
     analyzeBtn.disabled = true;
-    analyzeText.textContent = 'Analizando...';
+    analyzeText.textContent = t('speakers.analyzingText');
     analyzeSpinner.classList.remove('hidden');
     speakersErrorMsg.classList.add('hidden');
     
@@ -1906,7 +1911,7 @@ document.getElementById('speakersAnalysisForm').addEventListener('submit', funct
     .finally(() => {
         // Restaurar botón
         analyzeBtn.disabled = false;
-        analyzeText.textContent = 'Generar análisis';
+        analyzeText.textContent = t('speakers.analyze');
         analyzeSpinner.classList.add('hidden');
     });
 });
@@ -2197,7 +2202,7 @@ function createTimeLineChart(stats) {
 
     const chartTitle = document.createElement('h4');
     chartTitle.className = 'text-lg font-semibold mb-4 text-gray-800';
-    chartTitle.textContent = 'Línea de tiempo de episodios e intervenciones';
+    chartTitle.textContent = t('speakers.timelineChart');
     chartDiv.appendChild(chartTitle);
 
     const canvas = document.createElement('canvas');
@@ -2507,7 +2512,7 @@ function createSpeakerEpisodesTable(speaker) {
             analyzeSpeakersBtn.disabled = false;
         })
         .catch(error => {
-            speakersErrorMsg.textContent = error.message || 'Error al cargar los intervinientes';
+        speakersErrorMsg.textContent = error.message || t('errors.loadSpeakersError');
             speakersErrorMsg.classList.remove('hidden');
             speakersLoading.classList.add('hidden');
         });

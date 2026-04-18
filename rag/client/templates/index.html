@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-i18n-title="pageTitle">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,6 +18,9 @@
                 preflight: false,
             }
         }
+
+        // Nombre del podcast disponible para el sistema i18n
+        window.PODCAST_NAME = "{{ podcast_name }}";
         
         // Si hay una consulta guardada desde el servidor, la almacenamos para cargarla después
         {% if saved_query %}
@@ -30,12 +33,13 @@
         {% endif %}
     </script>
     <link rel="stylesheet" href="{{ css_url }}">
+    <script src="{{ base_path }}/static/js/i18n.js"></script>
 
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center">
 
         <!-- Skip link para accesibilidad -->
-    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50" data-i18n="nav.skipLink">
         Saltar al contenido principal
     </a>
     
@@ -43,21 +47,21 @@
     <div id="cookieBanner" class="cookie-banner" role="banner" aria-labelledby="cookie-title">
         <div class="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <div class="flex-1">
-                <h2 id="cookie-title" class="text-lg font-semibold mb-2">Uso de Cookies</h2>
+                <h2 id="cookie-title" class="text-lg font-semibold mb-2" data-i18n="cookies.title">Uso de Cookies</h2>
                 <p class="text-sm">
-                    Esta web utiliza cookies técnicas necesarias para su funcionamiento y cookies de análisis para mejorar la experiencia del usuario. 
-                    Al continuar navegando, acepta el uso de cookies. 
-                    <a href="#" class="underline text-blue-300" onclick="showPrivacyPolicy()">Más información</a>
+                    <span data-i18n="cookies.text">Esta web utiliza cookies técnicas necesarias para su funcionamiento y cookies de análisis para mejorar la experiencia del usuario. 
+                    Al continuar navegando, acepta el uso de cookies.</span>
+                    <a href="#" class="underline text-blue-300" onclick="showPrivacyPolicy()" data-i18n="cookies.moreInfo">Más información</a>
                 </p>
             </div>
             <div class="flex gap-3">
-                <button id="rejectCookies" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                <button id="rejectCookies" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500" data-i18n="cookies.reject">
                     Rechazar
                 </button>
-                <button id="acceptCookies" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="acceptCookies" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500" data-i18n="cookies.accept">
                     Aceptar
                 </button>
-                <button id="configureCookies" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                <button id="configureCookies" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500" data-i18n="cookies.configure">
                     Configurar
                 </button>
             </div>
@@ -68,20 +72,33 @@
     <div class="w-full bg-gray-800 text-white py-2">
         <div class="max-w-2xl mx-auto flex justify-between items-center px-4">
             <div class="flex gap-4">
-                <button id="increaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white" title="Aumentar tamaño de fuente">
+                <button id="increaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                        data-i18n-title="a11y.increaseFontTitle" title="Aumentar tamaño de fuente">
                     A+
                 </button>
-                <button id="decreaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white" title="Reducir tamaño de fuente">
+                <button id="decreaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                        data-i18n-title="a11y.decreaseFontTitle" title="Reducir tamaño de fuente">
                     A-
                 </button>
-                <button id="toggleContrast" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white" title="Alternar alto contraste">
+                <button id="toggleContrast" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                        data-i18n="a11y.contrast" data-i18n-title="a11y.contrastTitle" title="Alternar alto contraste">
                     Contraste
                 </button>
             </div>
-            <div class="text-xs">
-                <a href="#" onclick="showAccessibilityInfo()" class="hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white">
-                    Información de accesibilidad
-                </a>
+            <div class="flex items-center gap-3">
+                <!-- Selector de idioma de la interfaz -->
+                <div class="flex gap-1" role="group" aria-label="Interface language">
+                    <button class="lang-btn" data-lang="es"
+                            title="Español" aria-label="Cambiar idioma a español" aria-pressed="true">🇪🇸</button>
+                    <button class="lang-btn" data-lang="en"
+                            title="English" aria-label="Change language to English" aria-pressed="false">🇬🇧</button>
+                </div>
+                <div class="text-xs">
+                    <a href="#" onclick="showAccessibilityInfo()" class="hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                       data-i18n="a11y.infoLink">
+                        Información de accesibilidad
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -95,43 +112,44 @@
                 class="h-32 w-32 rounded-full shadow"
                 loading="lazy">
         </div>
-        <h1 class="text-2xl font-bold mb-6 text-center">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
+        <h1 class="text-2xl font-bold mb-6 text-center" data-i18n="main.title">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
 
         <!-- Formulario de selección inicial -->
         <section id="queryTypeSelection" class="mb-8">
             <form id="queryTypeForm" class="space-y-6" role="form" aria-label="Selección del tipo de consulta">
                 <fieldset>
-                    <legend class="text-lg font-medium text-gray-700 mb-4">¿Qué tipo de consulta deseas realizar?</legend>
+                    <legend class="text-lg font-medium text-gray-700 mb-4" data-i18n="queryType.legend">¿Qué tipo de consulta deseas realizar?</legend>
                     <div class="space-y-3">
                         <label class="flex items-start space-x-3 cursor-pointer">
                             <input type="radio" name="queryType" value="topics" checked
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
-                                <span class="text-base font-medium text-gray-700">Consultas sobre temas tratados</span>
-                                <p class="text-sm text-gray-600">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
+                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.topicsTitle">Realizar una consulta</span>
+                                <p class="text-sm text-gray-600" data-i18n="queryType.topicsDesc">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
                             </div>
                         </label>
                         <label class="flex items-start space-x-3 cursor-pointer">
                             <input type="radio" name="queryType" value="speakers" 
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
-                                <span class="text-base font-medium text-gray-700">Análisis de intervinientes</span>
-                                <p class="text-sm text-gray-600">Analiza estadísticas y patrones de participación de los contertulios</p>
+                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.speakersTitle">Análisis de intervinientes</span>
+                                <p class="text-sm text-gray-600" data-i18n="queryType.speakersDesc">Analiza estadísticas y patrones de participación de los contertulios</p>
                             </div>
                         </label>
                         <label class="flex items-start space-x-3 cursor-pointer">
                             <input type="radio" name="queryType" value="faq" 
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
-                                <span class="text-base font-medium text-gray-700">Consultas destacadas</span>
-                                <p class="text-sm text-gray-600">Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías</p>
+                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.faqTitle">Consultas destacadas</span>
+                                <p class="text-sm text-gray-600" data-i18n="queryType.faqDesc">Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías</p>
                             </div>
                         </label>
                     </div>
                 </fieldset>
                 
                 <button type="submit"
-                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition">
+                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                        data-i18n="queryType.continue">
                     Continuar
                 </button>
             </form>
@@ -141,19 +159,20 @@
         <section id="topicsForm" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelection" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        data-i18n="topics.back">
                     ← Volver a selección de tipo de consulta
                 </button>
             </div>
             
-            <h2 class="text-xl font-semibold mb-4">Consultas sobre temas tratados</h2>
+            <h2 class="text-xl font-semibold mb-4" data-i18n="topics.heading">Consultas sobre temas tratados</h2>
             
             <!-- Formulario mejorado para accesibilidad -->
             <form id="askForm" class="space-y-6" role="form" aria-label="Formulario de consulta">
                 <div>
                     <label for="question" class="block mb-2 font-medium text-gray-700">
-                        Escribe tu pregunta:
-                        <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                        <span data-i18n="topics.questionLabel">Escribe tu pregunta:</span>
+                        <span class="text-red-500" aria-label="Campo obligatorio" data-i18n-aria-label="a11y.required">*</span>
                     </label>
                     
                     <textarea id="question" 
@@ -162,9 +181,10 @@
                              required
                              aria-describedby="question-help"
                              class="w-full border border-gray-300 rounded-lg p-3 resize-vertical focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
+                             data-i18n-placeholder="topics.questionPlaceholder"
                              placeholder="Introduce tu pregunta sobre los podcasts de {{ podcast_name }}..."></textarea>
                     
-                    <div id="question-help" class="text-sm text-gray-600 mt-1">
+                    <div id="question-help" class="text-sm text-gray-600 mt-1" data-i18n="topics.questionHelp">
                         Describe lo que quieres saber sobre los podcasts de {{ podcast_name }}. Puedes utilizar la voz con el botón de micrófono.
                     </div>
                     
@@ -172,7 +192,9 @@
                         <button type="button" 
                                 id="micBtn" 
                                 aria-label="Usar reconocimiento de voz para escribir la pregunta"
-                                title="Pregunta por voz" 
+                                data-i18n-aria-label="topics.micAriaLabel"
+                                title="Pregunta por voz"
+                                data-i18n-title="topics.micTitle"
                                 class="rounded-full bg-blue-200 p-2 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -183,7 +205,9 @@
                         <button type="button" 
                                 id="micDiagnosticBtn" 
                                 aria-label="Mostrar información de diagnóstico del micrófono"
-                                title="Diagnóstico de voz" 
+                                data-i18n-aria-label="topics.diagAriaLabel"
+                                title="Diagnóstico de voz"
+                                data-i18n-title="topics.diagTitle"
                                 class="ml-2 rounded-full bg-gray-200 p-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 text-xs">
                             <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -191,13 +215,13 @@
                         </button>
                         <span id="micStatus" class="ml-2 text-sm text-gray-600" aria-live="polite"></span>
                     </div>
-                    <div class="text-xs text-gray-500 mt-1">
+                    <div class="text-xs text-gray-500 mt-1" data-i18n="topics.micHint">
                         💡 Si tienes problemas con el micrófono, usa el botón de diagnóstico (ℹ️)
                     </div>
                 </div>
                 
                 <fieldset>
-                    <legend class="font-medium text-gray-700 mb-2">Idioma de respuesta:</legend>
+                    <legend class="font-medium text-gray-700 mb-2" data-i18n="topics.langLegend">Idioma de respuesta:</legend>
                     <select id="language" 
                             name="language" 
                             aria-describedby="language-help"
@@ -205,7 +229,7 @@
                         <option value="es">Español</option>
                         <option value="en">English</option>
                     </select>
-                    <div id="language-help" class="text-sm text-gray-600 mt-1">
+                    <div id="language-help" class="text-sm text-gray-600 mt-1" data-i18n="topics.langHelp">
                         Selecciona el idioma en que quieres recibir la respuesta
                     </div>
                 </fieldset>
@@ -216,7 +240,7 @@
                     <span id="submitText">Consultar</span>
                     <span id="loadingSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
                 </button>
-                <div id="submit-help" class="text-sm text-gray-600">
+                <div id="submit-help" class="text-sm text-gray-600" data-i18n="topics.submitHelp">
                     Presiona Enter o haz clic para enviar tu consulta
                 </div>
             </form>
@@ -224,26 +248,28 @@
             <!-- Zona de resultados mejorada -->
             <section id="results" class="mt-10 hidden" role="region" aria-labelledby="results-title">
                 <div class="mb-6">
-                    <h3 id="results-title" class="text-xl font-semibold mb-2">Resultado</h3>
+                    <h3 id="results-title" class="text-xl font-semibold mb-2" data-i18n="results.heading">Resultado</h3>
                     <div id="searchResult" 
                          class="prose prose-blue max-w-none bg-blue-50 text-gray-900 rounded-lg p-4"
                          role="region"
                          aria-live="polite"
-                         aria-label="Resultado de la consulta"></div>
+                         aria-label="Resultado de la consulta"
+                         data-i18n-aria-label="results.ariaLabel"></div>
                 </div>
                 
                 <div>
-                    <h3 class="text-xl font-semibold mb-2">Referencias</h3>
+                    <h3 class="text-xl font-semibold mb-2" data-i18n="results.refsHeading">Referencias</h3>
                     <div class="overflow-x-auto">
                         <table class="min-w-full text-left bg-white rounded-lg border border-gray-200" 
                                role="table"
-                               aria-label="Tabla de referencias de audio">
+                               aria-label="Tabla de referencias de audio"
+                               data-i18n-aria-label="results.refsAriaLabel">
                             <thead>
                                 <tr>
-                                    <th scope="col" class="px-4 py-2 border-b font-bold">Contertulio</th>
-                                    <th scope="col" class="px-4 py-2 border-b font-bold">Descripción</th>
-                                    <th scope="col" class="px-4 py-2 border-b font-bold">Audio</th>
-                                    <th scope="col" class="px-4 py-2 border-b font-bold">Tiempo (mm:ss)</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.refsSpeaker">Contertulio</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.refsDesc">Descripción</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.refsAudio">Audio</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.refsTime">Tiempo (mm:ss)</th>
                                 </tr>
                             </thead>
                             <tbody id="refsTable"></tbody>
@@ -253,9 +279,9 @@
                 
                 <!-- URL compartible -->
                 <div id="shareUrlSection" class="mt-6 hidden">
-                    <h3 class="text-xl font-semibold mb-2">🔗 Compartir esta consulta</h3>
+                    <h3 class="text-xl font-semibold mb-2" data-i18n="share.heading">🔗 Compartir esta consulta</h3>
                     <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <p class="text-sm text-gray-700 mb-2">
+                        <p class="text-sm text-gray-700 mb-2" data-i18n="share.desc">
                             Puedes compartir esta consulta con otras personas usando esta URL:
                         </p>
                         <div class="flex items-center gap-2">
@@ -265,6 +291,7 @@
                                 readonly
                                 class="flex-1 px-3 py-2 border border-gray-300 rounded bg-white text-sm font-mono"
                                 aria-label="URL para compartir"
+                                data-i18n-aria-label="share.ariaLabel"
                             />
                             <button 
                                 type="button"
@@ -275,7 +302,7 @@
                                 📋 Copiar
                             </button>
                         </div>
-                        <p id="copyConfirmation" class="text-sm text-green-700 mt-2 hidden">
+                        <p id="copyConfirmation" class="text-sm text-green-700 mt-2 hidden" data-i18n="share.copyConfirmation">
                             ✅ URL copiada al portapapeles
                         </p>
                     </div>
@@ -283,18 +310,22 @@
 
                 <!-- Sección de votación -->
                 <div id="voteSection" class="mt-6 hidden">
-                    <h3 class="text-xl font-semibold mb-2">¿Te ha resultado útil esta respuesta?</h3>
+                    <h3 class="text-xl font-semibold mb-2" data-i18n="vote.heading">¿Te ha resultado útil esta respuesta?</h3>
                     <div class="flex items-center gap-4">
                         <button type="button" id="voteLikeBtn"
                                 class="vote-btn vote-like"
                                 title="Me gusta"
-                                aria-label="Votar positivamente esta consulta">
+                                data-i18n-title="vote.likeTitle"
+                                aria-label="Votar positivamente esta consulta"
+                                data-i18n-aria-label="vote.likeAriaLabel">
                             👍 <span id="voteLikeCount">0</span>
                         </button>
                         <button type="button" id="voteDislikeBtn"
                                 class="vote-btn vote-dislike"
                                 title="No me gusta"
-                                aria-label="Votar negativamente esta consulta">
+                                data-i18n-title="vote.dislikeTitle"
+                                aria-label="Votar negativamente esta consulta"
+                                data-i18n-aria-label="vote.dislikeAriaLabel">
                             👎 <span id="voteDislikeCount">0</span>
                         </button>
                         <span id="voteStatus" class="text-sm text-gray-500" aria-live="polite"></span>
@@ -303,21 +334,21 @@
 
                 <!-- Consultas similares -->
                 <div id="similarQueriesSection" class="mt-6 hidden">
-                    <h3 class="text-xl font-semibold mb-3">🔍 Consultas relacionadas</h3>
-                    <p class="text-sm text-gray-600 mb-4">
+                    <h3 class="text-xl font-semibold mb-3" data-i18n="similar.heading">🔍 Consultas relacionadas</h3>
+                    <p class="text-sm text-gray-600 mb-4" data-i18n="similar.desc">
                         Otras consultas semánticamente similares que podrían interesarte:
                     </p>
                     
                     <!-- Alta similitud (verde) -->
                     <div id="highSimilarityQueries" class="mb-4 hidden">
-                        <h4 class="font-semibold text-sm text-gray-700 mb-2">Alta similitud (≥75%)</h4>
+                        <h4 class="font-semibold text-sm text-gray-700 mb-2" data-i18n="similar.highTitle">Alta similitud (≥75%)</h4>
                         <div class="overflow-x-auto">
                             <table class="min-w-full border border-gray-200 rounded-lg">
                                 <thead class="bg-green-100">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700" data-i18n="similar.thQuestion">Pregunta</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thSimilarity">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thVotes">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="highSimilarityTableBody" class="bg-green-50 divide-y divide-gray-200">
@@ -328,14 +359,14 @@
                     
                     <!-- Media similitud (amarillo) -->
                     <div id="mediumSimilarityQueries" class="mb-4 hidden">
-                        <h4 class="font-semibold text-sm text-gray-700 mb-2">Similitud media (65-75%)</h4>
+                        <h4 class="font-semibold text-sm text-gray-700 mb-2" data-i18n="similar.mediumTitle">Similitud media (65-75%)</h4>
                         <div class="overflow-x-auto">
                             <table class="min-w-full border border-gray-200 rounded-lg">
                                 <thead class="bg-yellow-100">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700" data-i18n="similar.thQuestion">Pregunta</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thSimilarity">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thVotes">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mediumSimilarityTableBody" class="bg-yellow-50 divide-y divide-gray-200">
@@ -346,14 +377,14 @@
                     
                     <!-- Baja similitud (naranja) -->
                     <div id="lowSimilarityQueries" class="mb-4 hidden">
-                        <h4 class="font-semibold text-sm text-gray-700 mb-2">Similitud baja (60-65%)</h4>
+                        <h4 class="font-semibold text-sm text-gray-700 mb-2" data-i18n="similar.lowTitle">Similitud baja (60-65%)</h4>
                         <div class="overflow-x-auto">
                             <table class="min-w-full border border-gray-200 rounded-lg">
                                 <thead class="bg-orange-100">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Pregunta</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Similitud</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24">Votos</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-700" data-i18n="similar.thQuestion">Pregunta</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thSimilarity">Similitud</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-700 w-24" data-i18n="similar.thVotes">Votos</th>
                                     </tr>
                                 </thead>
                                 <tbody id="lowSimilarityTableBody" class="bg-orange-50 divide-y divide-gray-200">
@@ -375,20 +406,21 @@
         <section id="speakersForm" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelectionSpeakers" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        data-i18n="speakers.back">
                     ← Volver a selección de tipo de consulta
                 </button>
             </div>
             
-            <h2 class="text-xl font-semibold mb-4">Análisis de intervinientes</h2>
+            <h2 class="text-xl font-semibold mb-4" data-i18n="speakers.heading">Análisis de intervinientes</h2>
             
             <form id="speakersAnalysisForm" class="space-y-6" role="form" aria-label="Formulario de análisis de intervinientes">
                 <!-- Selector de fechas -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="startDate" class="block mb-2 font-medium text-gray-700">
-                            Fecha de inicio:
-                            <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                            <span data-i18n="speakers.startDateLabel">Fecha de inicio:</span>
+                            <span class="text-red-500" aria-label="Campo obligatorio" data-i18n-aria-label="a11y.required">*</span>
                         </label>
                         <input type="date" 
                                id="startDate" 
@@ -396,15 +428,15 @@
                                required
                                aria-describedby="start-date-help"
                                class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition">
-                        <div id="start-date-help" class="text-sm text-gray-600 mt-1">
+                        <div id="start-date-help" class="text-sm text-gray-600 mt-1" data-i18n="speakers.startDateHelp">
                             Selecciona la fecha de inicio del período a analizar
                         </div>
                     </div>
                     
                     <div>
                         <label for="endDate" class="block mb-2 font-medium text-gray-700">
-                            Fecha de fin:
-                            <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                            <span data-i18n="speakers.endDateLabel">Fecha de fin:</span>
+                            <span class="text-red-500" aria-label="Campo obligatorio" data-i18n-aria-label="a11y.required">*</span>
                         </label>
                         <input type="date" 
                                id="endDate" 
@@ -412,7 +444,7 @@
                                required
                                aria-describedby="end-date-help"
                                class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition">
-                        <div id="end-date-help" class="text-sm text-gray-600 mt-1">
+                        <div id="end-date-help" class="text-sm text-gray-600 mt-1" data-i18n="speakers.endDateHelp">
                             Selecciona la fecha de fin del período a analizar
                         </div>
                     </div>
@@ -421,8 +453,8 @@
                 <!-- Selector múltiple de intervinientes -->
                 <div>
                     <label for="speakers" class="block mb-2 font-medium text-gray-700">
-                        Seleccionar intervinientes:
-                        <span class="text-red-500" aria-label="Campo obligatorio">*</span>
+                        <span data-i18n="speakers.speakersLabel">Seleccionar intervinientes:</span>
+                        <span class="text-red-500" aria-label="Campo obligatorio" data-i18n-aria-label="a11y.required">*</span>
                     </label>
                     <select id="speakers" 
                             name="speakers" 
@@ -431,19 +463,19 @@
                             aria-describedby="speakers-help"
                             class="w-full border border-gray-300 rounded-lg p-3 h-32 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
                             disabled>
-                        <option value="" disabled>Selecciona primero las fechas para cargar los intervinientes</option>
+                        <option value="" disabled data-i18n="speakers.speakersPlaceholder">Selecciona primero las fechas para cargar los intervinientes</option>
                     </select>
                     <!-- Indicador visual de intervinientes seleccionados -->
                     <div id="selectedSpeakersDisplay" class="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg hidden">
-                        <div class="text-sm font-medium text-blue-800 mb-1">Intervinientes seleccionados:</div>
+                        <div class="text-sm font-medium text-blue-800 mb-1" data-i18n="speakers.speakersSelectedTitle">Intervinientes seleccionados:</div>
                         <div id="selectedSpeakersList" class="text-sm text-blue-700 flex flex-wrap gap-1"></div>
                     </div>
-                    <div id="speakers-help" class="text-sm text-gray-600 mt-1">
+                    <div id="speakers-help" class="text-sm text-gray-600 mt-1" data-i18n="speakers.speakersHelp">
                         Mantén presionado Ctrl (Cmd en Mac) para seleccionar múltiples intervinientes. Los intervinientes se cargarán al seleccionar las fechas.
                     </div>
                     <div id="speakersLoading" class="text-sm text-blue-600 mt-1 hidden">
                         <span class="loading-spinner"></span>
-                        Cargando intervinientes...
+                        <span data-i18n="speakers.loading">Cargando intervinientes...</span>
                     </div>
                 </div>
 
@@ -451,14 +483,14 @@
                         id="analyzeSpeakersBtn"
                         disabled
                         class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                    <span id="analyzeText">Generar análisis</span>
+                    <span id="analyzeText" data-i18n="speakers.analyze">Generar análisis</span>
                     <span id="analyzeSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
                 </button>
             </form>
 
             <!-- Zona de gráficas -->
             <section id="chartsSection" class="mt-10 hidden" role="region" aria-labelledby="charts-title">
-                <h3 id="charts-title" class="text-xl font-semibold mb-4">Análisis de intervinientes</h3>
+                <h3 id="charts-title" class="text-xl font-semibold mb-4" data-i18n="speakers.chartsHeading">Análisis de intervinientes</h3>
                 <div id="chartsContainer" class="space-y-6">
                     <!-- Las gráficas se insertarán aquí dinámicamente -->
                 </div>
@@ -475,25 +507,27 @@
         <section id="faqSection" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelectionFaq" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded">
+                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        data-i18n="faq.back">
                     ← Volver a selección de tipo de consulta
                 </button>
             </div>
             
-            <h2 class="text-xl font-semibold mb-4">Consultas destacadas</h2>
-            <p class="text-gray-600 mb-3">
+            <h2 class="text-xl font-semibold mb-4" data-i18n="faq.heading">Consultas destacadas</h2>
+            <p class="text-gray-600 mb-3" data-i18n="faq.desc">
                 Consultas seleccionadas por su interés, organizadas por categorías. 
                 Haz clic en cualquier consulta para ver la respuesta completa.
             </p>
             <p class="mb-6">
                 <a href="{{ base_path }}/queries/map" target="_blank"
-                   class="inline-flex items-center bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition">
+                   class="inline-flex items-center bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition"
+                   data-i18n="faq.mapLink">
                     🗺️ Ver mapa de consultas
                 </a>
             </p>
             
             <div id="faqLoading" class="text-center py-8 text-gray-500">
-                <span class="loading-spinner"></span> Cargando consultas destacadas...
+                <span class="loading-spinner"></span> <span data-i18n="faq.loading">Cargando consultas destacadas...</span>
             </div>
             
             <div id="faqContent" class="hidden">
@@ -501,6 +535,7 @@
                 <div class="mb-6">
                     <input type="text" id="faqSearch" 
                            placeholder="Buscar en las consultas destacadas..."
+                           data-i18n-placeholder="faq.searchPlaceholder"
                            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-200 focus:border-blue-400">
                 </div>
                 
@@ -509,14 +544,14 @@
                 
                 <!-- Consultas sin categoría -->
                 <div id="faqUncategorized" class="hidden mt-6">
-                    <h3 class="text-lg font-semibold mb-3 text-gray-700">Otras consultas</h3>
+                    <h3 class="text-lg font-semibold mb-3 text-gray-700" data-i18n="faq.uncategorized">Otras consultas</h3>
                     <div id="faqUncategorizedList" class="space-y-2"></div>
                 </div>
             </div>
             
             <div id="faqEmpty" class="hidden text-center py-12 text-gray-500">
-                <p class="text-lg mb-2">No hay consultas destacadas disponibles</p>
-                <p class="text-sm">Las consultas destacadas aparecerán aquí cuando el administrador las seleccione.</p>
+                <p class="text-lg mb-2" data-i18n="faq.emptyTitle">No hay consultas destacadas disponibles</p>
+                <p class="text-sm" data-i18n="faq.emptyDesc">Las consultas destacadas aparecerán aquí cuando el administrador las seleccione.</p>
             </div>
 
             <div id="faqErrorMsg" 
@@ -531,23 +566,31 @@
     <footer class="w-full max-w-2xl mt-8 text-center text-sm text-gray-600" role="contentinfo">
         <div class="bg-white rounded-xl shadow p-4">
             <div class="flex flex-wrap justify-center gap-4 mb-4">
-                <a href="#" onclick="showPrivacyPolicy()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <a href="#" onclick="showPrivacyPolicy()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                   data-i18n="footer.privacy">
                     Política de Privacidad
                 </a>
-                <a href="#" onclick="showLegalNotice()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <a href="#" onclick="showLegalNotice()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                   data-i18n="footer.legal">
                     Aviso Legal
                 </a>
-                <a href="#" onclick="showCookiePolicy()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <a href="#" onclick="showCookiePolicy()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                   data-i18n="footer.cookies">
                     Política de Cookies
                 </a>
-                <a href="#" onclick="showAccessibilityInfo()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <a href="#" onclick="showAccessibilityInfo()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                   data-i18n="footer.accessibility">
                     Accesibilidad
                 </a>
             </div>
-            <p>© 2025 José Miguel Robles Román. Todos los derechos reservados. <a href="mailto:sugerencias@awebaos.org?Subject=Sttcast%20-%20Sugerencias">Sugerencias / Consultas</a></p>
+            <p>
+                <span data-i18n="footer.copyright">© 2025 José Miguel Robles Román. Todos los derechos reservados.</span>
+                <a href="mailto:sugerencias@awebaos.org?Subject=Sttcast%20-%20Sugerencias" data-i18n="footer.suggestions">Sugerencias / Consultas</a>
+            </p>
             <p class="mt-2">
-                Esta web cumple con las 
-                <a href="https://www.w3.org/WAI/WCAG21/quickref/" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                <span data-i18n="footer.wcagText">Esta web cumple con las</span>
+                <a href="https://www.w3.org/WAI/WCAG21/quickref/" class="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer"
+                   data-i18n="footer.wcagLink">
                     Pautas de Accesibilidad WCAG 2.1 nivel AA
                 </a>
             </p>

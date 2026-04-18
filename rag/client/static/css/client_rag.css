@@ -1120,3 +1120,32 @@ button:focus {
         opacity: 1;
     }
 }
+
+/* ── Language switcher buttons ─────────────────────────────────────────────── */
+.lang-btn {
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.3rem;
+    line-height: 1;
+    opacity: 0.55;
+    padding: 2px 4px;
+    transition: opacity 0.2s, border-color 0.2s;
+    vertical-align: middle;
+}
+
+.lang-btn:hover {
+    opacity: 0.9;
+}
+
+.lang-btn.lang-btn-active {
+    opacity: 1;
+    border-color: rgba(255, 255, 255, 0.75);
+}
+
+.lang-btn:focus {
+    outline: 2px solid white;
+    outline-offset: 2px;
+}
+}

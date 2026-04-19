@@ -40,6 +40,9 @@ QUERIES_HIGH_SIMILARITY = float(os.getenv('QUERIES_HIGH_SIMILARITY', '0.75'))
 QUERIES_MEDIUM_SIMILARITY = float(os.getenv('QUERIES_MEDIUM_SIMILARITY', '0.65'))
 QUERIES_LOW_SIMILARITY = float(os.getenv('QUERIES_LOW_SIMILARITY', '0.60'))
 
+# Umbral por defecto para mostrar consultas en el mapa público
+QUERY_MAP_LIKES_THRESHOLD = int(os.getenv('QUERY_MAP_LIKES_THRESHOLD', '1'))
+
 # Autenticación del panel de administración
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 SESSION_SECRET = os.getenv('SESSION_SECRET', secrets.token_hex(32))
@@ -1581,7 +1584,7 @@ async def list_all_queries(clave: str, request: Request):
 
 @app.get("/queries/city/{city}", response_class=HTMLResponse)
 async def list_queries_by_city(city: str, request: Request,
-                                likes_threshold: int = 0):
+                                likes_threshold: int = QUERY_MAP_LIKES_THRESHOLD):
     """
     Endpoint público: lista las consultas mejor valoradas desde una ciudad.
     No muestra IPs ni requiere autenticación.
@@ -1680,7 +1683,7 @@ async def list_queries_by_city(city: str, request: Request,
 
 @app.get("/queries/country/{country}", response_class=HTMLResponse)
 async def list_queries_by_country(country: str, request: Request,
-                                  likes_threshold: int = 0):
+                                  likes_threshold: int = QUERY_MAP_LIKES_THRESHOLD):
     """Endpoint público: lista las consultas mejor valoradas desde un país."""
     if not app.db or not app.db.is_available:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1785,7 +1788,7 @@ def _public_query_location_url(country: str = '', city: str = '', likes_threshol
     return ""
 
 
-async def _resolve_geo_summary_points(likes_threshold: int = 0):
+async def _resolve_geo_summary_points(likes_threshold: int = QUERY_MAP_LIKES_THRESHOLD):
     """Obtiene los puntos geográficos resolviendo coordenadas desde sample_ip."""
     if not app.db or not app.db.is_available:
         return []
@@ -1836,7 +1839,7 @@ async def _resolve_geo_summary_points(likes_threshold: int = 0):
 
 
 @app.get("/queries/map", response_class=HTMLResponse)
-async def public_queries_map(request: Request, likes_threshold: int = 0):
+async def public_queries_map(request: Request, likes_threshold: int = QUERY_MAP_LIKES_THRESHOLD):
     """Mapa público e interactivo de consultas geolocalizadas."""
     if not app.db or not app.db.is_available:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

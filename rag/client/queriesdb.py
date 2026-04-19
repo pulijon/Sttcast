@@ -1310,6 +1310,8 @@ class RAGDatabase:
                                MIN(ip) AS sample_ip
                         FROM rag_queries
                         WHERE podcast_name = $1
+                          AND featured = TRUE
+                          AND allowed = TRUE
                           AND country IS NOT NULL
                           AND ip IS NOT NULL
                           AND (likes - dislikes) >= $2
@@ -1321,7 +1323,9 @@ class RAGDatabase:
                         SELECT country, city, COUNT(*) AS query_count,
                                MIN(ip) AS sample_ip
                         FROM rag_queries
-                        WHERE country IS NOT NULL
+                        WHERE featured = TRUE
+                          AND allowed = TRUE
+                          AND country IS NOT NULL
                           AND ip IS NOT NULL
                           AND (likes - dislikes) >= $1
                         GROUP BY country, city
@@ -1356,6 +1360,7 @@ class RAGDatabase:
                                podcast_name, country, city, likes, dislikes
                         FROM rag_queries
                         WHERE city = $1 AND podcast_name = $2
+                          AND featured = TRUE AND allowed = TRUE
                           AND (likes - dislikes) >= $3
                         ORDER BY created_at DESC
                         LIMIT $4
@@ -1366,6 +1371,7 @@ class RAGDatabase:
                                podcast_name, country, city, likes, dislikes
                         FROM rag_queries
                         WHERE city = $1
+                          AND featured = TRUE AND allowed = TRUE
                           AND (likes - dislikes) >= $2
                         ORDER BY created_at DESC
                         LIMIT $3
@@ -1395,6 +1401,7 @@ class RAGDatabase:
                                podcast_name, country, city, likes, dislikes
                         FROM rag_queries
                         WHERE country = $1 AND podcast_name = $2
+                          AND featured = TRUE AND allowed = TRUE
                           AND (likes - dislikes) >= $3
                         ORDER BY created_at DESC
                         LIMIT $4
@@ -1405,6 +1412,7 @@ class RAGDatabase:
                                podcast_name, country, city, likes, dislikes
                         FROM rag_queries
                         WHERE country = $1
+                          AND featured = TRUE AND allowed = TRUE
                           AND (likes - dislikes) >= $2
                         ORDER BY created_at DESC
                         LIMIT $3

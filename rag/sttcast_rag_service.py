@@ -151,6 +151,88 @@ def log_security_event(event_type: str, client_ip: str, query: str, details: str
             security_monitor[lang_key] = 0
         security_monitor[lang_key] += 1
 
+
+def _close_unbalanced_json(text: str) -> str:
+    """Cierra llaves/corchetes faltantes en JSON truncado, ignorando contenido dentro de strings."""
+    stack = []
+    in_string = False
+    escaped = False
+
+    for ch in text:
+        if escaped:
+            escaped = False
+            continue
+
+        if ch == '\\':
+            escaped = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == '{':
+            stack.append('}')
+        elif ch == '[':
+            stack.append(']')
+        elif ch in ('}', ']'):
+            if stack and stack[-1] == ch:
+                stack.pop()
+
+    if not stack:
+        return text
+
+    # Cierra en orden inverso de apertura.
+    return text + ''.join(reversed(stack))
+
+
+def _parse_model_json_response(raw_content: str) -> dict:
+    """Intenta parsear JSON con reparaciones ligeras para respuestas LLM imperfectas."""
+    clean_content = raw_content.strip()
+
+    # Si la respuesta está envuelta en markdown, extraer el JSON.
+    if clean_content.startswith('```json'):
+        clean_content = clean_content.replace('```json', '').replace('```', '').strip()
+    elif clean_content.startswith('```'):
+        clean_content = clean_content.replace('```', '').strip()
+
+    candidates = [clean_content]
+
+    # Extraer el bloque más probable entre la primera llave y la última.
+    first_brace = clean_content.find('{')
+    last_brace = clean_content.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        extracted = clean_content[first_brace:last_brace + 1]
+        if extracted not in candidates:
+            candidates.append(extracted)
+
+    # Eliminar comas colgantes comunes antes de cierre de objeto/lista.
+    for candidate in list(candidates):
+        without_trailing_commas = re.sub(r',\s*([}\]])', r'\1', candidate)
+        if without_trailing_commas not in candidates:
+            candidates.append(without_trailing_commas)
+
+    # Si la respuesta viene truncada, intentar cerrar llaves/corchetes pendientes.
+    for candidate in list(candidates):
+        balanced = _close_unbalanced_json(candidate)
+        if balanced not in candidates:
+            candidates.append(balanced)
+
+    last_error = None
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as e:
+            last_error = e
+
+    if last_error:
+        raise last_error
+
+    raise ValueError("No se pudo parsear la respuesta JSON del modelo")
+
 # Los modelos Pydantic ahora se importan desde api/apirag.py
     
 def calculate_cost_usd(prompt_tokens: int, completion_tokens: int) -> float:
@@ -844,6 +926,7 @@ Responde AHORA con SOLO el JSON, sin explicaciones adicionales."""
         response = openai.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
         )
         logging.debug("Respuesta de OpenAI recibida")
         
@@ -862,6 +945,8 @@ Responde AHORA con SOLO el JSON, sin explicaciones adicionales."""
     logging.debug(f"Respuesta completa de OpenAI: {response}")
     logging.debug(f"Contenido de la respuesta: {response_content}")
     logging.debug(f"Longitud del contenido: {len(response_content) if response_content else 'None'}")
+    if response.choices:
+        logging.debug(f"Finish reason: {response.choices[0].finish_reason}")
     
     # Verificar si la respuesta está vacía
     if not response_content:
@@ -902,18 +987,10 @@ Responde AHORA con SOLO el JSON, sin explicaciones adicionales."""
             raise HTTPException(status_code=400, detail=error_detail)
     
     try:
-        # Intentar limpiar la respuesta en caso de que tenga caracteres extraños
         clean_content = response_content.strip()
-        
-        # Si la respuesta está envuelta en markdown, extraer el JSON
-        if clean_content.startswith('```json'):
-            clean_content = clean_content.replace('```json', '').replace('```', '').strip()
-        elif clean_content.startswith('```'):
-            clean_content = clean_content.replace('```', '').strip()
-        
         logging.debug(f"Contenido limpio para parsing: {clean_content[:500]}...")
-        
-        search_json = json.loads(clean_content)
+
+        search_json = _parse_model_json_response(clean_content)
         logging.debug(f"JSON parseado exitosamente: {search_json}")
         
         # NUEVA VALIDACIÓN: Detectar si la respuesta es genérica o placeholders

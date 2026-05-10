@@ -888,7 +888,10 @@ async def relsearch(request: Request):
 - Proporciona una respuesta COMPLETA y DEFINITIVA basada en el contexto
 - En el texto de la respuesta HARÁS REFERENCIA A LAS PRINCIPALES CONTRIBUCIONES halladas en el contexto sobre el tema
 - Utiliza HTML para que el texto resultado pueda tener párrafos, listas, y énfasis para resaltar los nombres de los participantes
-- CÍÑETE LO MÁS POSIBLE AL CONTEXTO. Puedes añadir algo fuera de ese contexto, pero indicándolo explícitamente (ej: "Además de lo mencionado en los episodios..."). Si lo ves conveniente, puedes incluir enlaces a Wikipedia o Arxiv para ampliar información
+- El contexto procede de transcripciones automáticas y puede contener errores ortográficos, nombres mal transcritos o variantes de escritura. Interpreta esos casos según la opción más probable por significado y contexto, sin dedicar texto a explicar diferencias ortográficas, erratas o variantes de transcripción salvo que la pregunta trate explícitamente de ortografía.
+- CÍÑETE LO MÁS POSIBLE AL CONTEXTO. Puedes añadir algo fuera de ese contexto, pero indicándolo explícitamente (ej: "Además de lo mencionado en los episodios...").
+- Si añades información que no está en el contexto, DEBES incluir al menos un enlace externo verificable en el texto de la respuesta usando HTML (<a href="https://..." target="_blank" rel="noopener noreferrer">...</a>). Usa fuentes razonables para ampliar información, como Wikipedia, arXiv, NASA, ESA, revistas científicas, documentación oficial u otras fuentes primarias o ampliamente reconocidas.
+- No incluyas enlaces externos cuando la respuesta se base solo en el contexto proporcionado.
 - NO OFREZCAS servicios adicionales, esquemas, ampliaciones o más información futura
 - NO USES frases como "Si quieres te hago un esquema", "si necesitas más información", "¿te gustaría que..." o similares
 - Proporciona TODA LA INFORMACIÓN RELEVANTE DISPONIBLE en una respuesta única y completa
@@ -1380,6 +1383,5 @@ if __name__ == '__main__':
     # Iniciar el servidor FastAPI con Uvicorn
     uvicorn.run(app, host=RAG_SERVER_HOST, port=RAG_SERVER_PORT)
     logging.info("API Gateway detenido.")
-
 
 

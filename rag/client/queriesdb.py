@@ -39,6 +39,15 @@ GEOIP_DB_PATH = os.getenv("GEOIP_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
 _geoip_reader = None
 
 
+def parse_optional_date(value):
+    """Convierte YYYY-MM-DD a date para asyncpg DATE; deja None si no hay valor."""
+    if not value:
+        return None
+    if hasattr(value, "toordinal"):
+        return value
+    return datetime.strptime(str(value), "%Y-%m-%d").date()
+
+
 def _get_geoip_reader():
     """Obtiene (o crea) el lector GeoIP singleton."""
     global _geoip_reader
@@ -471,6 +480,18 @@ class RAGDatabase:
                         ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS {col} {col_type};
                     """)
                 logger.info("✅ Columnas ip/country/city en rag_queries verificadas/creadas")
+
+                # ===== Filtros de búsqueda usados para construir el contexto =====
+                await conn.execute("""
+                    ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS search_fromdate DATE;
+                """)
+                await conn.execute("""
+                    ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS search_todate DATE;
+                """)
+                await conn.execute("""
+                    ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS search_speakers JSONB;
+                """)
+                logger.info("✅ Columnas de filtros de búsqueda en rag_queries verificadas/creadas")
                 
                 # ===== GeoIP: columnas country, city en ip_likes =====
                 for col in ['country', 'city']:
@@ -505,7 +526,10 @@ class RAGDatabase:
         response_data: Optional[Dict[str, Any]] = None,
         query_embedding: Optional[List[float]] = None,
         podcast_name: Optional[str] = None,
-        ip: Optional[str] = None
+        ip: Optional[str] = None,
+        search_fromdate: Optional[str] = None,
+        search_todate: Optional[str] = None,
+        search_speakers: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Guarda una query, respuesta y embedding en la BD
@@ -539,14 +563,21 @@ class RAGDatabase:
                 # Convertir response_data a JSON para PostgreSQL
                 import json
                 response_data_json = json.dumps(response_data) if response_data else None
+                search_speakers_json = json.dumps(search_speakers or ["todos"])
+                search_fromdate_value = parse_optional_date(search_fromdate)
+                search_todate_value = parse_optional_date(search_todate)
                 
                 # Resolver GeoIP
                 geo = geoip_lookup(ip) if ip else {"country": None, "city": None}
                 
                 # SQL para insertar - El orden debe coincidir con el de VALUES
                 query = """
-                    INSERT INTO rag_queries (query_text, response_text, query_embedding, podcast_name, response_data, created_at, ip, country, city)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    INSERT INTO rag_queries (
+                        query_text, response_text, query_embedding, podcast_name,
+                        response_data, created_at, ip, country, city,
+                        search_fromdate, search_todate, search_speakers
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     RETURNING id, uuid;
                 """
                 
@@ -560,7 +591,10 @@ class RAGDatabase:
                     datetime.now(),      # $6 -> created_at (TIMESTAMP)
                     ip,                  # $7 -> ip (VARCHAR)
                     geo["country"],      # $8 -> country (VARCHAR)
-                    geo["city"]          # $9 -> city (VARCHAR)
+                    geo["city"],         # $9 -> city (VARCHAR)
+                    search_fromdate_value, # $10 -> search_fromdate (DATE)
+                    search_todate_value,   # $11 -> search_todate (DATE)
+                    search_speakers_json # $12 -> search_speakers (JSONB)
                 )
                 
                 if result:
@@ -717,7 +751,7 @@ class RAGDatabase:
                     records = await conn.fetch(
                         """
                         SELECT id, uuid, query_text, response_text, created_at, podcast_name,
-                               ip, country, city
+                               ip, country, city, search_fromdate, search_todate, search_speakers
                         FROM rag_queries
                         WHERE podcast_name = $1
                         ORDER BY created_at DESC
@@ -731,7 +765,7 @@ class RAGDatabase:
                     records = await conn.fetch(
                         """
                         SELECT id, uuid, query_text, response_text, created_at, podcast_name,
-                               ip, country, city
+                               ip, country, city, search_fromdate, search_todate, search_speakers
                         FROM rag_queries
                         ORDER BY created_at DESC
                         LIMIT $1 OFFSET $2
@@ -1441,6 +1475,7 @@ class RAGDatabase:
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
                                q.ip, q.country, q.city,
+                               q.search_fromdate, q.search_todate, q.search_speakers,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(
                                        'id', c.id, 'name', c.name, 'slug', c.slug,
@@ -1463,6 +1498,7 @@ class RAGDatabase:
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
                                q.ip, q.country, q.city,
+                               q.search_fromdate, q.search_todate, q.search_speakers,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(
                                        'id', c.id, 'name', c.name, 'slug', c.slug,
@@ -1491,6 +1527,15 @@ class RAGDatabase:
                         elif isinstance(c, dict):
                             parsed_cats.append(c)
                     d['categories'] = parsed_cats
+                    speakers = d.get('search_speakers')
+                    if isinstance(speakers, str):
+                        try:
+                            speakers = json_mod.loads(speakers)
+                        except json_mod.JSONDecodeError:
+                            speakers = [speakers]
+                    if not speakers:
+                        speakers = ["todos"]
+                    d['search_speakers'] = speakers
                     result.append(d)
                 return result
         except Exception as e:

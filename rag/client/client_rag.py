@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import re
+import json
 from tools.logs import logcfg
 from tools.envvars import load_env_vars_from_directory
 
@@ -29,6 +30,31 @@ from queriesdb import db  # Importar el gestor de BD (después de cargar env var
 from cache_buster import get_static_url
 
 
+def parse_query_speakers(value):
+    if not value:
+        return ["todos"]
+    if isinstance(value, list):
+        return value or ["todos"]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return parsed or ["todos"]
+        except json.JSONDecodeError:
+            pass
+        return [value]
+    return [str(value)]
+
+
+def format_query_filters(query):
+    fromdate = query.get('search_fromdate') or ''
+    todate = query.get('search_todate') or ''
+    speakers = parse_query_speakers(query.get('search_speakers'))
+    speakers_text = "todos" if not speakers or speakers == ["todos"] else ", ".join(str(s) for s in speakers)
+    date_text = "sin rango" if not fromdate and not todate else f"{fromdate or '?'} - {todate or '?'}"
+    return date_text, speakers_text
+
+
 # Configuración desde variables de entorno
 FILES_BASE_URL = os.getenv('FILES_BASE_URL', '/files')
 WEB_SERVICE_TIMEOUT = int(os.getenv('WEB_SERVICE_TIMEOUT', '15'))
@@ -42,6 +68,12 @@ QUERIES_LOW_SIMILARITY = float(os.getenv('QUERIES_LOW_SIMILARITY', '0.60'))
 
 # Umbral por defecto para mostrar consultas en el mapa público
 QUERY_MAP_LIKES_THRESHOLD = int(os.getenv('QUERY_MAP_LIKES_THRESHOLD', '1'))
+
+# Número de fragmentos de contexto solicitados al servidor FAISS.
+RELEVANT_FRAGMENTS = int(os.getenv('STTCAST_RELEVANT_FRAGMENTS', '100'))
+RAG_CLIENT_DISTANCE_THRESHOLD = float(os.getenv('RAG_CLIENT_DISTANCE_THRESHOLD', '0.6'))
+RAG_CLIENT_MAX_CONTEXT_FRAGMENTS = int(os.getenv('RAG_CLIENT_MAX_CONTEXT_FRAGMENTS', '1000'))
+RAG_CLIENT_MAX_RAG_FRAGMENTS = int(os.getenv('RAG_CLIENT_MAX_RAG_FRAGMENTS', '100'))
 
 # Autenticación del panel de administración
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
@@ -132,6 +164,12 @@ get_context_url = urljoin(context_server_url, get_context_path)
 logging.info(f"Context server URL: {get_context_url}")
 app.get_context_url = get_context_url
 app.context_server_url = context_server_url
+app.relevant_fragments = RELEVANT_FRAGMENTS
+app.get_context_by_distance_url = urljoin(context_server_url, "/getcontextbyd")
+app.context_filters_url = urljoin(context_server_url, "/contextfilters")
+app.rag_client_distance_threshold = RAG_CLIENT_DISTANCE_THRESHOLD
+app.rag_client_max_context_fragments = RAG_CLIENT_MAX_CONTEXT_FRAGMENTS
+app.rag_client_max_rag_fragments = RAG_CLIENT_MAX_RAG_FRAGMENTS
 
 # RAG Server URL - puede ser completo (RAG_SERVER_URL) o construido desde HOST:PORT
 rag_server_url = os.getenv('RAG_SERVER_URL')
@@ -224,6 +262,28 @@ def build_time_anchor(seconds) -> str:
     secs = total_seconds % 60
     return f"time-{hours:02d}-{minutes:02d}-{secs:02d}"
 
+
+def post_context_server(path: str, payload: dict, timeout: int = 120):
+    auth_headers = create_auth_headers(
+        app.context_server_api_key,
+        "POST",
+        path,
+        payload,
+        "client_rag_service"
+    )
+    body_str = serialize_body(payload)
+    url = urljoin(app.context_server_url, path)
+    return requests.post(url, data=body_str, headers=auth_headers, timeout=timeout)
+
+
+def normalize_speaker_filter(speakers: Optional[List[str]]) -> List[str]:
+    if not speakers:
+        return ["todos"]
+    normalized = [speaker.strip() for speaker in speakers if speaker and speaker.strip()]
+    if not normalized or any(speaker.lower() == "todos" for speaker in normalized):
+        return ["todos"]
+    return normalized
+
 async def get_transcript_file(file_path: str) -> tuple:
     """
     Obtiene archivo de transcripción desde fuente externa o local.
@@ -309,10 +369,18 @@ class AskRequest(BaseModel):
     question: str
     language: str = 'es'
     skip_similarity_check: bool = False
+    fromdate: Optional[str] = None
+    todate: Optional[str] = None
+    speakers: Optional[List[str]] = None
 
 class CheckSimilarRequest(BaseModel):
     question: str
     language: str = 'es'
+
+
+class ContextFiltersPayload(BaseModel):
+    fromdate: Optional[str] = None
+    todate: Optional[str] = None
 
 class VoteRequest(BaseModel):
     vote: str  # "like" o "dislike"
@@ -332,6 +400,24 @@ async def index(request: Request):
                                      "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                      "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH)
                                     })
+
+
+@app.post("/api/context_filters")
+async def get_context_filters(payload: ContextFiltersPayload):
+    """Proxy autenticado para obtener fechas disponibles e intervinientes del context_server."""
+    filter_payload = {}
+    if payload.fromdate:
+        filter_payload["fromdate"] = payload.fromdate
+    if payload.todate:
+        filter_payload["todate"] = payload.todate
+
+    response = post_context_server("/contextfilters", filter_payload, timeout=30)
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al obtener filtros de contexto: {response.status_code}"
+        )
+    return response.json()
 
 @app.get("/transcripts/{file_path:path}")
 async def get_transcript(file_path: str, request: Request):
@@ -784,8 +870,14 @@ async def ask_question(payload: AskRequest, request: Request):
             detail="La pregunta no puede estar vacía"
         )
 
+    filters_requested = bool(
+        payload.fromdate or
+        payload.todate or
+        normalize_speaker_filter(payload.speakers) != ["todos"]
+    )
+
     # Si no se solicita saltar la verificación de similitud, verificar primero
-    if not payload.skip_similarity_check:
+    if not payload.skip_similarity_check and not filters_requested:
         try:
             # Verificar consultas similares primero
             check_request = CheckSimilarRequest(question=question, language=language)
@@ -908,25 +1000,36 @@ async def ask_question(payload: AskRequest, request: Request):
                 detail="No se pudo obtener el embedding de la pregunta"
             )
 
-        # Paso 2: Obtener contexto usando el embedding
+        # Paso 2: Obtener valores efectivos de filtros y contexto por umbral de distancia
+        filter_payload = {}
+        if payload.fromdate:
+            filter_payload["fromdate"] = payload.fromdate
+        if payload.todate:
+            filter_payload["todate"] = payload.todate
+
+        filters_resp = post_context_server("/contextfilters", filter_payload, timeout=30)
+        if filters_resp.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Error al obtener filtros de contexto: {filters_resp.status_code}"
+            )
+        filters_data = filters_resp.json()
+
+        selected_speakers = normalize_speaker_filter(payload.speakers)
+        effective_fromdate = payload.fromdate or filters_data.get("fromdate")
+        effective_todate = payload.todate or filters_data.get("todate")
+
         gcpayload = {
             "query": payload.question,
-            "n_fragments": 100,
-            "query_embedding": query_embedding
+            "distance_threshold": app.rag_client_distance_threshold,
+            "max_fragments": app.rag_client_max_context_fragments,
+            "query_embedding": query_embedding,
+            "fromdate": effective_fromdate,
+            "todate": effective_todate,
+            "speakers": selected_speakers
         }
-        
-        # Crear headers de autenticación HMAC para context server
-        auth_headers = create_auth_headers(
-            app.context_server_api_key,
-            "POST",
-            "/getcontext",
-            gcpayload,
-            "client_rag_service"
-        )
-        
-        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-        body_str = serialize_body(gcpayload)
-        gcresp = requests.post(app.get_context_url, data=body_str, headers=auth_headers, timeout=120)
+
+        gcresp = post_context_server("/getcontextbyd", gcpayload, timeout=120)
         
         if gcresp.status_code != 200:
             raise HTTPException(
@@ -936,7 +1039,7 @@ async def ask_question(payload: AskRequest, request: Request):
         data = gcresp.json()
         logging.info(f"Respuesta del servicio de contexto: {len(data.get('context'))} fragmentos obtenidos")
         if 'context' in data:
-            context = data['context']
+            context = data['context'][:app.rag_client_max_rag_fragments]
         # Pregunta al servicio de búsqueda RAG
         client_ip = get_client_ip_from_request(request)
         relquery_data = {
@@ -1055,7 +1158,18 @@ async def ask_question(payload: AskRequest, request: Request):
                         "response": reldata["search"],  # Contiene {es: ..., en: ...}
                         "references": references,
                         "timestamp": timestamp_iso,
-                        "query": question
+                        "query": question,
+                        "context_filters": {
+                            "fromdate": effective_fromdate,
+                            "todate": effective_todate,
+                            "speakers": selected_speakers,
+                            "distance_threshold": app.rag_client_distance_threshold,
+                            "max_context_fragments": app.rag_client_max_context_fragments,
+                            "max_rag_fragments": app.rag_client_max_rag_fragments,
+                            "context_total_matches": data.get("total_matches"),
+                            "context_matches_after_filter": data.get("matches_after_filter"),
+                            "context_returned_matches": data.get("returned_matches"),
+                        }
                     }
                     
                     # Guardar en BD con estructura completa
@@ -1066,7 +1180,10 @@ async def ask_question(payload: AskRequest, request: Request):
                         response_data=response_data_to_save,
                         query_embedding=query_embedding,
                         podcast_name=app.podcast_name,
-                        ip=client_ip
+                        ip=client_ip,
+                        search_fromdate=effective_fromdate,
+                        search_todate=effective_todate,
+                        search_speakers=selected_speakers
                     )
                     if result and result.get('uuid'):
                         saved_uuid = result['uuid']
@@ -1526,6 +1643,7 @@ async def list_all_queries(clave: str, request: Request):
                 <th>#</th>
                 <th>Fecha</th>
                 <th>Consulta</th>
+                <th>Filtros</th>
                 <th>IP</th>
                 <th>Pa\u00eds</th>
                 <th>Ciudad</th>
@@ -1543,6 +1661,7 @@ async def list_all_queries(clave: str, request: Request):
             query_ip = query.get('ip', '') or ''
             query_country = query.get('country', '') or ''
             query_city = query.get('city', '') or ''
+            filter_dates, filter_speakers = format_query_filters(query)
             
             # Construir URL persistente usando el UUID
             query_url = f"{BASE_PATH}/savedquery/{query_uuid}"
@@ -1557,10 +1676,11 @@ async def list_all_queries(clave: str, request: Request):
             <tr>
                 <td>{idx}</td>
                 <td class="timestamp">{formatted_date}</td>
-                <td class="query-text">{query_text}</td>
-                <td>{query_ip}</td>
-                <td>{query_country}</td>
-                <td>{query_city}</td>
+                <td class="query-text">{escape(str(query_text))}</td>
+                <td>{escape(str(filter_dates))}<br><small>{escape(str(filter_speakers))}</small></td>
+                <td>{escape(str(query_ip))}</td>
+                <td>{escape(str(query_country))}</td>
+                <td>{escape(str(query_city))}</td>
                 <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
 """

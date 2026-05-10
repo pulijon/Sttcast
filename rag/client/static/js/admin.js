@@ -111,6 +111,32 @@ async function loadQueries() {
     }
 }
 
+function parseQuerySpeakers(value) {
+    if (!value) return ['todos'];
+    if (Array.isArray(value)) return value.length ? value : ['todos'];
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) return parsed.length ? parsed : ['todos'];
+        } catch (e) {
+            return [value];
+        }
+        return [value];
+    }
+    return [String(value)];
+}
+
+function formatQueryFilters(q) {
+    const fromDate = q.search_fromdate || '';
+    const toDate = q.search_todate || '';
+    const speakers = parseQuerySpeakers(q.search_speakers);
+    const speakersText = speakers.length === 1 && speakers[0] === 'todos'
+        ? 'todos'
+        : speakers.join(', ');
+    const dateText = fromDate || toDate ? `${fromDate || '?'} - ${toDate || '?'}` : 'sin rango';
+    return { dateText, speakersText, searchText: `${dateText} ${speakersText}`.toLowerCase() };
+}
+
 function renderQueries(queries) {
     const tbody = document.getElementById('queriesTableBody');
     tbody.innerHTML = '';
@@ -141,6 +167,7 @@ function renderQueries(queries) {
         const dateStr = q.created_at ? new Date(q.created_at).toLocaleDateString('es-ES', {
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
         }) : '';
+        const filters = formatQueryFilters(q);
         
         tr.innerHTML = `
             <td class="px-3 py-2">
@@ -155,6 +182,10 @@ function renderQueries(queries) {
                 </a>
             </td>
             <td class="px-3 py-2 text-gray-500 text-xs">${dateStr}</td>
+            <td class="px-3 py-2 text-gray-500 text-xs">
+                <div>${escapeHtml(filters.dateText)}</div>
+                <div class="mt-1">${escapeHtml(filters.speakersText)}</div>
+            </td>
             <td class="px-3 py-2 text-center">
                 <span class="vote-cell" data-uuid="${q.uuid}" data-field="likes" data-value="${q.likes || 0}"
                       onclick="editVote(this)" title="Clic para editar">${q.likes || 0}</span>
@@ -189,7 +220,7 @@ function renderQueries(queries) {
         historyTr.id = `vote-history-row-${q.id}`;
         historyTr.className = 'vote-history-row hidden';
         historyTr.innerHTML = `
-            <td colspan="10" class="px-3 py-2 bg-gray-50">
+            <td colspan="11" class="px-3 py-2 bg-gray-50">
                 <div class="vote-history-content text-xs text-gray-600">
                     <span class="loading-spinner"></span> Cargando historial...
                 </div>
@@ -233,7 +264,8 @@ function filterQueries() {
     
     if (search) {
         filtered = filtered.filter(q => 
-            q.query_text?.toLowerCase().includes(search)
+            q.query_text?.toLowerCase().includes(search) ||
+            formatQueryFilters(q).searchText.includes(search)
         );
     }
     

@@ -19,6 +19,17 @@
         const loadingSpinner = document.getElementById('loadingSpinner');
         const micBtn = document.getElementById('micBtn');
         const micStatus = document.getElementById('micStatus');
+        const openContextFiltersBtn = document.getElementById('openContextFilters');
+        const contextFiltersDialog = document.getElementById('contextFiltersDialog');
+        const closeContextFiltersBtn = document.getElementById('closeContextFilters');
+        const applyContextFiltersBtn = document.getElementById('applyContextFilters');
+        const resetContextFiltersBtn = document.getElementById('resetContextFilters');
+        const contextFilterAllSpeakersBtn = document.getElementById('contextFilterAllSpeakers');
+        const contextFilterFromDate = document.getElementById('contextFilterFromDate');
+        const contextFilterToDate = document.getElementById('contextFilterToDate');
+        const contextFilterSpeakers = document.getElementById('contextFilterSpeakers');
+        const contextFiltersSummary = document.getElementById('contextFiltersSummary');
+        const contextFiltersError = document.getElementById('contextFiltersError');
         
         // Variables para navegación entre formularios
         const queryTypeSelection = document.getElementById('queryTypeSelection');
@@ -90,6 +101,13 @@
         let showingSimilarQueries = false; // Si estamos mostrando consultas similares
         let pendingQuestion = ''; // Pregunta pendiente de procesar cuando se encontraron similares
         let currentQueryUuid = null; // UUID de la consulta actualmente mostrada
+        let contextFilterDefaults = null;
+        let contextFilters = {
+            fromdate: null,
+            todate: null,
+            speakers: ['todos']
+        };
+        let contextFiltersApplied = false;
 
         // Variables para la sección de votación
         const voteSection = document.getElementById('voteSection');
@@ -134,6 +152,92 @@
             updateSubmitButtonState();
         }
 
+        function getSelectedContextSpeakers() {
+            const selected = Array.from(contextFilterSpeakers.selectedOptions || []).map(option => option.value);
+            return selected.length > 0 ? selected : ['todos'];
+        }
+
+        function getContextFilterPayload() {
+            if (!contextFiltersApplied) {
+                return {};
+            }
+            return {
+                fromdate: contextFilters.fromdate,
+                todate: contextFilters.todate,
+                speakers: contextFilters.speakers && contextFilters.speakers.length ? contextFilters.speakers : ['todos']
+            };
+        }
+
+        function updateContextFiltersSummary() {
+            const from = contextFilters.fromdate || contextFilterDefaults?.fromdate || '';
+            const to = contextFilters.todate || contextFilterDefaults?.todate || '';
+            const speakers = contextFilters.speakers || ['todos'];
+            const speakerText = speakers.includes('todos') ? 'todos los intervinientes' : speakers.join(', ');
+            contextFiltersSummary.textContent = `${from || 'inicio'} - ${to || 'fin'}, ${speakerText}`;
+        }
+
+        function populateSpeakerOptions(speakers, selectedSpeakers = ['todos']) {
+            contextFilterSpeakers.innerHTML = '';
+            (speakers || []).forEach(speaker => {
+                const option = document.createElement('option');
+                option.value = speaker;
+                option.textContent = speaker;
+                option.selected = selectedSpeakers.includes(speaker);
+                contextFilterSpeakers.appendChild(option);
+            });
+        }
+
+        async function loadContextFilters(fromdate = null, todate = null) {
+            const payload = {};
+            if (fromdate) payload.fromdate = fromdate;
+            if (todate) payload.todate = todate;
+
+            const response = await fetch(getApiPath('/api/context_filters'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData?.detail || 'No se pudieron cargar los filtros');
+            }
+            return await response.json();
+        }
+
+        async function initializeContextFilters() {
+            try {
+                contextFilterDefaults = await loadContextFilters();
+                contextFilters = {
+                    fromdate: contextFilterDefaults.fromdate,
+                    todate: contextFilterDefaults.todate,
+                    speakers: ['todos']
+                };
+                contextFiltersApplied = false;
+                contextFilterFromDate.min = contextFilterDefaults.min_date || '';
+                contextFilterFromDate.max = contextFilterDefaults.max_date || '';
+                contextFilterToDate.min = contextFilterDefaults.min_date || '';
+                contextFilterToDate.max = contextFilterDefaults.max_date || '';
+                contextFilterFromDate.value = contextFilters.fromdate || '';
+                contextFilterToDate.value = contextFilters.todate || '';
+                populateSpeakerOptions(contextFilterDefaults.speakers, []);
+                updateContextFiltersSummary();
+            } catch (error) {
+                console.error('Error inicializando filtros de contexto:', error);
+                contextFiltersSummary.textContent = 'Filtros no disponibles';
+            }
+        }
+
+        async function refreshContextSpeakersForDates() {
+            try {
+                contextFiltersError.classList.add('hidden');
+                const data = await loadContextFilters(contextFilterFromDate.value, contextFilterToDate.value);
+                populateSpeakerOptions(data.speakers, getSelectedContextSpeakers());
+            } catch (error) {
+                contextFiltersError.textContent = error.message;
+                contextFiltersError.classList.remove('hidden');
+            }
+        }
+
         // Monitor de cambios en el input de pregunta
         questionInput.addEventListener('input', () => {
             const currentValue = questionInput.value;
@@ -146,6 +250,71 @@
             
             updateSubmitButtonState();
         });
+
+        if (openContextFiltersBtn && contextFiltersDialog) {
+            openContextFiltersBtn.addEventListener('click', async () => {
+                if (!contextFilterDefaults) {
+                    await initializeContextFilters();
+                }
+                contextFilterFromDate.value = contextFilters.fromdate || contextFilterDefaults?.fromdate || '';
+                contextFilterToDate.value = contextFilters.todate || contextFilterDefaults?.todate || '';
+                populateSpeakerOptions(contextFilterDefaults?.speakers || [], contextFilters.speakers || ['todos']);
+                contextFiltersDialog.showModal();
+            });
+        }
+
+        if (closeContextFiltersBtn && contextFiltersDialog) {
+            closeContextFiltersBtn.addEventListener('click', () => contextFiltersDialog.close());
+        }
+
+        if (contextFilterFromDate) {
+            contextFilterFromDate.addEventListener('change', refreshContextSpeakersForDates);
+        }
+
+        if (contextFilterToDate) {
+            contextFilterToDate.addEventListener('change', refreshContextSpeakersForDates);
+        }
+
+        if (contextFilterAllSpeakersBtn) {
+            contextFilterAllSpeakersBtn.addEventListener('click', () => {
+                Array.from(contextFilterSpeakers.options).forEach(option => option.selected = false);
+            });
+        }
+
+        if (resetContextFiltersBtn) {
+            resetContextFiltersBtn.addEventListener('click', async () => {
+                if (!contextFilterDefaults) {
+                    contextFilterDefaults = await loadContextFilters();
+                }
+                contextFilterFromDate.value = contextFilterDefaults.fromdate || '';
+                contextFilterToDate.value = contextFilterDefaults.todate || '';
+                populateSpeakerOptions(contextFilterDefaults.speakers, []);
+            });
+        }
+
+        if (applyContextFiltersBtn) {
+            applyContextFiltersBtn.addEventListener('click', () => {
+                contextFilters = {
+                    fromdate: contextFilterFromDate.value || contextFilterDefaults?.fromdate || null,
+                    todate: contextFilterToDate.value || contextFilterDefaults?.todate || null,
+                    speakers: getSelectedContextSpeakers()
+                };
+                const defaultFrom = contextFilterDefaults?.fromdate || null;
+                const defaultTo = contextFilterDefaults?.todate || null;
+                const speakersAreAll = contextFilters.speakers.includes('todos');
+                contextFiltersApplied = (
+                    contextFilters.fromdate !== defaultFrom ||
+                    contextFilters.todate !== defaultTo ||
+                    !speakersAreAll
+                );
+                updateContextFiltersSummary();
+                questionHasChanged = questionInput.value.trim().length > 0;
+                updateSubmitButtonState();
+                contextFiltersDialog.close();
+            });
+        }
+
+        initializeContextFilters();
 
         // Función para mostrar consultas similares
         function showSimilarQueries(similarQueries, message) {
@@ -369,7 +538,8 @@
                     body: JSON.stringify({
                         question, 
                         language,
-                        skip_similarity_check: true  // Saltar verificación de similares
+                        skip_similarity_check: true,  // Saltar verificación de similares
+                        ...getContextFilterPayload()
                     }),
                     signal: controller.signal
                 });
@@ -948,7 +1118,7 @@ askForm.addEventListener('submit', async (e) => {
         const response = await fetch(getApiPath("/api/ask"), {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({question, language}),
+            body: JSON.stringify({question, language, ...getContextFilterPayload()}),
             signal: controller.signal
         });
         

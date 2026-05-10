@@ -24,6 +24,22 @@ class GetContextRequest(BaseModel):
     query_embedding: Optional[List[float]] = None
 
 
+class GetContextByDistanceRequest(BaseModel):
+    query: str
+    distance_threshold: float
+    max_fragments: int = 1000
+    only_embedding: bool = False
+    query_embedding: Optional[List[float]] = None
+    fromdate: Optional[str] = None
+    todate: Optional[str] = None
+    speakers: Optional[List[str]] = None
+
+
+class ContextFiltersRequest(BaseModel):
+    fromdate: Optional[str] = None
+    todate: Optional[str] = None
+
+
 class GetContextResponse(BaseModel):
     context: List[dict]
     query_embedding: Optional[List[float]] = None

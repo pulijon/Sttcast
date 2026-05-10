@@ -22,6 +22,8 @@ from datetime import datetime
 from api.apirag import EmbeddingInput
 from api.apicontext import (
     AddSegmentsRequest,
+    ContextFiltersRequest,
+    GetContextByDistanceRequest,
     GetContextRequest,
     GetContextResponse,
     GenStatsRequest,
@@ -301,6 +303,128 @@ async def get_query_embedding(query: str, app) -> Optional[List[float]]:
         logging.error(f"Error en get_query_embedding: {e}")
         return None
 
+
+def normalize_speakers_filter(speakers: Optional[List[str]]) -> Optional[set[str]]:
+    if not speakers:
+        return None
+    normalized = {speaker.strip() for speaker in speakers if speaker and speaker.strip()}
+    if not normalized or "todos" in {speaker.lower() for speaker in normalized}:
+        return None
+    return normalized
+
+
+def has_context_filters(fromdate: Optional[str], todate: Optional[str], speakers: Optional[List[str]]) -> bool:
+    return bool(fromdate or todate or normalize_speakers_filter(speakers))
+
+
+def row_matches_context_filters(row, fromdate: Optional[str], todate: Optional[str], speakers: Optional[set[str]]) -> bool:
+    epdate = str(row["epdate"])
+    if fromdate and epdate < fromdate:
+        return False
+    if todate and epdate > todate:
+        return False
+    if speakers and str(row["tag"]) not in speakers:
+        return False
+    return True
+
+
+def build_context_from_faiss_results(
+    db: SttcastDB,
+    ids: List[int],
+    distances: List[float],
+    fromdate: Optional[str] = None,
+    todate: Optional[str] = None,
+    speakers: Optional[List[str]] = None,
+) -> tuple[List[dict], int]:
+    """Construye el contexto preservando el orden de FAISS y añadiendo métricas de distancia."""
+    valid_pairs = [
+        (int(raw_id), float(raw_distance))
+        for raw_id, raw_distance in zip(ids, distances)
+        if int(raw_id) != -1
+    ]
+    if not valid_pairs:
+        return [], 0
+
+    rows = db.get_ints(with_embeddings=True, ids=[raw_id for raw_id, _ in valid_pairs])
+    rows_by_id = {int(row["id"]): row for row in rows}
+    context = []
+    speakers_filter = normalize_speakers_filter(speakers)
+    matches_after_filter = 0
+
+    for raw_id, raw_distance in valid_pairs:
+        row = rows_by_id.get(raw_id)
+        if row is None:
+            logging.warning(f"FAISS devolvió el id {raw_id}, pero no existe en la base de datos")
+            continue
+        if not row_matches_context_filters(row, fromdate, todate, speakers_filter):
+            continue
+
+        matches_after_filter += 1
+
+        item = {k: v for k, v in dict(row).items() if k != 'embedding'}
+        faiss_l2_distance = float(raw_distance)
+        cosine_distance = faiss_l2_distance / 2.0
+        item["faiss_l2_distance"] = faiss_l2_distance
+        item["cosine_distance"] = cosine_distance
+        item["cosine_similarity"] = 1.0 - cosine_distance
+        context.append(item)
+
+    return context, matches_after_filter
+
+
+def get_context_filter_defaults(db: SttcastDB, fromdate: Optional[str] = None, todate: Optional[str] = None) -> dict:
+    db.cursor.execute("SELECT MIN(epdate) AS min_date, MAX(epdate) AS max_date FROM episode")
+    bounds = db.cursor.fetchone()
+    min_date = str(bounds["min_date"]) if bounds and bounds["min_date"] is not None else None
+    max_date = str(bounds["max_date"]) if bounds and bounds["max_date"] is not None else None
+
+    effective_fromdate = fromdate or min_date
+    effective_todate = todate or max_date
+
+    query = "SELECT DISTINCT tag FROM intview WHERE 1=1"
+    params = []
+    if effective_fromdate:
+        query += " AND epdate >= ?"
+        params.append(effective_fromdate)
+    if effective_todate:
+        query += " AND epdate <= ?"
+        params.append(effective_todate)
+    query += " ORDER BY tag"
+    db.cursor.execute(query, params)
+    speakers = [str(row["tag"]) for row in db.cursor.fetchall()]
+
+    return {
+        "min_date": min_date,
+        "max_date": max_date,
+        "fromdate": effective_fromdate,
+        "todate": effective_todate,
+        "speakers": speakers,
+        "selected_speakers": ["todos"],
+    }
+
+
+def validate_context_index(index):
+    if index is None:
+        raise HTTPException(status_code=500, detail="El índice FAISS aún no está inicializado")
+
+
+def get_normalized_query_vector(req, rag_server_url: str, rag_api_key: str) -> tuple[np.ndarray, List[float]]:
+    if req.query_embedding:
+        qvec = np.array(req.query_embedding, dtype=np.float32).reshape(1, -1)
+    else:
+        qurl = f"{rag_server_url}/getoneembedding"
+        query_data = {"query": req.query}
+        auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
+        body_str = serialize_body(query_data)
+        r = requests.post(qurl, data=body_str, headers=auth_headers)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        qvec = np.array(r.json().get("embedding"), dtype=np.float32).reshape(1, -1)
+
+    faiss.normalize_L2(qvec)
+    return qvec, qvec[0].tolist()
+
+
 @app.post("/getcontext")
 async def getcontext(request: Request):
     # Validar autenticación HMAC
@@ -314,36 +438,13 @@ async def getcontext(request: Request):
     db: SttcastDB = app.state.db
     index = app.state.index
     rag_server_url = app.state.rag_server_url
+    rag_api_key = app.state.rag_server_api_key
     k = req.n_fragments
 
-    if index is None:
-        raise HTTPException(status_code=500, detail="El índice FAISS aún no está inicializado")
+    validate_context_index(index)
 
     # 1. Obtener embedding de la query
-    if req.query_embedding:
-        # Si ya viene en la petición, usarlo
-        qvec = np.array(req.query_embedding, dtype=np.float32).reshape(1, -1)
-    else:
-        # Si no, calcularlo llamando al RAG server
-        qurl = f"{rag_server_url}/getoneembedding"
-        query_data = {"query": req.query}
-        
-        # Crear headers de autenticación HMAC
-        rag_api_key = app.state.rag_server_api_key
-        auth_headers = create_auth_headers(rag_api_key, "POST", qurl, query_data, client_id='context_server')
-        
-        # ENVIAR EL JSON EXACTO QUE USAMOS PARA LA FIRMA
-        body_str = serialize_body(query_data)
-        r = requests.post(qurl, data=body_str, headers=auth_headers)
-        if r.status_code != 200:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
-        qvec = np.array(r.json().get("embedding"), dtype=np.float32).reshape(1, -1)
-    
-    # Normalizar siempre
-    faiss.normalize_L2(qvec)
-    
-    # Convertir a lista para devolverlo en la respuesta
-    query_embedding_list = qvec[0].tolist()
+    qvec, query_embedding_list = get_normalized_query_vector(req, rag_server_url, rag_api_key)
 
     # 2. Si solo se pide el embedding, devolverlo y salir
     if req.only_embedding:
@@ -355,11 +456,93 @@ async def getcontext(request: Request):
     if not ids or ids[0] == -1:
         raise HTTPException(status_code=404, detail="No se han encontrado segmentos relevantes para la consulta")
 
-    rows = db.get_ints(with_embeddings=True, ids=ids)
-    context = [{k: v for k, v in dict(row).items() if k != 'embedding'} for row in rows]
+    context, _ = build_context_from_faiss_results(db, ids, D[0].tolist())
     logging.info(f"Contexto recuperado: {len(context)} fragmentos")
     
     return GetContextResponse(context=context, query_embedding=query_embedding_list)
+
+
+@app.post("/getcontextbyd")
+async def getcontextbyd(request: Request):
+    # Validar autenticación HMAC
+    body_bytes = await request.body()
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
+
+    # Parse del body
+    body_dict = json.loads(body_bytes.decode('utf-8'))
+    req = GetContextByDistanceRequest(**body_dict)
+
+    if req.distance_threshold < 0 or req.distance_threshold > 2:
+        raise HTTPException(status_code=400, detail="distance_threshold debe estar entre 0 y 2")
+    if req.max_fragments <= 0:
+        raise HTTPException(status_code=400, detail="max_fragments debe ser mayor que cero")
+
+    db: SttcastDB = app.state.db
+    index = app.state.index
+    rag_server_url = app.state.rag_server_url
+    rag_api_key = app.state.rag_server_api_key
+
+    validate_context_index(index)
+
+    qvec, query_embedding_list = get_normalized_query_vector(req, rag_server_url, rag_api_key)
+    if req.only_embedding:
+        return GetContextResponse(context=[], query_embedding=query_embedding_list)
+
+    # FAISS IndexFlatL2 devuelve distancia euclidea cuadrada. Con vectores normalizados:
+    # squared_l2 = 2 * cosine_distance.
+    radius = float(req.distance_threshold) * 2.0
+    lims, distances, ids = index.range_search(qvec, radius)
+    result_count = int(lims[1] - lims[0])
+    if result_count == 0:
+        raise HTTPException(status_code=404, detail="No se han encontrado segmentos bajo el umbral indicado")
+
+    pairs = sorted(
+        zip(ids.tolist(), distances.tolist()),
+        key=lambda pair: pair[1],
+    )
+    filtering_requested = has_context_filters(req.fromdate, req.todate, req.speakers)
+    pairs_to_fetch = pairs if filtering_requested else pairs[:req.max_fragments]
+
+    context, matches_after_filter = build_context_from_faiss_results(
+        db,
+        [raw_id for raw_id, _ in pairs_to_fetch],
+        [raw_distance for _, raw_distance in pairs_to_fetch],
+        fromdate=req.fromdate,
+        todate=req.todate,
+        speakers=req.speakers,
+    )
+    truncated = len(context) > req.max_fragments
+    context = context[:req.max_fragments]
+    if not filtering_requested:
+        matches_after_filter = result_count
+    logging.info(
+        f"Contexto por distancia recuperado: {len(context)} fragmentos "
+        f"(total_bajo_umbral={result_count}, threshold={req.distance_threshold}, truncated={truncated})"
+    )
+
+    return {
+        "context": context,
+        "query_embedding": query_embedding_list,
+        "total_matches": result_count,
+        "matches_after_filter": matches_after_filter,
+        "returned_matches": len(context),
+        "truncated": truncated,
+        "distance_threshold": req.distance_threshold,
+        "max_fragments": req.max_fragments,
+        "fromdate": req.fromdate,
+        "todate": req.todate,
+        "speakers": req.speakers or ["todos"],
+    }
+
+
+@app.post("/contextfilters")
+async def contextfilters(request: Request):
+    body_bytes = await request.body()
+    client_id = validate_hmac_auth(request, CONTEXT_SERVER_API_KEY, body_bytes)
+
+    body_dict = json.loads(body_bytes.decode('utf-8')) if body_bytes else {}
+    req = ContextFiltersRequest(**body_dict)
+    return get_context_filter_defaults(app.state.db, req.fromdate, req.todate)
 
 
 # Endpoint para obtener estadísticas generales entre dos fechas

@@ -1148,4 +1148,36 @@ button:focus {
     outline: 2px solid white;
     outline-offset: 2px;
 }
+
+.lang-flag-symbol {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid rgba(17, 24, 39, 0.18);
+    border-radius: 3px;
+    display: inline-flex;
+    height: 1rem;
+    justify-content: center;
+    margin-right: 0.25rem;
+    min-width: 1.5rem;
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+.lang-flag-symbol::before {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    content: "";
+    display: block;
+    height: 100%;
+    width: 100%;
+}
+
+.lang-btn[data-lang="es"] .lang-flag-symbol::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 40'%3E%3Crect width='60' height='40' fill='%23c8102e'/%3E%3Crect y='10' width='60' height='20' fill='%23ffc400'/%3E%3C/svg%3E");
+}
+
+.lang-btn[data-lang="en"] .lang-flag-symbol::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 30'%3E%3Crect width='60' height='30' fill='%23012169'/%3E%3Cpath d='M0 0 L25 12.5 M35 17.5 L60 30 M60 0 L35 12.5 M25 17.5 L0 30' stroke='%23fff' stroke-width='6'/%3E%3Cpath d='M0 0 L25 12.5 M35 17.5 L60 30 M60 0 L35 12.5 M25 17.5 L0 30' stroke='%23c8102e' stroke-width='3.5'/%3E%3Crect x='25' width='10' height='30' fill='%23fff'/%3E%3Crect y='10' width='60' height='10' fill='%23fff'/%3E%3Crect x='27' width='6' height='30' fill='%23c8102e'/%3E%3Crect y='12' width='60' height='6' fill='%23c8102e'/%3E%3C/svg%3E");
+}
 }

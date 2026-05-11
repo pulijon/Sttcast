@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
     <title>Consultas relevantes en la colección de podcasts de {{ podcast_name }}</title>
     <link rel="icon" type="image/x-icon" href="{{ base_path }}/static/images/favicon_sttcast.ico">
 
@@ -39,7 +40,7 @@
     <script src="{{ base_path }}/static/js/i18n.js"></script>
 
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center">
+<body class="min-h-screen flex flex-col items-center" style="background: #f1f5f9;">
 
         <!-- Skip link para accesibilidad -->
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50" data-i18n="nav.skipLink">
@@ -61,7 +62,7 @@
                 <button id="rejectCookies" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500" data-i18n="cookies.reject">
                     Rechazar
                 </button>
-                <button id="acceptCookies" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500" data-i18n="cookies.accept">
+                <button id="acceptCookies" class="px-4 py-2 text-white rounded hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);" data-i18n="cookies.accept">
                     Aceptar
                 </button>
                 <button id="configureCookies" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500" data-i18n="cookies.configure">
@@ -72,18 +73,18 @@
     </div>
     
     <!-- Controles de accesibilidad -->
-    <div class="a11y-toolbar w-full bg-gray-800 text-white py-2">
+    <div class="a11y-toolbar w-full text-white py-2" style="background: #1e1b4b; border-bottom: 1px solid rgba(255,255,255,0.08);">
         <div class="max-w-2xl mx-auto flex justify-between items-center px-4">
             <div class="flex gap-4">
-                <button id="increaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                <button id="increaseFontSize" class="text-sm opacity-75 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-white"
                         data-i18n-title="a11y.increaseFontTitle" title="Aumentar tamaño de fuente">
                     A+
                 </button>
-                <button id="decreaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                <button id="decreaseFontSize" class="text-sm opacity-75 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-white"
                         data-i18n-title="a11y.decreaseFontTitle" title="Reducir tamaño de fuente">
                     A-
                 </button>
-                <button id="toggleContrast" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                <button id="toggleContrast" class="text-sm opacity-75 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-white"
                         data-i18n="a11y.contrast" data-i18n-title="a11y.contrastTitle" title="Alternar alto contraste">
                     Contraste
                 </button>
@@ -103,7 +104,7 @@
                     </button>
                 </div>
                 <div class="text-xs">
-                    <a href="#" onclick="showAccessibilityInfo()" class="accessibility-info-link hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-white"
+                    <a href="#" onclick="showAccessibilityInfo()" class="accessibility-info-link opacity-75 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-white"
                        data-i18n="a11y.infoLink">
                         Información de accesibilidad
                     </a>
@@ -112,7 +113,7 @@
         </div>
     </div>
 
-    <main class="app-shell w-full max-w-5xl mt-6 bg-white rounded-xl shadow p-8" id="main-content">
+    <main class="app-shell w-full max-w-5xl mt-6 bg-white" id="main-content">
 
         <!-- Logo/PNG antes del título -->
         <div class="app-identity flex justify-center mb-3">
@@ -121,7 +122,7 @@
                 class="h-24 w-24 rounded-full shadow"
                 loading="lazy">
         </div>
-        <h1 class="text-2xl font-bold mb-2 text-center" data-i18n="main.title">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
+        <h1 class="app-title text-2xl font-bold mb-2 text-center" data-i18n="main.title">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
         <p class="app-subtitle text-center text-gray-600 mb-6" data-i18n="main.subtitle">Pregunta, explora consultas destacadas o analiza intervinientes en {{ podcast_name }}.</p>
 
         <!-- Formulario de selección inicial -->
@@ -135,34 +136,43 @@
                     </div>
                     <div class="quick-action-grid">
                         <label class="quick-action-card">
-                            <input type="radio" name="queryType" value="topics" checked
-                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
-                            <div>
-                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.topicsTitle">Realizar una consulta</span>
-                                <p class="text-sm text-gray-600" data-i18n="queryType.topicsDesc">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
+                            <span class="card-icon" aria-hidden="true">🔍</span>
+                            <div class="quick-action-card-inner">
+                                <input type="radio" name="queryType" value="topics" checked
+                                       class="mt-1 h-4 w-4 focus:ring-indigo-500 border-gray-300">
+                                <div>
+                                    <span class="text-base font-medium text-gray-700" data-i18n="queryType.topicsTitle">Realizar una consulta</span>
+                                    <p class="text-sm text-gray-600" data-i18n="queryType.topicsDesc">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
+                                </div>
                             </div>
                         </label>
                         <label class="quick-action-card">
-                            <input type="radio" name="queryType" value="speakers" 
-                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
-                            <div>
-                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.speakersTitle">Análisis de intervinientes</span>
-                                <p class="text-sm text-gray-600" data-i18n="queryType.speakersDesc">Analiza estadísticas y patrones de participación de los contertulios</p>
+                            <span class="card-icon" aria-hidden="true">👥</span>
+                            <div class="quick-action-card-inner">
+                                <input type="radio" name="queryType" value="speakers" 
+                                       class="mt-1 h-4 w-4 focus:ring-indigo-500 border-gray-300">
+                                <div>
+                                    <span class="text-base font-medium text-gray-700" data-i18n="queryType.speakersTitle">Análisis de intervinientes</span>
+                                    <p class="text-sm text-gray-600" data-i18n="queryType.speakersDesc">Analiza estadísticas y patrones de participación de los contertulios</p>
+                                </div>
                             </div>
                         </label>
                         <label class="quick-action-card">
-                            <input type="radio" name="queryType" value="faq" 
-                                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
-                            <div>
-                                <span class="text-base font-medium text-gray-700" data-i18n="queryType.faqTitle">Consultas destacadas</span>
-                                <p class="text-sm text-gray-600" data-i18n="queryType.faqDesc">Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías</p>
+                            <span class="card-icon" aria-hidden="true">⭐</span>
+                            <div class="quick-action-card-inner">
+                                <input type="radio" name="queryType" value="faq" 
+                                       class="mt-1 h-4 w-4 focus:ring-indigo-500 border-gray-300">
+                                <div>
+                                    <span class="text-base font-medium text-gray-700" data-i18n="queryType.faqTitle">Consultas destacadas</span>
+                                    <p class="text-sm text-gray-600" data-i18n="queryType.faqDesc">Explora las consultas más interesantes realizadas anteriormente, organizadas por categorías</p>
+                                </div>
                             </div>
                         </label>
                     </div>
                 </fieldset>
                 
                 <button type="submit"
-                        class="quick-actions-submit w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                        class="quick-actions-submit w-full text-white font-bold rounded-lg py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                         data-i18n="queryType.continue">
                     Continuar
                 </button>
@@ -173,7 +183,7 @@
         <section id="topicsForm" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelection" 
-                        class="back-to-selection text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        class="back-to-selection focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
                         data-i18n="topics.back">
                     ← Volver a selección de tipo de consulta
                 </button>
@@ -202,11 +212,6 @@
                         Describe lo que quieres saber sobre los podcasts de {{ podcast_name }}. Puedes utilizar la voz con el botón de micrófono.
                     </div>
 
-                    <div class="example-query-row" aria-label="Ejemplos de preguntas">
-                        <button type="button" class="example-query" data-question="¿Qué temas de cosmología se han tratado recientemente?">Cosmología reciente</button>
-                        <button type="button" class="example-query" data-question="Resume las ideas principales sobre inteligencia artificial.">Inteligencia artificial</button>
-                        <button type="button" class="example-query" data-question="¿Qué episodios hablan de física cuántica?">Física cuántica</button>
-                    </div>
                     
                     <div class="flex items-center mt-2">
                         <button type="button" 
@@ -215,7 +220,7 @@
                                 data-i18n-aria-label="topics.micAriaLabel"
                                 title="Pregunta por voz"
                                 data-i18n-title="topics.micTitle"
-                                class="rounded-full bg-blue-200 p-2 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                class="rounded-full p-2 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-500" style="background: #ede9fe; color: #4f46e5;">
                             <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M12 18v2m0 0a4 4 0 01-4-4H8a4 4 0 004-4v-2a4 4 0 014 4h0a4 4 0 01-4 4zm0 0V18" />
@@ -262,7 +267,8 @@
                         </div>
                         <button type="button"
                                 id="openContextFilters"
-                                class="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                                class="px-4 py-2 text-white rounded-lg hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm font-medium"
+                                style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);">
                             Configurar filtros
                         </button>
                     </div>
@@ -301,15 +307,15 @@
                         </div>
 
                         <div class="flex justify-end gap-3 pt-2">
-                            <button type="button" id="resetContextFilters" class="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Restablecer</button>
-                            <button type="button" id="applyContextFilters" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Aplicar</button>
+                            <button type="button" id="resetContextFilters" class="px-4 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200 border border-gray-200">Restablecer</button>
+                            <button type="button" id="applyContextFilters" class="px-4 py-2 text-white rounded hover:opacity-90" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);">Aplicar</button>
                         </div>
                     </div>
                 </dialog>
                 
                 <button type="submit"
                         aria-describedby="submit-help"
-                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 mt-4 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                        class="btn-primary w-full text-white font-bold rounded-lg py-3 mt-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     <span id="submitText">Consultar</span>
                     <span id="loadingSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
                 </button>
@@ -380,7 +386,8 @@
                             <button 
                                 type="button"
                                 id="copyUrlBtn"
-                                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                class="px-4 py-2 text-white rounded hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);"
                                 title="Copiar al portapapeles"
                             >
                                 📋 Copiar
@@ -490,7 +497,7 @@
         <section id="speakersForm" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelectionSpeakers" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        class="back-to-selection focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
                         data-i18n="speakers.back">
                     ← Volver a selección de tipo de consulta
                 </button>
@@ -566,7 +573,7 @@
                 <button type="submit"
                         id="analyzeSpeakersBtn"
                         disabled
-                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                        class="btn-primary w-full text-white font-bold rounded-lg py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     <span id="analyzeText" data-i18n="speakers.analyze">Generar análisis</span>
                     <span id="analyzeSpinner" class="loading-spinner hidden" aria-hidden="true"></span>
                 </button>
@@ -591,7 +598,7 @@
         <section id="faqSection" class="hidden">
             <div class="mb-4">
                 <button type="button" id="backToSelectionFaq" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        class="back-to-selection focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
                         data-i18n="faq.back">
                     ← Volver a selección de tipo de consulta
                 </button>
@@ -604,7 +611,8 @@
             </p>
             <p class="mb-6">
                 <a href="{{ base_path }}/queries/map" target="_blank"
-                   class="inline-flex items-center bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition"
+                   class="inline-flex items-center text-white px-4 py-2 rounded-lg hover:opacity-90 transition shadow-sm"
+                   style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);"
                    data-i18n="faq.mapLink">
                     🗺️ Ver mapa de consultas
                 </a>

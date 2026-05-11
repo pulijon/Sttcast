@@ -9,6 +9,9 @@
     <meta name="description" content="Realiza consultas inteligentes en la colección de podcasts de {{ podcast_name }}. Busca información específica con referencias y timestamps.">
     <meta name="author" content="José Miguel Robles Román">
     <meta name="robots" content="index, follow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -69,7 +72,7 @@
     </div>
     
     <!-- Controles de accesibilidad -->
-    <div class="w-full bg-gray-800 text-white py-2">
+    <div class="a11y-toolbar w-full bg-gray-800 text-white py-2">
         <div class="max-w-2xl mx-auto flex justify-between items-center px-4">
             <div class="flex gap-4">
                 <button id="increaseFontSize" class="text-sm hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
@@ -89,12 +92,18 @@
                 <!-- Selector de idioma de la interfaz -->
                 <div class="flex gap-1" role="group" aria-label="Interface language">
                     <button class="lang-btn" data-lang="es"
-                            title="Español" aria-label="Cambiar idioma a español" aria-pressed="true">🇪🇸</button>
+                            title="Español" aria-label="Cambiar idioma a español" aria-pressed="true">
+                        <span class="lang-flag-symbol" aria-hidden="true"></span>
+                        <span class="lang-btn-label">ES</span>
+                    </button>
                     <button class="lang-btn" data-lang="en"
-                            title="English" aria-label="Change language to English" aria-pressed="false">🇬🇧</button>
+                            title="English" aria-label="Change language to English" aria-pressed="false">
+                        <span class="lang-flag-symbol" aria-hidden="true"></span>
+                        <span class="lang-btn-label">EN</span>
+                    </button>
                 </div>
                 <div class="text-xs">
-                    <a href="#" onclick="showAccessibilityInfo()" class="hover:text-blue-300 focus:outline-none focus:ring-1 focus:ring-white"
+                    <a href="#" onclick="showAccessibilityInfo()" class="accessibility-info-link hover:text-blue-200 focus:outline-none focus:ring-1 focus:ring-white"
                        data-i18n="a11y.infoLink">
                         Información de accesibilidad
                     </a>
@@ -103,24 +112,25 @@
         </div>
     </div>
 
-    <main class="w-full max-w-4xl mt-8 bg-white rounded-xl shadow p-8" id="main-content">
+    <main class="app-shell w-full max-w-5xl mt-6 bg-white rounded-xl shadow p-8" id="main-content">
 
         <!-- Logo/PNG antes del título -->
-        <div class="flex justify-center mb-4">
+        <div class="flex justify-center mb-3">
             <img src="{{ base_path }}/static/images/sttcast-logo.png"
                 alt="Sttcast logo"
-                class="h-32 w-32 rounded-full shadow"
+                class="h-24 w-24 rounded-full shadow"
                 loading="lazy">
         </div>
-        <h1 class="text-2xl font-bold mb-6 text-center" data-i18n="main.title">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
+        <h1 class="text-2xl font-bold mb-2 text-center" data-i18n="main.title">Sistema de consultas en la colección de podcasts de {{ podcast_name }}</h1>
+        <p class="app-subtitle text-center text-gray-600 mb-6">Pregunta, explora consultas destacadas o analiza intervinientes en {{ podcast_name }}.</p>
 
         <!-- Formulario de selección inicial -->
-        <section id="queryTypeSelection" class="mb-8">
-            <form id="queryTypeForm" class="space-y-6" role="form" aria-label="Selección del tipo de consulta">
+        <section id="queryTypeSelection" class="mb-6">
+            <form id="queryTypeForm" class="quick-actions" role="form" aria-label="Selección del tipo de consulta">
                 <fieldset>
-                    <legend class="text-lg font-medium text-gray-700 mb-4" data-i18n="queryType.legend">¿Qué tipo de consulta deseas realizar?</legend>
-                    <div class="space-y-3">
-                        <label class="flex items-start space-x-3 cursor-pointer">
+                    <legend class="sr-only" data-i18n="queryType.legend">¿Qué tipo de consulta deseas realizar?</legend>
+                    <div class="quick-action-grid">
+                        <label class="quick-action-card">
                             <input type="radio" name="queryType" value="topics" checked
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
@@ -128,7 +138,7 @@
                                 <p class="text-sm text-gray-600" data-i18n="queryType.topicsDesc">Busca información específica sobre los contenidos y temas discutidos en los podcasts</p>
                             </div>
                         </label>
-                        <label class="flex items-start space-x-3 cursor-pointer">
+                        <label class="quick-action-card">
                             <input type="radio" name="queryType" value="speakers" 
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
@@ -136,7 +146,7 @@
                                 <p class="text-sm text-gray-600" data-i18n="queryType.speakersDesc">Analiza estadísticas y patrones de participación de los contertulios</p>
                             </div>
                         </label>
-                        <label class="flex items-start space-x-3 cursor-pointer">
+                        <label class="quick-action-card">
                             <input type="radio" name="queryType" value="faq" 
                                    class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300">
                             <div>
@@ -148,7 +158,7 @@
                 </fieldset>
                 
                 <button type="submit"
-                        class="w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                        class="quick-actions-submit w-full bg-blue-600 text-white font-bold rounded-lg py-3 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
                         data-i18n="queryType.continue">
                     Continuar
                 </button>
@@ -156,10 +166,10 @@
         </section>
 
         <!-- Formulario de consultas por temas (original) -->
-        <section id="topicsForm" class="hidden">
+        <section id="topicsForm">
             <div class="mb-4">
                 <button type="button" id="backToSelection" 
-                        class="text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        class="hidden text-blue-600 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                         data-i18n="topics.back">
                     ← Volver a selección de tipo de consulta
                 </button>
@@ -186,6 +196,12 @@
                     
                     <div id="question-help" class="text-sm text-gray-600 mt-1" data-i18n="topics.questionHelp">
                         Describe lo que quieres saber sobre los podcasts de {{ podcast_name }}. Puedes utilizar la voz con el botón de micrófono.
+                    </div>
+
+                    <div class="example-query-row" aria-label="Ejemplos de preguntas">
+                        <button type="button" class="example-query" data-question="¿Qué temas de cosmología se han tratado recientemente?">Cosmología reciente</button>
+                        <button type="button" class="example-query" data-question="Resume las ideas principales sobre inteligencia artificial.">Inteligencia artificial</button>
+                        <button type="button" class="example-query" data-question="¿Qué episodios hablan de física cuántica?">Física cuántica</button>
                     </div>
                     
                     <div class="flex items-center mt-2">
@@ -297,6 +313,17 @@
                     Presiona Enter o haz clic para enviar tu consulta
                 </div>
             </form>
+
+            <div id="loadingStatusPanel" class="loading-status-panel hidden" role="status" aria-live="polite">
+                <div class="loading-status-header">
+                    <span class="loading-status-dot"></span>
+                    <div>
+                        <div id="loadingStepLabel" class="loading-status-title">Preparando la consulta</div>
+                        <div id="loadingStepDetail" class="loading-status-detail">Buscando fragmentos relevantes en la colección.</div>
+                    </div>
+                </div>
+                <div class="loading-status-bar"><span id="loadingStatusProgress"></span></div>
+            </div>
 
             <!-- Zona de resultados mejorada -->
             <section id="results" class="mt-10 hidden" role="region" aria-labelledby="results-title">
@@ -616,8 +643,8 @@
 
 
 <!-- Footer con información legal -->
-    <footer class="w-full max-w-2xl mt-8 text-center text-sm text-gray-600" role="contentinfo">
-        <div class="bg-white rounded-xl shadow p-4">
+    <footer class="w-full max-w-5xl mt-8 text-center text-sm text-gray-600" role="contentinfo">
+        <div class="footer-panel bg-white rounded-xl shadow p-4">
             <div class="flex flex-wrap justify-center gap-4 mb-4">
                 <a href="#" onclick="showPrivacyPolicy()" class="hover:text-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
                    data-i18n="footer.privacy">

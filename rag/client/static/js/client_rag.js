@@ -30,6 +30,10 @@
         const contextFilterSpeakers = document.getElementById('contextFilterSpeakers');
         const contextFiltersSummary = document.getElementById('contextFiltersSummary');
         const contextFiltersError = document.getElementById('contextFiltersError');
+        const exampleQueryButtons = document.querySelectorAll('.example-query');
+        const loadingStatusPanel = document.getElementById('loadingStatusPanel');
+        const loadingStepLabel = document.getElementById('loadingStepLabel');
+        const loadingStepDetail = document.getElementById('loadingStepDetail');
         
         // Variables para navegación entre formularios
         const queryTypeSelection = document.getElementById('queryTypeSelection');
@@ -92,6 +96,7 @@
         let fontSize = 16;
         let highContrast = false;
         let countdownInterval = null; // Intervalo para la cuenta atrás del loading
+        let loadingMessageInterval = null;
 
         // Control de estado del botón de envío y prevención de consultas duplicadas
         let initialQuestionValue = '';  // Valor inicial o desde consulta guardada
@@ -108,6 +113,24 @@
             speakers: ['todos']
         };
         let contextFiltersApplied = false;
+        const loadingSteps = [
+            {
+                label: 'Preparando la consulta',
+                detail: 'Calculando el significado de la pregunta.'
+            },
+            {
+                label: 'Buscando contexto',
+                detail: 'Localizando fragmentos relevantes en la colección.'
+            },
+            {
+                label: 'Generando respuesta',
+                detail: 'Componiendo una respuesta con referencias verificables.'
+            },
+            {
+                label: 'Revisando resultados',
+                detail: 'Preparando enlaces, tiempos y consultas relacionadas.'
+            }
+        ];
 
         // Variables para la sección de votación
         const voteSection = document.getElementById('voteSection');
@@ -174,6 +197,26 @@
             const speakers = contextFilters.speakers || ['todos'];
             const speakerText = speakers.includes('todos') ? 'todos los intervinientes' : speakers.join(', ');
             contextFiltersSummary.textContent = `${from || 'inicio'} - ${to || 'fin'}, ${speakerText}`;
+        }
+
+        function showMode(mode) {
+            queryTypeSelection.classList.remove('hidden');
+            topicsForm.classList.toggle('hidden', mode !== 'topics');
+            speakersForm.classList.toggle('hidden', mode !== 'speakers');
+            faqSection.classList.toggle('hidden', mode !== 'faq');
+
+            const selected = document.querySelector(`input[name="queryType"][value="${mode}"]`);
+            if (selected) {
+                selected.checked = true;
+            }
+
+            if (mode === 'topics') {
+                questionInput.focus();
+            } else if (mode === 'speakers') {
+                startDateInput.focus();
+            } else if (mode === 'faq') {
+                loadFaq();
+            }
         }
 
         function populateSpeakerOptions(speakers, selectedSpeakers = ['todos']) {
@@ -249,6 +292,18 @@
             }
             
             updateSubmitButtonState();
+        });
+
+        exampleQueryButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                questionInput.value = button.dataset.question || button.textContent.trim();
+                questionHasChanged = questionInput.value !== initialQuestionValue;
+                if (showingSimilarQueries) {
+                    hideSimilarQueries();
+                }
+                updateSubmitButtonState();
+                questionInput.focus();
+            });
         });
 
         if (openContextFiltersBtn && contextFiltersDialog) {
@@ -590,18 +645,10 @@
                 return;
             }
             
-            // Ocultar sección de selección
-            queryTypeSelection.classList.add('hidden');
-            
             if (selectedType.value === 'topics') {
-                // Mostrar formulario de consultas por temas y reiniciar estado
-                topicsForm.classList.remove('hidden');
-                resetQuestionState('');
-                questionInput.focus();
-                } else if (selectedType.value === 'speakers') {
-                // Mostrar formulario de análisis de intervinientes
-                speakersForm.classList.remove('hidden');
-                startDateInput.focus();
+                showMode('topics');
+            } else if (selectedType.value === 'speakers') {
+                showMode('speakers');
 
                 // Establecer fechas por defecto (último mes)
                 const today = new Date();
@@ -611,10 +658,14 @@
                 startDateInput.value = lastMonth.toISOString().split('T')[0];
                 endDateInput.value = today.toISOString().split('T')[0];
             } else if (selectedType.value === 'faq') {
-                // Mostrar sección de consultas destacadas (FAQ)
-                faqSection.classList.remove('hidden');
-                loadFaq();
+                showMode('faq');
             }
+        });
+
+        document.querySelectorAll('input[name="queryType"]').forEach(input => {
+            input.addEventListener('change', () => {
+                queryTypeForm.dispatchEvent(new Event('submit', { cancelable: true }));
+            });
         });
         
         // ===== CARGAR CONSULTA GUARDADA SI EXISTE =====
@@ -672,8 +723,7 @@
         
         // Botones de volver atrás
         backToSelection.addEventListener('click', () => {
-            topicsForm.classList.add('hidden');
-            queryTypeSelection.classList.remove('hidden');
+            showMode('topics');
             // Limpiar formulario de temas y reiniciar estado
             resetQuestionState('');
             resultsSection.classList.add('hidden');
@@ -682,8 +732,7 @@
         });
         
         backToSelectionSpeakers.addEventListener('click', () => {
-            speakersForm.classList.add('hidden');
-            queryTypeSelection.classList.remove('hidden');
+            showMode('topics');
             // Limpiar formulario de intervinientes
             speakersAnalysisForm.reset();
             chartsSection.classList.add('hidden');
@@ -695,8 +744,7 @@
 
         // Botón de volver desde FAQ
         backToSelectionFaq.addEventListener('click', () => {
-            faqSection.classList.add('hidden');
-            queryTypeSelection.classList.remove('hidden');
+            showMode('topics');
             // Limpiar contenido FAQ
             faqCategories.innerHTML = '';
             faqUncategorizedList.innerHTML = '';
@@ -1229,14 +1277,25 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         submitBtn.disabled = loading;
         if (loading) {
             let countdown = 59;
+            let loadingStepIndex = 0;
             // Mantener el spinner visible pero ajustar el texto para que sea más claro
             loadingSpinner.classList.remove('hidden');
             submitText.textContent = t('submit.querying', { countdown: countdown });
             submitBtn.setAttribute('aria-busy', 'true');
+            if (loadingStatusPanel) {
+                loadingStatusPanel.classList.remove('hidden');
+            }
+            if (loadingStepLabel && loadingStepDetail) {
+                loadingStepLabel.textContent = loadingSteps[0].label;
+                loadingStepDetail.textContent = loadingSteps[0].detail;
+            }
             
             // Limpiar cualquier intervalo anterior
             if (countdownInterval) {
                 clearInterval(countdownInterval);
+            }
+            if (loadingMessageInterval) {
+                clearInterval(loadingMessageInterval);
             }
             
             // Iniciar cuenta atrás
@@ -1251,15 +1310,34 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                     countdownInterval = null;
                 }
             }, 1000);
+
+            loadingMessageInterval = setInterval(() => {
+                loadingStepIndex = Math.min(loadingStepIndex + 1, loadingSteps.length - 1);
+                if (loadingStepLabel && loadingStepDetail) {
+                    loadingStepLabel.textContent = loadingSteps[loadingStepIndex].label;
+                    loadingStepDetail.textContent = loadingSteps[loadingStepIndex].detail;
+                }
+                if (loadingStepIndex === loadingSteps.length - 1 && loadingMessageInterval) {
+                    clearInterval(loadingMessageInterval);
+                    loadingMessageInterval = null;
+                }
+            }, 9000);
         } else {
             submitText.textContent = t('submit.submit');
             loadingSpinner.classList.add('hidden');
             submitBtn.setAttribute('aria-busy', 'false');
+            if (loadingStatusPanel) {
+                loadingStatusPanel.classList.add('hidden');
+            }
             
             // Limpiar el intervalo cuando se detiene la carga
             if (countdownInterval) {
                 clearInterval(countdownInterval);
                 countdownInterval = null;
+            }
+            if (loadingMessageInterval) {
+                clearInterval(loadingMessageInterval);
+                loadingMessageInterval = null;
             }
         }
     }

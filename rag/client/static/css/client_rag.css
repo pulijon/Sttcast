@@ -68,6 +68,49 @@
     }
 }
 
+/* Selector de tipo de consulta (tarjetas) */
+.quick-actions {
+    border: 1px solid var(--gray-300);
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.quick-action-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+.quick-action-card {
+    align-items: flex-start;
+    border-bottom: 1px solid var(--gray-200);
+    cursor: pointer;
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem;
+    transition: background-color 0.2s ease;
+}
+
+.quick-action-card:last-child {
+    border-bottom: 0;
+}
+
+.quick-action-card:hover {
+    background: #f8fafc;
+}
+
+.quick-action-card:has(input:checked) {
+    background: #eff6ff;
+    box-shadow: inset 4px 0 0 0 #2563eb;
+}
+
+.quick-actions-submit {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    margin-top: 0;
+}
+
 /* Estilos de sombra personalizados */
 .card-shadow {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 

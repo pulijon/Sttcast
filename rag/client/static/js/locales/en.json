@@ -20,10 +20,13 @@
     "required": "Required field"
   },
   "main": {
-    "title": "Query system for the podcast collection of {podcast_name}"
+    "title": "Query system for the podcast collection of {podcast_name}",
+    "subtitle": "Ask questions, explore featured queries, or analyze speakers in {podcast_name}."
   },
   "queryType": {
     "legend": "What type of query do you want to perform?",
+    "heading": "Choose how you want to explore the collection",
+    "help": "Select an option to open only the tools you need.",
     "topicsTitle": "Submit a query",
     "topicsDesc": "Search for specific information about topics discussed in the podcasts",
     "speakersTitle": "Speaker analysis",

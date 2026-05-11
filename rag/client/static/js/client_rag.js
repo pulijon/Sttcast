@@ -192,6 +192,10 @@
         }
 
         function updateContextFiltersSummary() {
+            if (!contextFiltersApplied) {
+                contextFiltersSummary.textContent = 'Todo el periodo, todos los intervinientes';
+                return;
+            }
             const from = contextFilters.fromdate || contextFilterDefaults?.fromdate || '';
             const to = contextFilters.todate || contextFilterDefaults?.todate || '';
             const speakers = contextFilters.speakers || ['todos'];
@@ -199,8 +203,17 @@
             contextFiltersSummary.textContent = `${from || 'inicio'} - ${to || 'fin'}, ${speakerText}`;
         }
 
-        function showMode(mode) {
+        function showSelection() {
             queryTypeSelection.classList.remove('hidden');
+            topicsForm.classList.add('hidden');
+            speakersForm.classList.add('hidden');
+            faqSection.classList.add('hidden');
+            const selected = document.querySelector('input[name="queryType"]:checked');
+            if (selected) selected.focus();
+        }
+
+        function showMode(mode) {
+            queryTypeSelection.classList.add('hidden');
             topicsForm.classList.toggle('hidden', mode !== 'topics');
             speakersForm.classList.toggle('hidden', mode !== 'speakers');
             faqSection.classList.toggle('hidden', mode !== 'faq');
@@ -664,7 +677,8 @@
 
         document.querySelectorAll('input[name="queryType"]').forEach(input => {
             input.addEventListener('change', () => {
-                queryTypeForm.dispatchEvent(new Event('submit', { cancelable: true }));
+                const card = input.closest('.quick-action-card');
+                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
         });
         
@@ -723,7 +737,7 @@
         
         // Botones de volver atrás
         backToSelection.addEventListener('click', () => {
-            showMode('topics');
+            showSelection();
             // Limpiar formulario de temas y reiniciar estado
             resetQuestionState('');
             resultsSection.classList.add('hidden');
@@ -732,7 +746,7 @@
         });
         
         backToSelectionSpeakers.addEventListener('click', () => {
-            showMode('topics');
+            showSelection();
             // Limpiar formulario de intervinientes
             speakersAnalysisForm.reset();
             chartsSection.classList.add('hidden');
@@ -744,7 +758,7 @@
 
         // Botón de volver desde FAQ
         backToSelectionFaq.addEventListener('click', () => {
-            showMode('topics');
+            showSelection();
             // Limpiar contenido FAQ
             faqCategories.innerHTML = '';
             faqUncategorizedList.innerHTML = '';

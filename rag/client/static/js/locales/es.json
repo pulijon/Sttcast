@@ -20,10 +20,13 @@
     "required": "Campo obligatorio"
   },
   "main": {
-    "title": "Sistema de consultas en la colección de podcasts de {podcast_name}"
+    "title": "Sistema de consultas en la colección de podcasts de {podcast_name}",
+    "subtitle": "Pregunta, explora consultas destacadas o analiza intervinientes en {podcast_name}."
   },
   "queryType": {
     "legend": "¿Qué tipo de consulta deseas realizar?",
+    "heading": "Elige cómo quieres explorar la colección",
+    "help": "Selecciona una opción para abrir solo las herramientas necesarias.",
     "topicsTitle": "Realizar una consulta",
     "topicsDesc": "Busca información específica sobre los contenidos y temas discutidos en los podcasts",
     "speakersTitle": "Análisis de intervinientes",

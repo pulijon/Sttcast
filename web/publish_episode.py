@@ -97,6 +97,8 @@ Requisitos:
                         help="Mostrar qué haría sin ejecutar")
     parser.add_argument("--skip-rss", action="store_true",
                         help="No regenerar RSS (solo subir archivos)")
+    parser.add_argument("--rewrite-rss", action="store_true",
+                        help="Regenerar feed.xml completo desde cero")
     parser.add_argument("--skip-upload", action="store_true",
                         help="No subir archivos (solo regenerar RSS)")
     parser.add_argument("--invalidate-cache", action="store_true",
@@ -172,6 +174,7 @@ Requisitos:
     print(f"   Bucket S3:   {bucket_name}")
     print(f"   Prefijo:     {podcast_prefix}")
     print(f"   Idioma RSS:  {args.language}")
+    print(f"   RSS:         {'rewrite completo' if args.rewrite_rss else 'incremental'}")
     if args.dry_run:
         print(f"   Modo:        🔍 DRY-RUN (sin ejecutar)")
     print()
@@ -206,7 +209,8 @@ Requisitos:
                     language=args.language,
                     explicit=podcast_explicit,
                     edited_dir=args.edited_dir,
-                    dry_run=False
+                    dry_run=False,
+                    rewrite=args.rewrite_rss
                 )
             except Exception as e:
                 print(f"   ❌ Error generando RSS: {e}")

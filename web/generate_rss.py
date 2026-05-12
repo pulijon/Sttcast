@@ -8,7 +8,8 @@ Fuentes de datos:
 - UPLOAD_SITE: Directorio con MP3s, HTMLs e imágenes
 
 Uso:
-    python generate_rss.py                    # Usa configuración de .env/
+    python generate_rss.py                    # Añade al feed existente sólo MP3 nuevos
+    python generate_rss.py --rewrite          # Regenera feed.xml completo desde cero
     python generate_rss.py --language en      # Genera RSS en inglés
     python generate_rss.py --dry-run          # Muestra qué haría sin escribir
 """
@@ -21,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 import hashlib
 from html import unescape, escape
+from email.utils import parsedate_to_datetime
 
 # Cargar variables de entorno ANTES de cualquier otra cosa
 env_dir = os.path.join(os.path.dirname(__file__), '..')
@@ -372,6 +374,169 @@ def add_itunes_categories(channel, itunes_ns: str, category: str, category2: str
     _add(category2)
 
 
+def format_rss_date(dt: datetime) -> str:
+    """Formatea una fecha para RSS en UTC."""
+    if getattr(dt, "tzinfo", None) is not None and UTC_TZ is not None:
+        dt = dt.astimezone(UTC_TZ)
+    return dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
+
+
+def parse_rss_date(date_text: str) -> datetime:
+    """Parsea pubDate/lastBuildDate; si falla, devuelve fecha mínima."""
+    if not date_text:
+        return datetime.min
+    try:
+        parsed = parsedate_to_datetime(date_text.strip())
+        if getattr(parsed, "tzinfo", None) is not None and UTC_TZ is not None:
+            parsed = parsed.astimezone(UTC_TZ)
+        return parsed.replace(tzinfo=None)
+    except Exception:
+        return datetime.min
+
+
+def item_enclosure_url(item) -> str:
+    enclosure = item.find("enclosure")
+    if enclosure is None:
+        return None
+    return enclosure.get("url")
+
+
+def item_pub_date(item) -> datetime:
+    pub_date = item.findtext("pubDate")
+    return parse_rss_date(pub_date)
+
+
+def append_episode_item(
+    channel,
+    ep: dict,
+    site_path: Path,
+    base_url: str,
+    podcast_title: str,
+    explicit: str,
+    itunes_ns: str,
+    content_ns: str,
+):
+    """Añade al canal un <item> generado con la lógica actual."""
+    mp3_path = ep['path']
+    rel_path = mp3_path.relative_to(site_path)
+
+    if ep['part']:
+        title = f"{podcast_title} - {ep['episode_num']} (Parte {ep['part']})"
+    else:
+        title = f"{podcast_title} - {ep['episode_num']}"
+
+    description_raw = ep['summary_text'] if ep['summary_text'] else f"Episodio {ep['episode_num']} de {podcast_title}"
+    description = normalize_text_for_description(description_raw, max_len=4000)
+
+    item = ET.SubElement(channel, "item")
+    ET.SubElement(item, "title").text = title
+    ET.SubElement(item, "description").text = description
+
+    summary_html = ep['summary_html'] if ep['summary_html'] else f"<p>Episodio {ep['episode_num']} de {podcast_title}</p>"
+
+    if ep['transcript_url']:
+        ET.SubElement(item, "link").text = ep['transcript_url']
+        encoded_desc = (
+            f"{summary_html}"
+            f"<p><a href='{escape(ep['transcript_url'])}'>Ver transcripción completa</a></p>"
+        )
+    else:
+        encoded_desc = summary_html
+
+    content_el = ET.SubElement(item, f"{{{content_ns}}}encoded")
+    content_el.text = ET.CDATA(encoded_desc)
+
+    mp3_url = f"{base_url}/{str(rel_path).replace(os.sep, '/')}"
+    enclosure = ET.SubElement(item, "enclosure")
+    enclosure.set("url", mp3_url)
+    enclosure.set("length", str(ep['size']))
+    enclosure.set("type", "audio/mpeg")
+
+    guid = ET.SubElement(item, "guid")
+    guid.set("isPermaLink", "false")
+    guid.text = hashlib.sha1(mp3_url.encode("utf-8")).hexdigest()
+
+    ET.SubElement(item, "pubDate").text = format_rss_date(ep['pub_date'])
+
+    if ep['duration'] > 0:
+        ET.SubElement(item, f"{{{itunes_ns}}}duration").text = format_duration(ep['duration'])
+
+    ET.SubElement(item, f"{{{itunes_ns}}}explicit").text = explicit
+
+    normalized_ep = ep['episode_num'].lstrip('0') or '0'
+    if normalized_ep == '0':
+        ET.SubElement(item, f"{{{itunes_ns}}}episodeType").text = "trailer"
+    else:
+        ET.SubElement(item, f"{{{itunes_ns}}}episodeType").text = "full"
+
+    if ep['episode_num'].isdigit():
+        ET.SubElement(item, f"{{{itunes_ns}}}episode").text = ep['episode_num']
+
+    ep_image_elem = ET.SubElement(item, f"{{{itunes_ns}}}image")
+    ep_image_elem.set("href", ep['image'])
+    return item
+
+
+def create_feed_skeleton(
+    base_url: str,
+    podcast_title: str,
+    podcast_description: str,
+    author: str,
+    email: str,
+    image_url: str,
+    category: str,
+    category2: str,
+    language: str,
+    explicit: str,
+    itunes_ns: str,
+    atom_ns: str,
+    content_ns: str,
+):
+    """Crea el feed completo desde cero, usado por --rewrite y por feeds nuevos."""
+    nsmap = {
+        "itunes": itunes_ns,
+        "atom": atom_ns,
+        "content": content_ns,
+    }
+
+    rss = ET.Element("rss", nsmap=nsmap)
+    rss.set("version", "2.0")
+
+    channel = ET.SubElement(rss, "channel")
+
+    ET.SubElement(channel, "title").text = podcast_title
+    ET.SubElement(channel, "description").text = normalize_text_for_description(podcast_description, max_len=4000)
+    ET.SubElement(channel, "link").text = base_url
+    ET.SubElement(channel, "language").text = language
+    ET.SubElement(channel, "copyright").text = f"© {datetime.now().year} {author}"
+    ET.SubElement(channel, "lastBuildDate").text = format_rss_date(datetime.utcnow())
+
+    atom_link = ET.SubElement(channel, f"{{{atom_ns}}}link")
+    atom_link.set("href", f"{base_url}/feed.xml")
+    atom_link.set("rel", "self")
+    atom_link.set("type", "application/rss+xml")
+
+    ET.SubElement(channel, f"{{{itunes_ns}}}author").text = author
+    ET.SubElement(channel, f"{{{itunes_ns}}}summary").text = normalize_text_for_description(podcast_description, max_len=4000)
+    ET.SubElement(channel, f"{{{itunes_ns}}}explicit").text = explicit
+    ET.SubElement(channel, f"{{{itunes_ns}}}type").text = "episodic"
+
+    itunes_owner = ET.SubElement(channel, f"{{{itunes_ns}}}owner")
+    ET.SubElement(itunes_owner, f"{{{itunes_ns}}}name").text = author
+    ET.SubElement(itunes_owner, f"{{{itunes_ns}}}email").text = email
+
+    itunes_image = ET.SubElement(channel, f"{{{itunes_ns}}}image")
+    itunes_image.set("href", image_url)
+
+    image_elem = ET.SubElement(channel, "image")
+    ET.SubElement(image_elem, "url").text = image_url
+    ET.SubElement(image_elem, "title").text = podcast_title
+    ET.SubElement(image_elem, "link").text = base_url
+
+    add_itunes_categories(channel, itunes_ns, category, category2)
+    return rss, channel
+
+
 def generate_rss(
     site_dir: str,
     base_url: str,
@@ -388,7 +553,8 @@ def generate_rss(
     language: str = "es",
     explicit: str = "no",
     edited_dir: str = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    rewrite: bool = False
 ) -> str:
     """
     Genera feed.xml para podcasts.
@@ -398,55 +564,51 @@ def generate_rss(
     if not site_path.exists():
         raise FileNotFoundError(f"Directorio no existe: {site_dir}")
 
+    feed_path = site_path / "feed.xml"
+
     ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
     ATOM_NS = "http://www.w3.org/2005/Atom"
     CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
 
-    NSMAP = {
-        "itunes": ITUNES_NS,
-        "atom": ATOM_NS,
-        "content": CONTENT_NS,
-    }
+    existing_items = []
+    existing_mp3_urls = set()
+    incremental = feed_path.exists() and not rewrite
 
-    rss = ET.Element("rss", nsmap=NSMAP)
-    rss.set("version", "2.0")
+    if incremental:
+        parser = ET.XMLParser(remove_blank_text=False, strip_cdata=False)
+        rss = ET.parse(str(feed_path), parser).getroot()
+        channel = rss.find("channel")
+        if channel is None:
+            raise ValueError(f"feed.xml sin <channel>: {feed_path}")
 
-    channel = ET.SubElement(rss, "channel")
+        last_build = channel.find("lastBuildDate")
+        if last_build is None:
+            last_build = ET.SubElement(channel, "lastBuildDate")
+        last_build.text = format_rss_date(datetime.utcnow())
 
-    # === Metadatos del canal ===
-    ET.SubElement(channel, "title").text = podcast_title
-    ET.SubElement(channel, "description").text = normalize_text_for_description(podcast_description, max_len=4000)
-    ET.SubElement(channel, "link").text = base_url
-    ET.SubElement(channel, "language").text = language
-    ET.SubElement(channel, "copyright").text = f"© {datetime.now().year} {author}"
-    ET.SubElement(channel, "lastBuildDate").text = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-
-    # Atom self-link
-    atom_link = ET.SubElement(channel, f"{{{ATOM_NS}}}link")
-    atom_link.set("href", f"{base_url}/feed.xml")
-    atom_link.set("rel", "self")
-    atom_link.set("type", "application/rss+xml")
-
-    # === iTunes tags ===
-    ET.SubElement(channel, f"{{{ITUNES_NS}}}author").text = author
-    ET.SubElement(channel, f"{{{ITUNES_NS}}}summary").text = normalize_text_for_description(podcast_description, max_len=4000)
-    ET.SubElement(channel, f"{{{ITUNES_NS}}}explicit").text = explicit
-    ET.SubElement(channel, f"{{{ITUNES_NS}}}type").text = "episodic"
-
-    itunes_owner = ET.SubElement(channel, f"{{{ITUNES_NS}}}owner")
-    ET.SubElement(itunes_owner, f"{{{ITUNES_NS}}}name").text = author
-    ET.SubElement(itunes_owner, f"{{{ITUNES_NS}}}email").text = email
-
-    itunes_image = ET.SubElement(channel, f"{{{ITUNES_NS}}}image")
-    itunes_image.set("href", image_url)
-
-    # Imagen estándar RSS
-    image_elem = ET.SubElement(channel, "image")
-    ET.SubElement(image_elem, "url").text = image_url
-    ET.SubElement(image_elem, "title").text = podcast_title
-    ET.SubElement(image_elem, "link").text = base_url
-
-    add_itunes_categories(channel, ITUNES_NS, category, category2)
+        existing_items = channel.findall("item")
+        existing_mp3_urls = {
+            url for url in (item_enclosure_url(item) for item in existing_items)
+            if url
+        }
+        for item in existing_items:
+            channel.remove(item)
+    else:
+        rss, channel = create_feed_skeleton(
+            base_url=base_url,
+            podcast_title=podcast_title,
+            podcast_description=podcast_description,
+            author=author,
+            email=email,
+            image_url=image_url,
+            category=category,
+            category2=category2,
+            language=language,
+            explicit=explicit,
+            itunes_ns=ITUNES_NS,
+            atom_ns=ATOM_NS,
+            content_ns=CONTENT_NS,
+        )
 
     # === Buscar episodios ===
     mp3_files = list(site_path.rglob("*.mp3"))
@@ -459,6 +621,11 @@ def generate_rss(
 
         if not episode_num:
             print(f"⚠️  Ignorando (no coincide con patrón {prefix}XXXXXX.mp3): {mp3_path.name}")
+            continue
+
+        rel_path = mp3_path.relative_to(site_path)
+        mp3_url = f"{base_url}/{str(rel_path).replace(os.sep, '/')}"
+        if incremental and mp3_url in existing_mp3_urls:
             continue
 
         # Buscar en calendario: primero número exacto, luego normalizado (sin ceros)
@@ -499,76 +666,33 @@ def generate_rss(
 
     episodes.sort(key=lambda x: x['pub_date'], reverse=True)
 
-    print(f"📻 Procesando {len(episodes)} episodios...")
+    if incremental:
+        print(f"📻 Feed existente: {len(existing_items)} episodios; nuevos MP3: {len(episodes)}")
+    else:
+        print(f"📻 Procesando {len(episodes)} episodios...")
 
-    for ep in episodes:
-        mp3_path = ep['path']
-        rel_path = mp3_path.relative_to(site_path)
+    new_items = [
+        append_episode_item(
+            channel=channel,
+            ep=ep,
+            site_path=site_path,
+            base_url=base_url,
+            podcast_title=podcast_title,
+            explicit=explicit,
+            itunes_ns=ITUNES_NS,
+            content_ns=CONTENT_NS,
+        )
+        for ep in episodes
+    ]
 
-        if ep['part']:
-            title = f"{podcast_title} - {ep['episode_num']} (Parte {ep['part']})"
-        else:
-            title = f"{podcast_title} - {ep['episode_num']}"
-
-        description_raw = ep['summary_text'] if ep['summary_text'] else f"Episodio {ep['episode_num']} de {podcast_title}"
-        description = normalize_text_for_description(description_raw, max_len=4000)
-
-        item = ET.SubElement(channel, "item")
-        ET.SubElement(item, "title").text = title
-        ET.SubElement(item, "description").text = description
-
-        # Usar HTML con párrafos para content:encoded (CDATA)
-        summary_html = ep['summary_html'] if ep['summary_html'] else f"<p>Episodio {ep['episode_num']} de {podcast_title}</p>"
-        
-        if ep['transcript_url']:
-            ET.SubElement(item, "link").text = ep['transcript_url']
-            encoded_desc = (
-                f"{summary_html}"
-                f"<p><a href='{escape(ep['transcript_url'])}'>Ver transcripción completa</a></p>"
-            )
-        else:
-            encoded_desc = summary_html
-
-        content_el = ET.SubElement(item, f"{{{CONTENT_NS}}}encoded")
-        content_el.text = ET.CDATA(encoded_desc)
-
-        mp3_url = f"{base_url}/{str(rel_path).replace(os.sep, '/')}"
-        enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set("url", mp3_url)
-        enclosure.set("length", str(ep['size']))
-        enclosure.set("type", "audio/mpeg")
-
-        guid = ET.SubElement(item, "guid")
-        guid.set("isPermaLink", "false")
-        guid.text = hashlib.sha1(mp3_url.encode("utf-8")).hexdigest()
-
-        pub_dt = ep['pub_date']
-        if getattr(pub_dt, "tzinfo", None) is not None and UTC_TZ is not None:
-            pub_dt = pub_dt.astimezone(UTC_TZ)
-        ET.SubElement(item, "pubDate").text = pub_dt.strftime("%a, %d %b %Y %H:%M:%S +0000")
-
-        if ep['duration'] > 0:
-            ET.SubElement(item, f"{{{ITUNES_NS}}}duration").text = format_duration(ep['duration'])
-
-        ET.SubElement(item, f"{{{ITUNES_NS}}}explicit").text = explicit
-        
-        # Marcar episodio 0/000 como trailer, resto como full
-        normalized_ep = ep['episode_num'].lstrip('0') or '0'
-        if normalized_ep == '0':
-            ET.SubElement(item, f"{{{ITUNES_NS}}}episodeType").text = "trailer"
-        else:
-            ET.SubElement(item, f"{{{ITUNES_NS}}}episodeType").text = "full"
-            
-        if ep['episode_num'].isdigit():
-            ET.SubElement(item, f"{{{ITUNES_NS}}}episode").text = ep['episode_num']
-
-        ep_image_elem = ET.SubElement(item, f"{{{ITUNES_NS}}}image")
-        ep_image_elem.set("href", ep['image'])
-
-    feed_path = site_path / "feed.xml"
+    all_items = existing_items + new_items
+    all_items.sort(key=item_pub_date, reverse=True)
+    for item in all_items:
+        channel.append(item)
 
     if dry_run:
-        print(f"🔍 [DRY-RUN] Se generaría: {feed_path} ({len(episodes)} episodios)")
+        total_items = len(all_items)
+        print(f"🔍 [DRY-RUN] Se generaría: {feed_path} ({total_items} episodios, {len(new_items)} nuevos)")
         return str(feed_path)
 
     pretty_xml = ET.tostring(
@@ -581,7 +705,7 @@ def generate_rss(
     with open(feed_path, "wb") as f:
         f.write(pretty_xml)
 
-    print(f"✅ RSS generado: {feed_path} ({len(episodes)} episodios)")
+    print(f"✅ RSS generado: {feed_path} ({len(all_items)} episodios, {len(new_items)} nuevos)")
     return str(feed_path)
 
 
@@ -651,6 +775,8 @@ def main():
                         help="Directorio con resúmenes editados en markdown (preferencia sobre resúmenes generados)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Mostrar qué haría sin escribir archivos")
+    parser.add_argument("--rewrite", action="store_true",
+                        help="Regenerar feed.xml completo desde cero (comportamiento anterior)")
 
     args = parser.parse_args()
 
@@ -696,6 +822,8 @@ def main():
     print(f"   Calendario:  {len(calendar)} fechas cargadas")
     if args.dry_run:
         print(f"   Modo:        DRY-RUN (sin escribir)")
+    if args.rewrite:
+        print(f"   Rewrite:     Sí (regenera todo el feed)")
     print()
 
     generate_rss(
@@ -714,7 +842,8 @@ def main():
         language=args.language,
         explicit=args.explicit,
         edited_dir=args.edited_dir,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
+        rewrite=args.rewrite
     )
 
 

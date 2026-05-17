@@ -469,7 +469,9 @@ def summarize_episode(ep: EpisodeInput) -> EpisodeOutput:
 Tu función es crear resúmenes de transcripciones de podcasts. Devuelve un objeto JSON válido, no lo empaquetes en bloques de código.
 
 
-Extrae los principales temas tratados en esta transcripción de un podcast. Devuelve la respuesta en un fichero JSON con campos para cada idioma:
+Extrae los principales temas tratados en esta transcripción de un podcast. Excluye del resumen aquellas partes que sean publicidad o patrocinio del episodio.
+
+Devuelve la respuesta en un fichero JSON con campos para cada idioma:
 
 "es": resumen en español, "en": resumen en inglés
 

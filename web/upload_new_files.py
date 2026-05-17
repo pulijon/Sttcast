@@ -12,7 +12,7 @@ CACHE_ASSET_LONG = "public, max-age=31536000, immutable"  # 1 año
 
 ALWAYS_UPLOAD_NAMES = {"index.html", "listing.json"}
 ALWAYS_UPLOAD_EXTS = {".xml"}  # rss.xml, feed.xml, etc.
-ALLOWED_EXTS = {".html", ".mp3", ".json", ".xml", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js"}
+ALLOWED_EXTS = {".html", ".mp3", ".json", ".xml", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".pdf"}
 
 def list_s3_keys(bucket):
     s3 = boto3.client("s3")
@@ -47,6 +47,8 @@ def guess_content_type(path):
         return "application/json"
     if p.endswith(".html"):
         return "text/html; charset=utf-8"
+    if p.endswith(".pdf"):
+        return "application/pdf"
 
     mime_type, _ = mimetypes.guess_type(path)
     return mime_type or "application/octet-stream"

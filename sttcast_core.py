@@ -1,5 +1,20 @@
 #! /usr/bin/python3
 
+import os
+import threading
+from contextlib import contextmanager
+
+_WORKER_THREADS = os.getenv("STTCAST_WORKER_THREADS", "1")
+for _thread_var in (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ.setdefault(_thread_var, _WORKER_THREADS)
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 # Aplicar parche para PyTorch 2.6+ con omegaconf
 import torch_fix
 
@@ -9,17 +24,21 @@ import logging
 import gc
 import torch
 import whisperx
+import whisperx.alignment as whisperx_alignment
+import whisperx.asr as whisperx_asr
+import whisperx.audio as whisperx_audio
+import whisperx.diarize as whisperx_diarize
 from whisperx.diarize import DiarizationPipeline
 from vosk import Model, KaldiRecognizer
 import wave
 import ffmpeg
 import json
 import datetime
-import os
 import glob
 import subprocess
 import configparser
 from concurrent.futures import ProcessPoolExecutor
+import multiprocessing as mp
 from multiprocessing import Value
 from timeinterval import TimeInterval, seconds_str
 import re
@@ -42,6 +61,7 @@ DEFAULT_MODEL = "/mnt/ram/es/vosk-model-es-0.42"
 DEFAULT_WHMODEL = "small"
 DEFAULT_WHDEVICE = "cuda"
 DEFAULT_WHLANGUAGE = "es"
+DEFAULT_WHBATCH_SIZE = 8
 DEFAULT_WAVFRATE = 16000
 DEFAULT_WHSUSPTIME = 60.0
 DEFAULT_RWAVFRAMES = 4000
@@ -56,6 +76,260 @@ DEFAULT_HTMLSUFFIX = ""
 DEFAULT_PODCAST_CAL_FILE = "calfile"
 DEFAULT_PODCAST_PREFIX = "ep"
 DEFAULT_PODCAST_TEMPLATES = "templates"
+
+_LOCAL_FFMPEG_SLOTS = max(1, int(os.getenv("STTCAST_FFMPEG_SLOTS", "2")))
+_LOCAL_FFMPEG_SEMAPHORE = threading.BoundedSemaphore(_LOCAL_FFMPEG_SLOTS)
+_FFMPEG_SEMAPHORE = None
+_FFMPEG_THREADS = max(1, int(os.getenv("STTCAST_FFMPEG_THREADS", os.getenv("TRANSSRV_FFMPEG_THREADS", "1"))))
+_WHISPERX_AUDIO_PATCHED = False
+_VOSK_MODELS = {}
+_VOSK_MODEL_LOCK = threading.Lock()
+
+
+def _safe_positive_int(value, default=1):
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _phase_trace_enabled():
+    return os.getenv("STTCAST_PHASE_TRACE", "1").lower() not in {"0", "false", "no"}
+
+
+def _meminfo_available_mb():
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return None
+
+
+def _self_status_mb():
+    data = {"rss_mb": None, "threads": None}
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    data["rss_mb"] = int(line.split()[1]) // 1024
+                elif line.startswith("Threads:"):
+                    data["threads"] = int(line.split()[1])
+    except Exception:
+        pass
+    return data
+
+
+def log_phase(label, cfg=None):
+    if not _phase_trace_enabled():
+        return
+    status = _self_status_mb()
+    fields = {
+        "pid": os.getpid(),
+        "ppid": os.getppid(),
+        "job": (cfg or {}).get("work_id"),
+        "engine": "whisper" if (cfg or {}).get("whisper") else "vosk",
+        "file": os.path.basename((cfg or {}).get("fname") or (cfg or {}).get("wname") or ""),
+        "rss_mb": status["rss_mb"],
+        "threads": status["threads"],
+        "mem_available_mb": _meminfo_available_mb(),
+    }
+    if (cfg or {}).get("whdevice") == "cuda":
+        try:
+            if torch.cuda.is_available():
+                fields["cuda_alloc_mb"] = int(torch.cuda.memory_allocated() // 1024**2)
+                fields["cuda_reserved_mb"] = int(torch.cuda.memory_reserved() // 1024**2)
+        except Exception as e:
+            fields["cuda_error"] = str(e)
+    logging.info(f"[PHASE_TRACE] {label} {fields}")
+
+
+def configure_ffmpeg_limits(config_dict=None):
+    """Configura limites de ffmpeg para el proceso actual."""
+    global _FFMPEG_SEMAPHORE, _FFMPEG_THREADS
+    if config_dict:
+        semaphore = config_dict.get('ffmpeg_semaphore')
+        if semaphore is not None:
+            _FFMPEG_SEMAPHORE = semaphore
+        _FFMPEG_THREADS = _safe_positive_int(
+            config_dict.get('ffmpeg_threads', _FFMPEG_THREADS),
+            _FFMPEG_THREADS,
+        )
+    install_limited_whisperx_audio_loader()
+
+
+@contextmanager
+def ffmpeg_slot(config_dict=None):
+    configure_ffmpeg_limits(config_dict)
+    semaphore = _FFMPEG_SEMAPHORE or _LOCAL_FFMPEG_SEMAPHORE
+    semaphore.acquire()
+    try:
+        yield
+    finally:
+        semaphore.release()
+
+
+def ffmpeg_threads(config_dict=None):
+    configure_ffmpeg_limits(config_dict)
+    return _FFMPEG_THREADS
+
+
+def run_ffmpeg(cmd, config_dict=None, **kwargs):
+    with ffmpeg_slot(config_dict):
+        log_phase("FFMPEG_START", config_dict)
+        logging.debug(f"Ejecutando ffmpeg con threads={ffmpeg_threads(config_dict)}: {' '.join(cmd)}")
+        result = subprocess.run(cmd, **kwargs)
+        log_phase("FFMPEG_END", config_dict)
+        return result
+
+
+def limited_whisperx_load_audio(file: str, sr: int = whisperx_audio.SAMPLE_RATE):
+    cmd = [
+        "ffmpeg",
+        "-nostdin",
+        "-threads",
+        str(ffmpeg_threads()),
+        "-i",
+        file,
+        "-f",
+        "s16le",
+        "-ac",
+        "1",
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        str(sr),
+        "-",
+    ]
+    try:
+        with ffmpeg_slot():
+            log_phase("WHISPERX_LOAD_AUDIO_FFMPEG_START")
+            out = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=True,
+            ).stdout
+            log_phase("WHISPERX_LOAD_AUDIO_FFMPEG_END")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Failed to load audio: {e.stderr.decode()}") from e
+
+    return whisperx_audio.np.frombuffer(out, whisperx_audio.np.int16).flatten().astype(
+        whisperx_audio.np.float32
+    ) / 32768.0
+
+
+def install_limited_whisperx_audio_loader():
+    global _WHISPERX_AUDIO_PATCHED
+    if _WHISPERX_AUDIO_PATCHED:
+        return
+    whisperx_audio.load_audio = limited_whisperx_load_audio
+    whisperx_asr.load_audio = limited_whisperx_load_audio
+    whisperx_diarize.load_audio = limited_whisperx_load_audio
+    whisperx_alignment.load_audio = limited_whisperx_load_audio
+    _WHISPERX_AUDIO_PATCHED = True
+
+
+def get_vosk_model(model_path):
+    with _VOSK_MODEL_LOCK:
+        model = _VOSK_MODELS.get(model_path)
+        if model is None:
+            logging.info(f"Cargando modelo Vosk compartido: {model_path}")
+            log_phase("VOSK_MODEL_LOAD_START", {"model": model_path})
+            model = Model(model_path)
+            _VOSK_MODELS[model_path] = model
+            log_phase("VOSK_MODEL_LOAD_END", {"model": model_path})
+        return model
+
+
+def configure_pyannote_batch_size(obj, batch_size, visited=None, depth=0):
+    if obj is None or depth > 5:
+        return
+    if visited is None:
+        visited = set()
+    obj_id = id(obj)
+    if obj_id in visited:
+        return
+    visited.add(obj_id)
+
+    if hasattr(obj, "batch_size"):
+        try:
+            current = getattr(obj, "batch_size")
+            if isinstance(current, int) and current > batch_size:
+                setattr(obj, "batch_size", batch_size)
+                logging.info(
+                    f"Pyannote batch_size ajustado: {current} -> {batch_size} "
+                    f"en {type(obj).__module__}.{type(obj).__name__}"
+                )
+        except Exception as e:
+            logging.debug(f"No se pudo ajustar batch_size en {type(obj)}: {e}")
+
+    if isinstance(obj, dict):
+        values = obj.values()
+    elif isinstance(obj, (list, tuple, set)):
+        values = obj
+    elif type(obj).__module__.startswith("pyannote."):
+        values = vars(obj).values()
+    else:
+        return
+
+    for value in values:
+        if isinstance(value, (str, bytes, int, float, bool, type(None))):
+            continue
+        configure_pyannote_batch_size(value, batch_size, visited, depth + 1)
+
+
+def create_process_pool(cpus, config_dict=None):
+    start_method = config_dict.get('mp_start_method') if config_dict else None
+    if start_method:
+        return ProcessPoolExecutor(cpus, mp_context=mp.get_context(start_method))
+    return ProcessPoolExecutor(cpus)
+
+
+def run_tasks(tasks, worker_func, config_dict):
+    if config_dict.get('inline_executor'):
+        for task in tasks:
+            yield worker_func(task)
+        return
+
+    executor = config_dict.get('executor')
+    if executor is None:
+        cpus = config_dict.get('cpus', max(os.cpu_count() - 2, 1))
+        with create_process_pool(cpus, config_dict) as process_executor:
+            yield from process_executor.map(worker_func, tasks)
+    else:
+        yield from executor.map(worker_func, tasks)
+
+
+def configure_worker_threads():
+    configure_ffmpeg_limits()
+    try:
+        threads = max(1, int(os.getenv("STTCAST_WORKER_THREADS", "1")))
+    except ValueError:
+        threads = 1
+
+    try:
+        torch.set_num_threads(threads)
+    except Exception as e:
+        logging.debug(f"No se pudo fijar torch.set_num_threads({threads}): {e}")
+
+    try:
+        torch.set_num_interop_threads(threads)
+    except Exception as e:
+        logging.debug(f"No se pudo fijar torch.set_num_interop_threads({threads}): {e}")
+
+
+def cleanup_cuda_memory():
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        logging.debug(
+            "Memoria GPU limpiada. "
+            f"allocated={torch.cuda.memory_allocated() / 1024**3:.2f} GB, "
+            f"reserved={torch.cuda.memory_reserved() / 1024**3:.2f} GB"
+        )
 
 
 def class_str(st, cl):
@@ -75,34 +349,38 @@ def audio_tag_str(mp3file, seconds):
     return f'<audio controls preload="none" src="{mp3file}#t={seconds_str(seconds, with_dec=False)}"></audio><br>\n'
 
 
-def create_meta_file(fname, fname_meta):
+def create_meta_file(fname, fname_meta, config_dict=None):
     if (os.path.exists(fname_meta)):
         os.remove(fname_meta)
-    return subprocess.run(["ffmpeg", 
-                          "-y",
-                          "-i", fname, 
-                          "-f", "ffmetadata",
-                          fname_meta,
-                          ],
-                          stdin=subprocess.DEVNULL,
-                          stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL)
+    return run_ffmpeg(["ffmpeg",
+                       "-y",
+                       "-threads", str(ffmpeg_threads(config_dict)),
+                       "-i", fname,
+                       "-f", "ffmetadata",
+                       fname_meta,
+                       ],
+                      config_dict,
+                      stdin=subprocess.DEVNULL,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL)
 
 
-def create_wav_file(fname, fname_wav, wavfrate=DEFAULT_WAVFRATE):
+def create_wav_file(fname, fname_wav, wavfrate=DEFAULT_WAVFRATE, config_dict=None):
     if (os.path.exists(fname_wav)):
         os.remove(fname_wav)
-    return subprocess.run(["ffmpeg", 
-                          "-y",
-                          "-i", fname, 
-                          "-ac", "1",
-                          "-c:a", "pcm_s16le",
-                          "-ar", str(wavfrate),
-                          fname_wav,
-                          ],
-                          stdin=subprocess.DEVNULL,
-                          stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL)
+    return run_ffmpeg(["ffmpeg",
+                       "-y",
+                       "-threads", str(ffmpeg_threads(config_dict)),
+                       "-i", fname,
+                       "-ac", "1",
+                       "-c:a", "pcm_s16le",
+                       "-ar", str(wavfrate),
+                       fname_wav,
+                       ],
+                      config_dict,
+                      stdin=subprocess.DEVNULL,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL)
 
 
 def get_rate_and_frames(fname_wav):
@@ -155,12 +433,16 @@ def write_srt_entry(srt, start_time, end_time, str):
     
 
 def vosk_task_work(cfg):   
+    configure_worker_threads()
     logcfg(__file__)
     stime = datetime.datetime.now()
+    log_phase("VOSK_TASK_START", cfg)
     with wave.open(cfg["wname"], "rb") as wf:
-        model = Model(cfg["model"])
+        model = get_vosk_model(cfg["model"])
+        log_phase("VOSK_RECOGNIZER_START", cfg)
         frate = wf.getframerate()
         rec = KaldiRecognizer(model, frate)
+        log_phase("VOSK_RECOGNIZER_END", cfg)
         fnumframes = wf.getnframes()
 
         # Se calcula el momento de inicio en segundos
@@ -277,21 +559,21 @@ def vosk_task_work(cfg):
         logging.info(f"Terminado fragmento con vosk {hname}")
         with open(hname, "w", encoding="utf-8") as f:
             f.write(sh.prettify())
+    log_phase("VOSK_TASK_END", cfg)
     return hname, sname, datetime.datetime.now() - stime
 
 
-def build_trained_audio(training_file, audio_file, temp_dir=None):
+def build_trained_audio(training_file, audio_file, temp_dir=None, config_dict=None):
+    log_phase("BUILD_TRAINED_AUDIO_START", config_dict)
     if training_file is None:
         logging.warning("No se ha especificado fichero de entrenamiento")
+        log_phase("BUILD_TRAINED_AUDIO_SKIP", config_dict)
         return audio_file, 0.0
     if not os.path.exists(training_file):
         logging.error(f"El fichero de entrenamiento {training_file} no existe")
+        log_phase("BUILD_TRAINED_AUDIO_MISSING", config_dict)
         return audio_file, 0.0
     logging.debug(f"Combinando ficheros de entrenamiento {training_file} y {audio_file}")
-    combined_audio = AudioSegment.from_file(training_file, format="mp3") + \
-                     AudioSegment.from_file(audio_file, format="mp3")
-    training_duration = len(AudioSegment.from_file(training_file, format="mp3")) / 1000.0  # Duration in seconds
-    
     # Usar directorio temporal único si se proporciona
     if temp_dir:
         os.makedirs(temp_dir, exist_ok=True)
@@ -299,8 +581,18 @@ def build_trained_audio(training_file, audio_file, temp_dir=None):
     else:
         trained_file = os.path.join(os.path.dirname(audio_file), f"trained_{os.path.basename(audio_file)}")
     
-    combined_audio.export(trained_file, format="mp3")
+    with ffmpeg_slot(config_dict):
+        training_segment = AudioSegment.from_file(training_file, format="mp3")
+        audio_segment = AudioSegment.from_file(audio_file, format="mp3")
+        combined_audio = training_segment + audio_segment
+        training_duration = len(training_segment) / 1000.0
+        combined_audio.export(
+            trained_file,
+            format="mp3",
+            parameters=["-threads", str(ffmpeg_threads(config_dict))],
+        )
     logging.debug(f"Fichero de entrenamiento combinado: {trained_file}")
+    log_phase("BUILD_TRAINED_AUDIO_END", config_dict)
     return trained_file, training_duration
 
 
@@ -363,52 +655,95 @@ def get_speaker_mapping(training_file):
 
 
 def whisper_task_work(cfg):
+    configure_worker_threads()
     logcfg(__file__)
     stime = datetime.datetime.now()
+    log_phase("WHISPER_TASK_START", cfg)
 
     whdevice = cfg['whdevice']
     whmodel = cfg['whmodel']
-    model = whisperx.load_model(whmodel, device=whdevice)
-    logging.debug(f"Construyendo el fichero de audio entrenado con {cfg.get('whtraining', None)}")
-    audio_file, training_duration = build_trained_audio(cfg.get('whtraining', None), cfg['fname'], cfg.get('temp_dir'))
-    logging.debug(f"Audio entrenado: {audio_file}, duración de fragmento de entrenamiento: {training_duration}")
-    result = model.transcribe(audio_file, language=cfg['whlanguage'])
-    whsusptime = cfg['whsusptime']
-
-    # Inicializar el pipeline de diarización de WhisperX con parámetros configurables
-    huggingface_token = cfg.get('huggingface_token', '')
-    logging.info(f"Inicializando Pyannote con parámetros: método={cfg.get('pyannote_method', 'ward')}, "
-                 f"min_cluster_size={cfg.get('pyannote_min_cluster_size', 15)}, "
-                 f"threshold={cfg.get('pyannote_threshold', 0.7147)}, "
-                 f"min_speakers={cfg.get('pyannote_min_speakers')}, "
-                 f"max_speakers={cfg.get('pyannote_max_speakers')}")
-    
-    diarization_pipeline = DiarizationPipeline(device=whdevice, use_auth_token=huggingface_token)
-    
-    # Configurar los parámetros de clustering si están disponibles
-    # El pipeline de whisperx envuelve el Pipeline de pyannote en el atributo .model
-    pyannote_params = {
-        "clustering": {
-            "method": cfg.get('pyannote_method', 'ward'),
-            "min_cluster_size": cfg.get('pyannote_min_cluster_size', 15),
-            "threshold": cfg.get('pyannote_threshold', 0.7147)
-        }
-    }
-    
+    model = None
+    result = None
+    diarization_pipeline = None
+    diarization = None
     try:
-        diarization_pipeline.model.instantiate(pyannote_params)
-        logging.info(f"Parámetros de Pyannote aplicados correctamente")
-    except Exception as e:
-        logging.warning(f"No se pudieron aplicar los parámetros de Pyannote: {e}. "
-                       f"Se usarán los valores por defecto")
-    
-    # Pasar min_speakers y max_speakers a diarization_pipeline si están configurados
-    diarization = diarization_pipeline(
-        audio_file,
-        min_speakers=cfg.get('pyannote_min_speakers'),
-        max_speakers=cfg.get('pyannote_max_speakers')
-    )
-    result = whisperx.assign_word_speakers(diarization, result)
+        log_phase("WHISPER_MODEL_LOAD_START", cfg)
+        model = whisperx.load_model(whmodel, device=whdevice)
+        log_phase("WHISPER_MODEL_LOAD_END", cfg)
+        logging.debug(f"Construyendo el fichero de audio entrenado con {cfg.get('whtraining', None)}")
+        configure_ffmpeg_limits(cfg)
+        audio_file, training_duration = build_trained_audio(
+            cfg.get('whtraining', None),
+            cfg['fname'],
+            cfg.get('temp_dir'),
+            cfg,
+        )
+        logging.debug(f"Audio entrenado: {audio_file}, duración de fragmento de entrenamiento: {training_duration}")
+        whbatch_size = max(1, int(cfg.get('whbatch_size', DEFAULT_WHBATCH_SIZE)))
+        log_phase("WHISPER_TRANSCRIBE_START_INCLUDES_VAD", cfg)
+        result = model.transcribe(
+            audio_file,
+            language=cfg['whlanguage'],
+            batch_size=whbatch_size,
+        )
+        log_phase("WHISPER_TRANSCRIBE_END_INCLUDES_VAD", cfg)
+        model = None
+        cleanup_cuda_memory()
+        log_phase("WHISPER_MODEL_RELEASED", cfg)
+        whsusptime = cfg['whsusptime']
+
+        # Inicializar el pipeline de diarización de WhisperX con parámetros configurables
+        huggingface_token = cfg.get('huggingface_token', '')
+        logging.info(f"Inicializando Pyannote con parámetros: método={cfg.get('pyannote_method', 'ward')}, "
+                     f"min_cluster_size={cfg.get('pyannote_min_cluster_size', 15)}, "
+                     f"threshold={cfg.get('pyannote_threshold', 0.7147)}, "
+                     f"min_speakers={cfg.get('pyannote_min_speakers')}, "
+                     f"max_speakers={cfg.get('pyannote_max_speakers')}")
+        
+        log_phase("PYANNOTE_PIPELINE_LOAD_START", cfg)
+        diarization_pipeline = DiarizationPipeline(device=whdevice, use_auth_token=huggingface_token)
+        log_phase("PYANNOTE_PIPELINE_LOAD_END", cfg)
+        
+        # Configurar los parámetros de clustering si están disponibles
+        # El pipeline de whisperx envuelve el Pipeline de pyannote en el atributo .model
+        pyannote_params = {
+            "clustering": {
+                "method": cfg.get('pyannote_method', 'ward'),
+                "min_cluster_size": cfg.get('pyannote_min_cluster_size', 15),
+                "threshold": cfg.get('pyannote_threshold', 0.7147)
+            }
+        }
+        configure_pyannote_batch_size(
+            diarization_pipeline.model,
+            max(1, int(cfg.get('pyannote_batch_size', 16))),
+        )
+        
+        try:
+            diarization_pipeline.model.instantiate(pyannote_params)
+            logging.info(f"Parámetros de Pyannote aplicados correctamente")
+        except Exception as e:
+            logging.warning(f"No se pudieron aplicar los parámetros de Pyannote: {e}. "
+                           f"Se usarán los valores por defecto")
+        
+        # Pasar min_speakers y max_speakers a diarization_pipeline si están configurados
+        log_phase("PYANNOTE_DIARIZATION_START", cfg)
+        diarization = diarization_pipeline(
+            audio_file,
+            min_speakers=cfg.get('pyannote_min_speakers'),
+            max_speakers=cfg.get('pyannote_max_speakers')
+        )
+        log_phase("PYANNOTE_DIARIZATION_END", cfg)
+        log_phase("ASSIGN_WORD_SPEAKERS_START", cfg)
+        result = whisperx.assign_word_speakers(diarization, result)
+        log_phase("ASSIGN_WORD_SPEAKERS_END", cfg)
+        diarization_pipeline = diarization = None
+        cleanup_cuda_memory()
+        log_phase("PYANNOTE_RELEASED", cfg)
+    except Exception:
+        log_phase("WHISPER_TASK_EXCEPTION", cfg)
+        diarization_pipeline = diarization = model = result = None
+        cleanup_cuda_memory()
+        raise
     
     offset_seconds = float(cfg['cut'] * cfg['seconds'])
     min_offset = cfg["min_offset"]
@@ -527,14 +862,9 @@ def whisper_task_work(cfg):
         f.write(sh.prettify())
     
     # Liberar memoria GPU explícitamente
-    del diarization_pipeline
-    del model
-    del result
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-        logging.debug(f"Memoria GPU liberada. VRAM libre: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+    diarization_pipeline = diarization = model = result = None
+    cleanup_cuda_memory()
+    log_phase("WHISPER_TASK_END", cfg)
     
     return hname, sname, datetime.datetime.now() - stime
 
@@ -631,7 +961,7 @@ def build_srt_file(fdata):
         srt.write(srt_content)
 
 
-def split_podcast(pf, seconds, temp_dir=None, work_id=None):
+def split_podcast(pf, seconds, temp_dir=None, work_id=None, config_dict=None):
     fname_root = pf["root"]
     fname_extension = pf["extension"]
     fname = pf["name"]
@@ -656,18 +986,20 @@ def split_podcast(pf, seconds, temp_dir=None, work_id=None):
     for f in files_to_remove:
         os.remove(f)
     
-    subprocess.run(["ffmpeg", 
-                    "-y",
-                    "-i", fname, 
-                    "-f", "segment",
-                    "-segment_time", str(seconds),
-                    "-segment_start_number", str(1),
-                    "-c", "copy", 
-                    output_pattern
-                    ],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+    run_ffmpeg(["ffmpeg",
+                "-y",
+                "-threads", str(ffmpeg_threads(config_dict)),
+                "-i", fname,
+                "-f", "segment",
+                "-segment_time", str(seconds),
+                "-segment_start_number", str(1),
+                "-c", "copy",
+                output_pattern
+                ],
+               config_dict,
+               stdin=subprocess.DEVNULL,
+               stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL)
     return sorted(glob.glob(wildcard_mp3_files))
 
 
@@ -736,8 +1068,12 @@ def launch_vosk_tasks_core(config_dict):
         fname_root = pf["root"]
         fname_wav = pf["wav"]
         fname_meta = pf["meta"]
-        create_meta_file(fname, fname_meta)
-        create_wav_file(fname, fname_wav, config_dict.get('wavfrate', DEFAULT_WAVFRATE))
+        log_phase("VOSK_CREATE_META_START", config_dict)
+        create_meta_file(fname, fname_meta, config_dict)
+        log_phase("VOSK_CREATE_META_END", config_dict)
+        log_phase("VOSK_CREATE_WAV_START", config_dict)
+        create_wav_file(fname, fname_wav, config_dict.get('wavfrate', DEFAULT_WAVFRATE), config_dict)
+        log_phase("VOSK_CREATE_WAV_END", config_dict)
         rate, frames = get_rate_and_frames(fname_wav)
         total_seconds = frames / rate
 
@@ -761,26 +1097,19 @@ def launch_vosk_tasks_core(config_dict):
                     "audio_tags": config_dict.get('audio_tags', False),
                     "mp3file": os.path.basename(fname),
                     "min_offset": config_dict.get('min_offset', DEFAULT_MINOFFSET),
-                    "max_gap": config_dict.get('max_gap', DEFAULT_MAXGAP)
+                    "max_gap": config_dict.get('max_gap', DEFAULT_MAXGAP),
+                    "work_id": config_dict.get('work_id'),
+                    "whisper": False,
                     } for fenum in enumerate(range(0, frames, num_frames))
                 ]
             )
         )
         
-    executor = config_dict.get('executor')
-    if executor is None:
-        with ProcessPoolExecutor(cpus) as executor:
-            tasks = []
-            for result in results:
-                tasks.extend(result[1])
-            for f, s, t in  executor.map(vosk_task_work, tasks):
-               logging.info(f"{f} y {s} han tardado {t}")
-    else:
-        tasks = []
-        for result in results:
-            tasks.extend(result[1])
-        for f, s, t in executor.map(vosk_task_work, tasks):
-            logging.info(f"{f} y {s} han tardado {t}")
+    tasks = []
+    for result in results:
+        tasks.extend(result[1])
+    for f, s, t in run_tasks(tasks, vosk_task_work, config_dict):
+        logging.info(f"{f} y {s} han tardado {t}")
     
     for pf in config_dict['procfnames']:
         os.remove(pf['wav'])
@@ -806,12 +1135,16 @@ def launch_whisper_tasks_core(config_dict):
         fname_root = pf["root"]
         fname = pf["name"]
         fname_meta = pf["meta"]
-        create_meta_file(fname, fname_meta)
+        log_phase("WHISPER_CREATE_META_START", config_dict)
+        create_meta_file(fname, fname_meta, config_dict)
+        log_phase("WHISPER_CREATE_META_END", config_dict)
         
         # Usar directorio temporal y work_id si están disponibles
         temp_dir = config_dict.get('temp_dir')
         work_id = config_dict.get('work_id')
-        mp3files = split_podcast(pf, seconds, temp_dir, work_id)
+        log_phase("WHISPER_SPLIT_START", config_dict)
+        mp3files = split_podcast(pf, seconds, temp_dir, work_id, config_dict)
+        log_phase("WHISPER_SPLIT_END", config_dict)
         
         logging.debug(f"En launch_whisper_tasks_core: whtraining={config_dict.get('whtraining')}")
         speaker_mapping = get_speaker_mapping(config_dict.get('whtraining'))
@@ -825,6 +1158,7 @@ def launch_whisper_tasks_core(config_dict):
                     "whmodel": config_dict.get('whmodel', DEFAULT_WHMODEL),
                     "whdevice": config_dict.get('whdevice', DEFAULT_WHDEVICE),
                     "whlanguage": config_dict.get('whlanguage', DEFAULT_WHLANGUAGE),
+                    "whbatch_size": config_dict.get('whbatch_size', DEFAULT_WHBATCH_SIZE),
                     "hname": f"{fname_root}_{fenum[0]}.html",
                     "sname": f"{fname_root}_{fenum[0]}.srt",
                     "fname": fenum[1],
@@ -842,8 +1176,13 @@ def launch_whisper_tasks_core(config_dict):
                     "pyannote_threshold": config_dict.get('pyannote_threshold', 0.7147),
                     "pyannote_min_speakers": config_dict.get('pyannote_min_speakers'),
                     "pyannote_max_speakers": config_dict.get('pyannote_max_speakers'),
+                    "pyannote_batch_size": config_dict.get('pyannote_batch_size'),
                     "huggingface_token": config_dict.get('huggingface_token', ''),
                     "temp_dir": config_dict.get('temp_dir'),
+                    "ffmpeg_semaphore": config_dict.get('ffmpeg_semaphore'),
+                    "ffmpeg_threads": config_dict.get('ffmpeg_threads'),
+                    "work_id": config_dict.get('work_id'),
+                    "whisper": True,
                     } for fenum in enumerate(mp3files)
                 ]
             )
@@ -851,20 +1190,11 @@ def launch_whisper_tasks_core(config_dict):
         
     logging.debug(f"Configuraciones: {results}")
 
-    executor = config_dict.get('executor')
-    if executor is None:
-        with ProcessPoolExecutor(cpus) as executor:
-            tasks = []
-            for result in results:
-                tasks.extend(result[1])
-            for f, s, t in  executor.map(whisper_task_work, tasks):
-                logging.info(f"{f} y {s} han tardado {t}")
-    else:
-        tasks = []
-        for result in results:
-            tasks.extend(result[1])
-        for f, s, t in executor.map(whisper_task_work, tasks):
-            logging.info(f"{f} y {s} han tardado {t}")
+    tasks = []
+    for result in results:
+        tasks.extend(result[1])
+    for f, s, t in run_tasks(tasks, whisper_task_work, config_dict):
+        logging.info(f"{f} y {s} han tardado {t}")
 
     return results
 
@@ -880,6 +1210,7 @@ def transcribe_audio(config_dict):
         dict: Results dictionary with transcribed files info and processing statistics
     """
     logcfg(__file__)
+    configure_ffmpeg_limits(config_dict)
     stime = datetime.datetime.now()
     
     # Load environment configuration if specified

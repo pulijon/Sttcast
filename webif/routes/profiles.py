@@ -145,8 +145,6 @@ async def create_profile(
     is_public: bool = Form(False),
     prefix: str = Form("tr"),
     default_engine: str = Form("whisper"),
-    whisper_model: str = Form("small"),
-    whisper_device: str = Form("cuda"),
     default_language: str = Form("es"),
     seconds: int = Form(15000),
     high_confidence: float = Form(0.95),
@@ -243,8 +241,6 @@ async def create_profile(
         is_public=is_public,
         prefix=prefix,
         default_engine=TranscriptionEngine(default_engine),
-        whisper_model=whisper_model,
-        whisper_device=whisper_device,
         default_language=default_language,
         languages=[default_language],
         seconds=seconds,
@@ -313,8 +309,6 @@ async def update_profile(
     is_public: bool = Form(False),
     prefix: str = Form("tr"),
     default_engine: str = Form("whisper"),
-    whisper_model: str = Form("small"),
-    whisper_device: str = Form("cuda"),
     default_language: str = Form("es"),
     seconds: int = Form(15000),
     high_confidence: float = Form(0.95),
@@ -413,8 +407,6 @@ async def update_profile(
     profile.is_public = is_public
     profile.prefix = prefix
     profile.default_engine = TranscriptionEngine(default_engine)
-    profile.whisper_model = whisper_model
-    profile.whisper_device = whisper_device
     profile.default_language = default_language
     profile.languages = [default_language]
     profile.seconds = seconds

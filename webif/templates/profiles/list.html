@@ -44,12 +44,6 @@
                         <span class="detail-label">Idioma:</span>
                         <span class="detail-value">{{ profile.default_language }}</span>
                     </div>
-                    {% if profile.default_engine.value == 'whisper' %}
-                    <div class="detail-item">
-                        <span class="detail-label">Modelo:</span>
-                        <span class="detail-value">{{ profile.whisper_model }}</span>
-                    </div>
-                    {% endif %}
                 </div>
                 
                 <div class="profile-actions">

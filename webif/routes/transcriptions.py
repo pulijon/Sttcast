@@ -279,8 +279,6 @@ async def upload_file(
         
         job.config_snapshot = {
             "prefix": profile.prefix,
-            "whisper_model": profile.whisper_model,
-            "whisper_device": profile.whisper_device,
             "seconds": profile.seconds,
             "high_confidence": profile.high_confidence,
             "medium_confidence": profile.medium_confidence,
@@ -355,8 +353,6 @@ async def start_transcription(
     # Aplicar configuración del perfil si existe
     if job.config_snapshot:
         config.prefix = job.config_snapshot.get("prefix", "tr")
-        config.whmodel = job.config_snapshot.get("whisper_model", "small")
-        config.whdevice = job.config_snapshot.get("whisper_device", "cuda")
         config.seconds = job.config_snapshot.get("seconds", 15000)
         config.hconf = job.config_snapshot.get("high_confidence", 0.95)
         config.mconf = job.config_snapshot.get("medium_confidence", 0.7)

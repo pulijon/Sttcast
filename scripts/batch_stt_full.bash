@@ -53,6 +53,8 @@ export PYANNOTE_MIN_SPEAKERS="${PYANNOTE_MIN_SPEAKERS:-}"
 export PYANNOTE_MAX_SPEAKERS="${PYANNOTE_MAX_SPEAKERS:-}"
 
 SERVER_URL="http://${TRANSSRV_HOST:-127.0.0.1}:${TRANSSRV_PORT:-8000}"
+WHISPER_CLIENT_CONCURRENCY="${STTCASTCLI_WHISPER_CONCURRENCY:-8}"
+VOSK_CLIENT_CONCURRENCY="${STTCASTCLI_VOSK_CONCURRENCY:-16}"
 echo "🌐 Servidor REST: $SERVER_URL"
 
 # Verificar que el servidor esté disponible
@@ -71,6 +73,9 @@ echo "   Min cluster size: $PYANNOTE_MIN_CLUSTER_SIZE"
 echo "   Threshold: $PYANNOTE_THRESHOLD"
 [ -n "$PYANNOTE_MIN_SPEAKERS" ] && echo "   Min speakers: $PYANNOTE_MIN_SPEAKERS"
 [ -n "$PYANNOTE_MAX_SPEAKERS" ] && echo "   Max speakers: $PYANNOTE_MAX_SPEAKERS"
+echo "⚙️ Concurrencia cliente:"
+echo "   Whisper: $WHISPER_CLIENT_CONCURRENCY"
+echo "   Vosk: $VOSK_CLIENT_CONCURRENCY"
 echo ""
 
 # Configuración
@@ -150,6 +155,7 @@ process_whisper() {
     IFS=$oldIFS
     
     # Procesar archivos si hay alguno
+    local transcribe_result=0
     if [ ${#mp3_files[*]} -gt 0 ]; then
         echo "[$process_name] Archivos a transcribir: ${#mp3_files[*]}"
         echo ""
@@ -163,20 +169,19 @@ process_whisper() {
         
         "$PYTHON_BIN" ./sttcastcli.py \
             --whisper \
-            --whmodel small \
             --whlanguage "${whlang}" \
             --html-suffix "${whisper_suffix}_${whlang}" \
             --seconds 15000 \
             --whsusptime 20 \
+            --concurrency "$WHISPER_CLIENT_CONCURRENCY" \
             ${training_arg} \
             "${mp3_files[@]}"
         
         local transcribe_result=$?
         
         if [ $transcribe_result -ne 0 ]; then
-            echo "[$process_name] ❌ Error en transcripción (código: $transcribe_result)"
-            rm -rf "$prcdir"
-            exit $transcribe_result
+            echo "[$process_name] ⚠️  Error parcial en transcripción (código: $transcribe_result)"
+            echo "[$process_name] Se procesarán los resultados descargados correctamente"
         fi
         
         echo ""
@@ -236,7 +241,12 @@ process_whisper() {
         rm -rf "$prcdir"
     fi
     
-    echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ✅ Completado"
+    if [ $transcribe_result -eq 0 ]; then
+        echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ✅ Completado"
+    else
+        echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ⚠️ Completado con fallos parciales"
+    fi
+    return $transcribe_result
 }
 
 # Función para procesar Vosk
@@ -272,6 +282,12 @@ process_vosk() {
     
     for episode in $episodes; do
         local mp3=$(basename "$episode")
+
+        # Saltar training file
+        if [ "${mp3}" == "${TRAINING_FILE}" ]; then
+            continue
+        fi
+
         local ep="${mp3%.mp3}"
         local html_vosk="${ep}_${vosk_suffix}_${vlang}.html"
         
@@ -287,6 +303,7 @@ process_vosk() {
     IFS=$oldIFS
     
     # Procesar archivos si hay alguno
+    local transcribe_result=0
     if [ ${#mp3_files[*]} -gt 0 ]; then
         echo "[$process_name] Archivos a transcribir: ${#mp3_files[*]}"
         echo ""
@@ -297,14 +314,14 @@ process_vosk() {
         "$PYTHON_BIN" ./sttcastcli.py \
             --html-suffix "${vosk_suffix}_${vlang}" \
             --seconds 15000 \
+            --concurrency "$VOSK_CLIENT_CONCURRENCY" \
             "${mp3_files[@]}"
         
-        local transcribe_result=$?
+        transcribe_result=$?
         
         if [ $transcribe_result -ne 0 ]; then
-            echo "[$process_name] ❌ Error en transcripción (código: $transcribe_result)"
-            rm -rf "$prcdir"
-            exit $transcribe_result
+            echo "[$process_name] ⚠️  Error parcial en transcripción (código: $transcribe_result)"
+            echo "[$process_name] Se procesarán los resultados descargados correctamente"
         fi
         
         echo ""
@@ -360,7 +377,12 @@ process_vosk() {
         rm -rf "$prcdir"
     fi
     
-    echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ✅ Completado"
+    if [ $transcribe_result -eq 0 ]; then
+        echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ✅ Completado"
+    else
+        echo "[$process_name] $(date '+%Y-%m-%d %H:%M:%S') ⚠️ Completado con fallos parciales"
+    fi
+    return $transcribe_result
 }
 
 

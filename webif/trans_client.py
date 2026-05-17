@@ -18,8 +18,6 @@ from .config import Settings
 class TranscriptionConfig(BaseModel):
     """Configuración para enviar al servidor de transcripción"""
     whisper: bool = False
-    whmodel: str = "small"
-    whdevice: str = "cuda"
     whlanguage: str = "es"
     prefix: str = "tr"
     calendar_file: Optional[str] = None

@@ -44,6 +44,9 @@ DEFAULT_PODCAST_TEMPLATES = "templates"
 DEFAULT_SERVER_URL = "http://localhost:8505"
 DEFAULT_POLL_INTERVAL = 5.0
 DEFAULT_TIMEOUT = 36000  # 10 horas por defecto
+DEFAULT_CONCURRENCY = int(os.getenv('STTCASTCLI_CONCURRENCY', '8'))
+DEFAULT_HTTP_RETRIES = int(os.getenv('STTCASTCLI_HTTP_RETRIES', '12'))
+DEFAULT_HTTP_RETRY_DELAY = float(os.getenv('STTCASTCLI_HTTP_RETRY_DELAY', '2.0'))
 
 # Parámetros de Pyannote (valores por defecto, se sobrescriben con variables de entorno)
 DEFAULT_PYANNOTE_METHOD = "ward"
@@ -59,9 +62,14 @@ class STTCastRESTClient:
     def __init__(self, server_url: str, api_key: str = ""):
         self.server_url = server_url.rstrip('/')
         self.api_key = api_key
+        self.http_retries = max(0, DEFAULT_HTTP_RETRIES)
+        self.http_retry_delay = max(0.1, DEFAULT_HTTP_RETRY_DELAY)
         
-    async def _make_authenticated_request(self, session: aiohttp.ClientSession, method: str, url: str, **kwargs) -> aiohttp.ClientResponse:
-        """Realizar petición autenticada con HMAC"""
+    def _retry_delay(self, attempt: int) -> float:
+        return min(self.http_retry_delay * (2 ** attempt), 30.0)
+
+    async def _make_authenticated_request_once(self, session: aiohttp.ClientSession, method: str, url: str, **kwargs) -> Dict[str, Any]:
+        """Realizar una petición autenticada con HMAC"""
         if not self.api_key:
             # Sin autenticación - usar endpoints legacy
             async with session.request(method, url, **kwargs) as response:
@@ -91,6 +99,23 @@ class STTCastRESTClient:
         async with session.request(method, url, **kwargs) as response:
             response.raise_for_status()
             return await response.json()
+
+    async def _make_authenticated_request(self, session: aiohttp.ClientSession, method: str, url: str, **kwargs) -> Dict[str, Any]:
+        """Realizar petición autenticada con reintentos para operaciones idempotentes"""
+        max_attempts = self.http_retries + 1 if method.upper() in {'GET', 'HEAD'} else 1
+
+        for attempt in range(max_attempts):
+            try:
+                return await self._make_authenticated_request_once(session, method, url, **kwargs)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt >= max_attempts - 1:
+                    raise
+                delay = self._retry_delay(attempt)
+                logging.warning(
+                    f"Petición {method} {url} falló ({e}); reintento "
+                    f"{attempt + 1}/{max_attempts - 1} en {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
     
     async def transcribe_file(self, session: aiohttp.ClientSession, file_path: str, config: Dict[str, Any], training_path: str = None, calendar_path: str = None) -> Dict[str, Any]:
         """Subir archivo para transcripción"""
@@ -155,19 +180,30 @@ class STTCastRESTClient:
     
     async def download_result(self, session: aiohttp.ClientSession, job_id: str, filename: str, local_path: str):
         """Descargar archivo de resultado"""
-        if self.api_key:
-            url = f"{self.server_url}/jobs/{job_id}/files/{filename}"
-            headers = create_auth_headers(self.api_key, 'GET', url, None)
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                with open(local_path, 'wb') as f:
-                    f.write(await response.read())
-        else:
-            url = f"{self.server_url}/results/{job_id}/{filename}"
-            async with session.get(url) as response:
-                response.raise_for_status()
-                with open(local_path, 'wb') as f:
-                    f.write(await response.read())
+        url = (
+            f"{self.server_url}/jobs/{job_id}/files/{filename}"
+            if self.api_key else
+            f"{self.server_url}/results/{job_id}/{filename}"
+        )
+        max_attempts = self.http_retries + 1
+
+        for attempt in range(max_attempts):
+            try:
+                headers = create_auth_headers(self.api_key, 'GET', url, None) if self.api_key else None
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    with open(local_path, 'wb') as f:
+                        f.write(await response.read())
+                    return
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt >= max_attempts - 1:
+                    raise
+                delay = self._retry_delay(attempt)
+                logging.warning(
+                    f"Descarga {url} falló ({e}); reintento "
+                    f"{attempt + 1}/{max_attempts - 1} en {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
     
     async def wait_for_completion(self, session: aiohttp.ClientSession, job_id: str, poll_interval: float = 5.0, timeout: float = None) -> Dict[str, Any]:
         """Esperar a que complete el trabajo"""
@@ -207,12 +243,8 @@ def get_pars():
     # Argumentos principales (compatibles con sttcast.py)
     parser.add_argument("fnames", type=str, nargs='+',
                         help="archivos de audio o directorios a transcribir")
-    parser.add_argument("-m", "--model", type=str, default=DEFAULT_MODEL,
-                        help=f"modelo Vosk a utilizar. Por defecto, {DEFAULT_MODEL}")
     parser.add_argument("-s", "--seconds", type=int, default=DEFAULT_SECONDS,
                         help=f"segundos de cada tarea. Por defecto, {DEFAULT_SECONDS}")
-    parser.add_argument("-c", "--cpus", type=int, default=max(os.cpu_count()-2,1),
-                        help="CPUs (ignorado en modo REST - configurado en servidor)")
     parser.add_argument("-i", "--hconf", type=float, default=DEFAULT_HCONF,
                         help=f"umbral de confianza alta. Por defecto, {DEFAULT_HCONF}")
     parser.add_argument("-n", "--mconf", type=float, default=DEFAULT_MCONF,
@@ -227,10 +259,6 @@ def get_pars():
     # Argumentos de Whisper
     parser.add_argument("-w", "--whisper", action='store_true',
                         help="utilización de motor whisper")
-    parser.add_argument("--whmodel", type=str, default=DEFAULT_WHMODEL,
-                        help=f"modelo whisper a utilizar. Por defecto, {DEFAULT_WHMODEL}")
-    parser.add_argument("--whdevice", choices=['cuda', 'cpu'], default=DEFAULT_WHDEVICE,
-                        help=f"aceleración a utilizar. Por defecto, {DEFAULT_WHDEVICE}")
     parser.add_argument("--whlanguage", default=DEFAULT_WHLANGUAGE,
                         help=f"lenguaje a utilizar. Por defecto, {DEFAULT_WHLANGUAGE}")
     parser.add_argument("--whtraining", type=str, default="training.mp3",
@@ -262,6 +290,10 @@ def get_pars():
                         help=f"intervalo de consulta de estado en segundos. Por defecto {DEFAULT_POLL_INTERVAL}")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT,
                         help=f"timeout máximo en segundos. Por defecto {DEFAULT_TIMEOUT}")
+    parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY,
+                        help=f"máximo de archivos procesados concurrentemente por cliente. Por defecto {DEFAULT_CONCURRENCY}")
+    parser.add_argument("--http-retries", type=int, default=DEFAULT_HTTP_RETRIES,
+                        help=f"reintentos para consultas/descargas REST. Por defecto {DEFAULT_HTTP_RETRIES}")
     parser.add_argument("--no-download", action='store_true',
                         help="no descargar resultados automáticamente")
     
@@ -289,8 +321,6 @@ def build_transcription_config(args) -> Dict[str, Any]:
     return {
         # Motor de transcripción
         'whisper': args.whisper,
-        'whmodel': args.whmodel,
-        'whdevice': args.whdevice,
         'whlanguage': args.whlanguage,
         'whsusptime': args.whsusptime,
         
@@ -416,6 +446,7 @@ async def process_single_file(client: STTCastRESTClient, session: aiohttp.Client
 async def process_files_async(args):
     """Procesar archivos usando corrutinas asíncronas"""
     client = STTCastRESTClient(args.server_url, API_SECRET_KEY)
+    client.http_retries = max(0, args.http_retries)
     config = build_transcription_config(args)
     
     # Obtener archivo de entrenamiento si está especificado
@@ -430,18 +461,25 @@ async def process_files_async(args):
         logging.error("No se encontraron archivos de audio para procesar")
         return False
     
-    logging.info(f"🚀 Iniciando procesamiento asíncrono de {len(audio_files)} archivos")
+    concurrency = max(1, args.concurrency)
+    logging.info(f"🚀 Iniciando procesamiento asíncrono de {len(audio_files)} archivos (concurrencia cliente: {concurrency})")
     
     # Crear sesión HTTP asíncrona
     timeout = aiohttp.ClientTimeout(total=None, connect=30)
     async with aiohttp.ClientSession(timeout=timeout) as session:
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def process_with_limit(audio_file: str):
+            async with semaphore:
+                return await process_single_file(
+                    client, session, audio_file, config,
+                    training_file, args.calendar, args
+                )
+
         # Crear una corrutina para cada archivo
         tasks = []
         for audio_file in audio_files:
-            task = process_single_file(
-                client, session, audio_file, config, 
-                training_file, args.calendar, args
-            )
+            task = process_with_limit(audio_file)
             tasks.append(task)
         
         # Ejecutar todas las corrutinas concurrentemente

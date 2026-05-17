@@ -90,24 +90,6 @@
                         </select>
                     </div>
                     
-                    <div class="form-group whisper-option">
-                        <label for="whisper_model">Modelo Whisper</label>
-                        <select id="whisper_model" name="whisper_model">
-                            <option value="tiny" {% if profile and profile.whisper_model == 'tiny' %}selected{% endif %}>tiny (rápido, menor calidad)</option>
-                            <option value="base" {% if profile and profile.whisper_model == 'base' %}selected{% endif %}>base</option>
-                            <option value="small" {% if not profile or profile.whisper_model == 'small' %}selected{% endif %}>small (recomendado)</option>
-                            <option value="medium" {% if profile and profile.whisper_model == 'medium' %}selected{% endif %}>medium</option>
-                            <option value="large" {% if profile and profile.whisper_model == 'large' %}selected{% endif %}>large (lento, mejor calidad)</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group whisper-option">
-                        <label for="whisper_device">Dispositivo Whisper</label>
-                        <select id="whisper_device" name="whisper_device">
-                            <option value="cuda" {% if not profile or profile.whisper_device == 'cuda' %}selected{% endif %}>CUDA (GPU NVIDIA)</option>
-                            <option value="cpu" {% if profile and profile.whisper_device == 'cpu' %}selected{% endif %}>CPU</option>
-                        </select>
-                    </div>
                 </div>
             </fieldset>
             

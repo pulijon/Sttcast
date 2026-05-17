@@ -37,12 +37,6 @@ CONFIG_KEYS = {
         "default": "500",
         "secret": False
     },
-    "default_whisper_model": {
-        "label": "Modelo Whisper por defecto",
-        "description": "Modelo de Whisper a usar por defecto (tiny, base, small, medium, large)",
-        "default": "small",
-        "secret": False
-    },
     "default_language": {
         "label": "Idioma por defecto",
         "description": "Código de idioma por defecto para transcripciones",

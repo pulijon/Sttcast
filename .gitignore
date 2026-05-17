@@ -25,4 +25,5 @@ training_mapa.yaml
 *.ipynb_checkpoint
 *.ipynb_checkpoints/
 *.tfvars
-
+notebooks/*.html
+log.yml

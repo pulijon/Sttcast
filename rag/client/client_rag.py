@@ -1646,6 +1646,7 @@ async def list_all_queries(clave: str, request: Request):
                 <th>Filtros</th>
                 <th>IP</th>
                 <th>Pa\u00eds</th>
+                <th>Regi\u00f3n</th>
                 <th>Ciudad</th>
                 <th>URL Persistente</th>
             </tr>
@@ -1660,6 +1661,7 @@ async def list_all_queries(clave: str, request: Request):
             created_at = query.get('created_at', '')
             query_ip = query.get('ip', '') or ''
             query_country = query.get('country', '') or ''
+            query_region = query.get('region', '') or ''
             query_city = query.get('city', '') or ''
             filter_dates, filter_speakers = format_query_filters(query)
             
@@ -1680,6 +1682,7 @@ async def list_all_queries(clave: str, request: Request):
                 <td>{escape(str(filter_dates))}<br><small>{escape(str(filter_speakers))}</small></td>
                 <td>{escape(str(query_ip))}</td>
                 <td>{escape(str(query_country))}</td>
+                <td>{escape(str(query_region))}</td>
                 <td>{escape(str(query_city))}</td>
                 <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
@@ -1753,6 +1756,7 @@ async def list_queries_by_city(city: str, request: Request,
                 <th>Fecha</th>
                 <th>Consulta</th>
                 <th>Pa\u00eds</th>
+                <th>Regi\u00f3n</th>
                 <th>Ciudad</th>
                 <th>Likes</th>
                 <th>URL Persistente</th>
@@ -1765,6 +1769,7 @@ async def list_queries_by_city(city: str, request: Request,
             query_text = escape(str(q.get('query_text', '')))
             created_at = q.get('created_at', '')
             q_country = escape(str(q.get('country', '') or ''))
+            q_region = escape(str(q.get('region', '') or ''))
             q_city = escape(str(q.get('city', '') or ''))
             q_likes = q.get('likes', 0) or 0
             q_dislikes = q.get('dislikes', 0) or 0
@@ -1780,6 +1785,7 @@ async def list_queries_by_city(city: str, request: Request,
                 <td class="timestamp">{formatted_date}</td>
                 <td class="query-text">{query_text}</td>
                 <td>{q_country}</td>
+                <td>{q_region}</td>
                 <td>{q_city}</td>
                 <td>{score}</td>
                 <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
@@ -1849,6 +1855,7 @@ async def list_queries_by_country(country: str, request: Request,
                 <th>Fecha</th>
                 <th>Consulta</th>
                 <th>País</th>
+                <th>Región</th>
                 <th>Ciudad</th>
                 <th>Likes</th>
                 <th>URL Persistente</th>
@@ -1861,6 +1868,7 @@ async def list_queries_by_country(country: str, request: Request,
             query_text = escape(str(q.get('query_text', '')))
             created_at = q.get('created_at', '')
             q_country = escape(str(q.get('country', '') or ''))
+            q_region = escape(str(q.get('region', '') or ''))
             q_city = escape(str(q.get('city', '') or ''))
             q_likes = q.get('likes', 0) or 0
             q_dislikes = q.get('dislikes', 0) or 0
@@ -1876,6 +1884,7 @@ async def list_queries_by_country(country: str, request: Request,
                 <td class="timestamp">{formatted_date}</td>
                 <td class="query-text">{query_text}</td>
                 <td>{q_country}</td>
+                <td>{q_region}</td>
                 <td>{q_city}</td>
                 <td>{score}</td>
                 <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
@@ -1909,7 +1918,14 @@ def _public_query_location_url(country: str = '', city: str = '', likes_threshol
 
 
 async def _resolve_geo_summary_points(likes_threshold: int = QUERY_MAP_LIKES_THRESHOLD):
-    """Obtiene los puntos geográficos resolviendo coordenadas desde sample_ip."""
+    """Obtiene los puntos geográficos usando coordenadas almacenadas o resolviendo via GeoIP.
+
+    Prioridad de coordenadas:
+      1. avg_latitude / avg_longitude almacenados en la BD (más precisos).
+      2. Resolución en tiempo real desde sample_ip via GeoIP (fallback).
+
+    El nombre de ubicación muestra ciudad, región (si no hay ciudad) o país.
+    """
     if not app.db or not app.db.is_available:
         return []
 
@@ -1920,40 +1936,58 @@ async def _resolve_geo_summary_points(likes_threshold: int = QUERY_MAP_LIKES_THR
     if not geo_data:
         return []
 
-    try:
-        import geoip2.database
-    except ImportError:
-        logging.error("geoip2 no disponible para resolver coordenadas del mapa")
-        return []
-
-    geoip_db_path = os.getenv("GEOIP_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
-    if not os.path.exists(geoip_db_path):
-        logging.error(f"Base de datos GeoIP no encontrada en {geoip_db_path}")
-        return []
-
+    # Separar puntos que ya tienen coordenadas almacenadas de los que necesitan resolución
     resolved = []
-    reader = geoip2.database.Reader(geoip_db_path)
-    try:
-        for item in geo_data:
-            sample_ip = item.get("sample_ip")
-            if not sample_ip:
-                continue
-            try:
-                resp = reader.city(sample_ip)
-                lat = resp.location.latitude
-                lon = resp.location.longitude
-                if lat is None or lon is None:
-                    continue
-                resolved.append({
-                    **item,
-                    "latitude": lat,
-                    "longitude": lon,
-                    "location_name": item.get("city") or item.get("country") or "Desconocida",
-                })
-            except Exception:
-                logging.debug(f"No se pudieron resolver coordenadas para {item.get('country')} / {item.get('city')}")
-    finally:
-        reader.close()
+    need_geoip = []
+
+    for item in geo_data:
+        lat = item.get("avg_latitude")
+        lon = item.get("avg_longitude")
+        if lat is not None and lon is not None:
+            location_name = item.get("city") or item.get("region") or item.get("country") or "Desconocida"
+            resolved.append({
+                **item,
+                "latitude": float(lat),
+                "longitude": float(lon),
+                "location_name": location_name,
+            })
+        else:
+            need_geoip.append(item)
+
+    # Resolver coordenadas via GeoIP para los puntos que no las tienen almacenadas
+    if need_geoip:
+        try:
+            import geoip2.database
+            geoip_db_path = os.getenv("GEOIP_DB_PATH", "/var/lib/GeoIP/GeoLite2-City.mmdb")
+            if os.path.exists(geoip_db_path):
+                reader = geoip2.database.Reader(geoip_db_path)
+                try:
+                    for item in need_geoip:
+                        sample_ip = item.get("sample_ip")
+                        if not sample_ip:
+                            continue
+                        try:
+                            resp = reader.city(sample_ip)
+                            lat = resp.location.latitude
+                            lon = resp.location.longitude
+                            if lat is None or lon is None:
+                                continue
+                            location_name = item.get("city") or item.get("region") or item.get("country") or "Desconocida"
+                            resolved.append({
+                                **item,
+                                "latitude": lat,
+                                "longitude": lon,
+                                "location_name": location_name,
+                            })
+                        except Exception:
+                            logging.debug(f"No se pudieron resolver coordenadas para {item.get('country')} / {item.get('city')}")
+                finally:
+                    reader.close()
+            else:
+                logging.warning(f"Base de datos GeoIP no encontrada en {geoip_db_path}. "
+                                 f"{len(need_geoip)} puntos sin coordenadas almacenadas no se mostrarán.")
+        except ImportError:
+            logging.error("geoip2 no disponible; los puntos sin coordenadas almacenadas no se mostrarán en el mapa")
 
     return resolved
 
@@ -1995,19 +2029,30 @@ async def public_queries_map(request: Request, likes_threshold: int = QUERY_MAP_
             lat = float(point["latitude"])
             lon = float(point["longitude"])
             bounds.append([lat, lon])
-            location_name = escape(str(point.get("location_name") or point.get("city") or point.get("country") or "Desconocida"))
-            country = escape(str(point.get("country") or ""))
+            city = str(point.get("city") or "")
+            region = str(point.get("region") or "")
+            country = str(point.get("country") or "")
+            location_name = escape(str(point.get("location_name") or city or region or country or "Desconocida"))
+            country_esc = escape(country)
+            region_esc = escape(region)
             count = int(point.get("query_count", 0))
             radius = max(5, 25 * (count / max_count))
             location_url = _public_query_location_url(
-                country=str(point.get("country") or ""),
-                city=str(point.get("city") or ""),
+                country=country,
+                city=city,
                 likes_threshold=likes_threshold,
             )
+            # Subtítulo: región si no hay ciudad, país si hay ciudad
+            subtitle_parts = []
+            if city and region:
+                subtitle_parts.append(region_esc)
+            if country_esc and country_esc != location_name:
+                subtitle_parts.append(country_esc)
+            subtitle = ", ".join(subtitle_parts)
             popup_html = (
                 f"<b>{location_name}</b>"
-                f"{'<br>' + country if country and country != location_name else ''}"
-                f"<br>Consultas: {count}"
+                + (f"<br><small>{subtitle}</small>" if subtitle else "")
+                + f"<br>Consultas: {count}"
                 + (f'<br><a href="{location_url}" target="_blank">Ver consultas</a>' if location_url else '')
             )
             folium.CircleMarker(

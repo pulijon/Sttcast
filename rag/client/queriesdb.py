@@ -69,10 +69,11 @@ def _get_geoip_reader():
 
 def geoip_lookup(ip: str) -> dict:
     """
-    Busca país y ciudad a partir de una IP usando GeoLite2.
-    Retorna {'country': ..., 'city': ...} o valores None si no se puede resolver.
+    Busca país, ciudad, región y coordenadas a partir de una IP usando GeoLite2.
+    Retorna {'country': ..., 'city': ..., 'region': ..., 'latitude': ..., 'longitude': ...}
+    o valores None si no se puede resolver.
     """
-    result = {"country": None, "city": None}
+    result = {"country": None, "city": None, "region": None, "latitude": None, "longitude": None}
     if not ip or ip in ('unknown', '127.0.0.1', '::1'):
         return result
     reader = _get_geoip_reader()
@@ -82,6 +83,9 @@ def geoip_lookup(ip: str) -> dict:
         response = reader.city(ip)
         result["country"] = response.country.name
         result["city"] = response.city.name
+        result["region"] = response.subdivisions.most_specific.name if response.subdivisions else None
+        result["latitude"] = response.location.latitude
+        result["longitude"] = response.location.longitude
     except Exception:
         pass  # IP no encontrada en la base de datos GeoIP
     return result
@@ -474,12 +478,19 @@ class RAGDatabase:
                 """)
                 logger.info("✅ Tabla ip_likes verificada/creada")
                 
-                # ===== GeoIP: columnas ip, country, city en rag_queries =====
-                for col, col_type in [('ip', 'VARCHAR(45)'), ('country', 'VARCHAR(100)'), ('city', 'VARCHAR(100)')]:
+                # ===== GeoIP: columnas ip, country, city, region, latitude, longitude en rag_queries =====
+                for col, col_type in [
+                    ('ip', 'VARCHAR(45)'),
+                    ('country', 'VARCHAR(100)'),
+                    ('city', 'VARCHAR(100)'),
+                    ('region', 'VARCHAR(100)'),
+                    ('latitude', 'DOUBLE PRECISION'),
+                    ('longitude', 'DOUBLE PRECISION'),
+                ]:
                     await conn.execute(f"""
                         ALTER TABLE rag_queries ADD COLUMN IF NOT EXISTS {col} {col_type};
                     """)
-                logger.info("✅ Columnas ip/country/city en rag_queries verificadas/creadas")
+                logger.info("✅ Columnas ip/country/city/region/latitude/longitude en rag_queries verificadas/creadas")
 
                 # ===== Filtros de búsqueda usados para construir el contexto =====
                 await conn.execute("""
@@ -568,16 +579,16 @@ class RAGDatabase:
                 search_todate_value = parse_optional_date(search_todate)
                 
                 # Resolver GeoIP
-                geo = geoip_lookup(ip) if ip else {"country": None, "city": None}
+                geo = geoip_lookup(ip) if ip else {"country": None, "city": None, "region": None, "latitude": None, "longitude": None}
                 
                 # SQL para insertar - El orden debe coincidir con el de VALUES
                 query = """
                     INSERT INTO rag_queries (
                         query_text, response_text, query_embedding, podcast_name,
-                        response_data, created_at, ip, country, city,
+                        response_data, created_at, ip, country, city, region, latitude, longitude,
                         search_fromdate, search_todate, search_speakers
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                     RETURNING id, uuid;
                 """
                 
@@ -592,9 +603,12 @@ class RAGDatabase:
                     ip,                  # $7 -> ip (VARCHAR)
                     geo["country"],      # $8 -> country (VARCHAR)
                     geo["city"],         # $9 -> city (VARCHAR)
-                    search_fromdate_value, # $10 -> search_fromdate (DATE)
-                    search_todate_value,   # $11 -> search_todate (DATE)
-                    search_speakers_json # $12 -> search_speakers (JSONB)
+                    geo["region"],       # $10 -> region (VARCHAR)
+                    geo["latitude"],     # $11 -> latitude (DOUBLE PRECISION)
+                    geo["longitude"],    # $12 -> longitude (DOUBLE PRECISION)
+                    search_fromdate_value, # $13 -> search_fromdate (DATE)
+                    search_todate_value,   # $14 -> search_todate (DATE)
+                    search_speakers_json # $15 -> search_speakers (JSONB)
                 )
                 
                 if result:
@@ -751,7 +765,7 @@ class RAGDatabase:
                     records = await conn.fetch(
                         """
                         SELECT id, uuid, query_text, response_text, created_at, podcast_name,
-                               ip, country, city, search_fromdate, search_todate, search_speakers
+                               ip, country, region, city, search_fromdate, search_todate, search_speakers
                         FROM rag_queries
                         WHERE podcast_name = $1
                         ORDER BY created_at DESC
@@ -765,7 +779,7 @@ class RAGDatabase:
                     records = await conn.fetch(
                         """
                         SELECT id, uuid, query_text, response_text, created_at, podcast_name,
-                               ip, country, city, search_fromdate, search_todate, search_speakers
+                               ip, country, region, city, search_fromdate, search_todate, search_speakers
                         FROM rag_queries
                         ORDER BY created_at DESC
                         LIMIT $1 OFFSET $2
@@ -1325,12 +1339,12 @@ class RAGDatabase:
         podcast_name: Optional[str] = None,
         likes_threshold: int = 0
     ) -> List[Dict[str, Any]]:
-        """Obtiene un resumen geográfico de consultas agrupadas por ciudad o país.
+        """Obtiene un resumen geográfico de consultas agrupadas por ciudad/región/país.
 
         Filtra consultas cuyo (likes - dislikes) >= likes_threshold.
-        Retorna una lista de dicts con country, city, query_count y sample_ip
-        (una IP representativa para resolver coordenadas localmente vía GeoIP).
-        Si falta la ciudad, la entrada se mantiene usando el país.
+        Retorna una lista de dicts con country, city, region, query_count,
+        avg_latitude, avg_longitude (coordenadas almacenadas) y sample_ip
+        (para resolver coordenadas vía GeoIP cuando no estén almacenadas).
         """
         if not self.is_available:
             return []
@@ -1340,29 +1354,33 @@ class RAGDatabase:
                     return []
                 if podcast_name:
                     records = await conn.fetch("""
-                        SELECT country, city, COUNT(*) AS query_count,
+                        SELECT country, city, region, COUNT(*) AS query_count,
+                               AVG(latitude) AS avg_latitude,
+                               AVG(longitude) AS avg_longitude,
                                MIN(ip) AS sample_ip
                         FROM rag_queries
                         WHERE podcast_name = $1
                           AND featured = TRUE
                           AND allowed = TRUE
                           AND country IS NOT NULL
-                          AND ip IS NOT NULL
+                          AND (ip IS NOT NULL OR latitude IS NOT NULL)
                           AND (likes - dislikes) >= $2
-                        GROUP BY country, city
+                        GROUP BY country, city, region
                         ORDER BY query_count DESC
                     """, podcast_name, likes_threshold)
                 else:
                     records = await conn.fetch("""
-                        SELECT country, city, COUNT(*) AS query_count,
+                        SELECT country, city, region, COUNT(*) AS query_count,
+                               AVG(latitude) AS avg_latitude,
+                               AVG(longitude) AS avg_longitude,
                                MIN(ip) AS sample_ip
                         FROM rag_queries
                         WHERE featured = TRUE
                           AND allowed = TRUE
                           AND country IS NOT NULL
-                          AND ip IS NOT NULL
+                          AND (ip IS NOT NULL OR latitude IS NOT NULL)
                           AND (likes - dislikes) >= $1
-                        GROUP BY country, city
+                        GROUP BY country, city, region
                         ORDER BY query_count DESC
                     """, likes_threshold)
                 return [dict(r) for r in records]
@@ -1391,7 +1409,7 @@ class RAGDatabase:
                 if podcast_name:
                     records = await conn.fetch("""
                         SELECT id, uuid, query_text, response_text, created_at,
-                               podcast_name, country, city, likes, dislikes
+                               podcast_name, country, region, city, likes, dislikes
                         FROM rag_queries
                         WHERE city = $1 AND podcast_name = $2
                           AND featured = TRUE AND allowed = TRUE
@@ -1402,7 +1420,7 @@ class RAGDatabase:
                 else:
                     records = await conn.fetch("""
                         SELECT id, uuid, query_text, response_text, created_at,
-                               podcast_name, country, city, likes, dislikes
+                               podcast_name, country, region, city, likes, dislikes
                         FROM rag_queries
                         WHERE city = $1
                           AND featured = TRUE AND allowed = TRUE
@@ -1432,7 +1450,7 @@ class RAGDatabase:
                 if podcast_name:
                     records = await conn.fetch("""
                         SELECT id, uuid, query_text, response_text, created_at,
-                               podcast_name, country, city, likes, dislikes
+                               podcast_name, country, region, city, likes, dislikes
                         FROM rag_queries
                         WHERE country = $1 AND podcast_name = $2
                           AND featured = TRUE AND allowed = TRUE
@@ -1443,7 +1461,7 @@ class RAGDatabase:
                 else:
                     records = await conn.fetch("""
                         SELECT id, uuid, query_text, response_text, created_at,
-                               podcast_name, country, city, likes, dislikes
+                               podcast_name, country, region, city, likes, dislikes
                         FROM rag_queries
                         WHERE country = $1
                           AND featured = TRUE AND allowed = TRUE
@@ -1474,7 +1492,7 @@ class RAGDatabase:
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
-                               q.ip, q.country, q.city,
+                               q.ip, q.country, q.region, q.city,
                                q.search_fromdate, q.search_todate, q.search_speakers,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(
@@ -1497,7 +1515,7 @@ class RAGDatabase:
                         SELECT q.id, q.uuid, q.query_text, q.response_text,
                                q.created_at, q.likes, q.dislikes,
                                q.featured, q.allowed, q.podcast_name,
-                               q.ip, q.country, q.city,
+                               q.ip, q.country, q.region, q.city,
                                q.search_fromdate, q.search_todate, q.search_speakers,
                                COALESCE(
                                    array_agg(DISTINCT jsonb_build_object(

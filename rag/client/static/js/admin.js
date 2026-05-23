@@ -195,7 +195,7 @@ function renderQueries(queries) {
                       onclick="editVote(this)" title="Clic para editar">${q.dislikes || 0}</span>
             </td>
             <td class="px-3 py-2 text-gray-500 text-xs">${escapeHtml(q.ip || '')}</td>
-            <td class="px-3 py-2 text-gray-500 text-xs">${escapeHtml(q.country || '')}${q.country && q.city ? ' / ' : ''}${escapeHtml(q.city || '')}</td>
+            <td class="px-3 py-2 text-gray-500 text-xs">${escapeHtml(q.country || '')}${(q.country && (q.region || q.city)) ? ' / ' : ''}${escapeHtml(q.region || '')}${(q.region && q.city) ? ' / ' : ''}${escapeHtml(q.city || '')}</td>
             <td class="px-3 py-2">${catBadges}</td>
             <td class="px-3 py-2 text-center">
                 <button class="assign-cat-btn text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition"
@@ -401,6 +401,7 @@ async function toggleVoteHistory(queryId) {
                 <th class="px-2 py-1 text-center">Origen</th>
                 <th class="px-2 py-1 text-left">IP</th>
                 <th class="px-2 py-1 text-left">País</th>
+                <th class="px-2 py-1 text-left">Región</th>
                 <th class="px-2 py-1 text-left">Ciudad</th>
             </tr></thead><tbody>`;
 
@@ -418,6 +419,7 @@ async function toggleVoteHistory(queryId) {
                 <td class="px-2 py-1 text-center">${origen}</td>
                 <td class="px-2 py-1">${escapeHtml(v.ip || '')}</td>
                 <td class="px-2 py-1">${escapeHtml(v.country || '')}</td>
+                <td class="px-2 py-1">${escapeHtml(v.region || '')}</td>
                 <td class="px-2 py-1">${escapeHtml(v.city || '')}</td>
             </tr>`;
         });

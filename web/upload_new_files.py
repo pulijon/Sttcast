@@ -78,6 +78,14 @@ def should_upload(rel_path, existing_keys, force):
     # Si no existe en S3, subir
     return rel_path not in existing_keys
 
+
+def file_modified_after(path, from_date):
+    if from_date is None:
+        return True
+    mtime = os.path.getmtime(path)
+    from_ts = from_date.timestamp()
+    return mtime >= from_ts
+
 def upload_file(s3, bucket, full_path, rel_path):
     content_type = guess_content_type(full_path)
     cache_control = cache_control_for(full_path)
@@ -96,8 +104,13 @@ def upload_file(s3, bucket, full_path, rel_path):
     )
 
 def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
+
+    import datetime
     s3 = boto3.client("s3")
     existing_keys = list_s3_keys(bucket_name)
+
+    # Obtener from_date y dry_run de variables globales (set por main)
+    global FROM_DATE, DRY_RUN
 
     # Generar listing.json (siempre)
     listing_path = generate_listing_json(local_dir)
@@ -117,18 +130,28 @@ def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
         if (ext not in ALLOWED_EXTS) and (name not in ALWAYS_UPLOAD_NAMES):
             continue
 
+        # Filtrado por fecha
+        if FROM_DATE is not None and not file_modified_after(str(p), FROM_DATE):
+            continue
+
         local_files.add(rel_path)
 
         if not should_upload(rel_path, existing_keys, force):
             continue
 
-        upload_file(s3, bucket_name, str(p), rel_path)
-        print(f"⬆️  Subido/Actualizado: {rel_path}")
+        if DRY_RUN:
+            print(f"[DRY-RUN] Se subiría: {rel_path}")
+        else:
+            upload_file(s3, bucket_name, str(p), rel_path)
+            print(f"⬆️  Subido/Actualizado: {rel_path}")
 
     # Asegura subir listing.json (siempre)
     rel_listing = os.path.relpath(listing_path, local_dir).replace("\\", "/")
-    upload_file(s3, bucket_name, listing_path, rel_listing)
-    print(f"⬆️  Subido/Actualizado: {rel_listing}")
+    if DRY_RUN:
+        print(f"[DRY-RUN] Se subiría: {rel_listing}")
+    else:
+        upload_file(s3, bucket_name, listing_path, rel_listing)
+        print(f"⬆️  Subido/Actualizado: {rel_listing}")
 
     if delete_missing:
         # No borres index.html por defecto si no quieres “romper” mientras subes
@@ -139,11 +162,25 @@ def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
             print(f"🗑️  Eliminado de S3: {key}")
 
 if __name__ == "__main__":
+    import datetime
     parser = argparse.ArgumentParser(description="Sube contenido a S3 (privado) para servirlo vía CloudFront.")
     parser.add_argument("bucket", help="Nombre del bucket S3")
     parser.add_argument("directory", help="Directorio local con archivos a subir")
     parser.add_argument("--delete-missing", action="store_true", help="Eliminar en S3 lo que no exista localmente (excepto index.html)")
     parser.add_argument("--force", action="store_true", help="Fuerza re-subida de todos los ficheros (cuidado con MP3 grandes)")
+    parser.add_argument("--from", dest="from_date", type=str, default=None, help="Sube solo archivos modificados desde esta fecha (YYYY-MM-DD)")
+    parser.add_argument("--dry-run", action="store_true", help="Muestra los archivos que se subirían pero no los sube")
 
     args = parser.parse_args()
+
+    global FROM_DATE, DRY_RUN
+    FROM_DATE = None
+    DRY_RUN = args.dry_run
+    if args.from_date:
+        try:
+            FROM_DATE = datetime.datetime.strptime(args.from_date, "%Y-%m-%d")
+        except Exception as e:
+            print(f"Error en formato de fecha --from: {e}")
+            exit(1)
+
     upload_new_files(args.bucket, args.directory, delete_missing=args.delete_missing, force=args.force)

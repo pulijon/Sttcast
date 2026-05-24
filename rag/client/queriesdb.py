@@ -517,6 +517,54 @@ class RAGDatabase:
             logger.error(f"❌ Error al crear tablas: {e}")
             return False
 
+    async def create_episode_topics_table(self) -> bool:
+        """Crea la tabla auxiliar de temas de episodios si no existe."""
+        if not self.is_available:
+            return False
+
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return False
+
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS rag_episode_topics (
+                        id SERIAL PRIMARY KEY,
+                        podcast_name VARCHAR(255),
+                        epname TEXT NOT NULL,
+                        epdate DATE,
+                        topic_index INTEGER NOT NULL,
+                        topic_text_es TEXT,
+                        topic_text_en TEXT,
+                        start_seconds DOUBLE PRECISION NOT NULL,
+                        topic_embedding vector(1536),
+                        summary_file TEXT,
+                        source_hash TEXT,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        UNIQUE (podcast_name, epname, topic_index)
+                    );
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_episode_topics_embedding_cosine
+                    ON rag_episode_topics USING hnsw (topic_embedding vector_cosine_ops);
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_episode_topics_podcast
+                    ON rag_episode_topics(podcast_name);
+                """)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_episode_topics_epdate
+                    ON rag_episode_topics(epdate);
+                """)
+                logger.info("✅ Tabla rag_episode_topics verificada/creada")
+                return True
+
+        except Exception as e:
+            logger.error(f"❌ Error al crear tabla rag_episode_topics: {e}")
+            return False
+
     @asynccontextmanager
     async def get_connection(self):
         """Context manager para obtener una conexión del pool"""
@@ -620,6 +668,213 @@ class RAGDatabase:
         except Exception as e:
             logger.error(f"❌ Error al guardar query en BD: {e}")
             return None
+
+    async def replace_episode_topics(
+        self,
+        podcast_name: Optional[str],
+        epname: str,
+        topics: List[Dict[str, Any]]
+    ) -> int:
+        """Reemplaza los temas indexados de un episodio."""
+        if not self.is_available:
+            return 0
+
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return 0
+
+                await conn.execute(
+                    """
+                    DELETE FROM rag_episode_topics
+                    WHERE epname = $1 AND podcast_name IS NOT DISTINCT FROM $2
+                    """,
+                    epname,
+                    podcast_name
+                )
+
+                inserted = 0
+                for topic in topics:
+                    embedding = topic.get("topic_embedding")
+                    embedding_value = str(embedding) if embedding else None
+                    await conn.execute(
+                        """
+                        INSERT INTO rag_episode_topics (
+                            podcast_name, epname, epdate, topic_index,
+                            topic_text_es, topic_text_en, start_seconds,
+                            topic_embedding, summary_file, source_hash,
+                            updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                        """,
+                        podcast_name,
+                        epname,
+                        parse_optional_date(topic.get("epdate")),
+                        int(topic["topic_index"]),
+                        topic.get("topic_text_es"),
+                        topic.get("topic_text_en"),
+                        float(topic["start_seconds"]),
+                        embedding_value,
+                        topic.get("summary_file"),
+                        topic.get("source_hash"),
+                    )
+                    inserted += 1
+
+                return inserted
+
+        except Exception as e:
+            logger.error(f"❌ Error al reemplazar temas del episodio {epname}: {e}")
+            return 0
+
+    async def get_episode_topic_status(
+        self,
+        podcast_name: Optional[str],
+        epname: str
+    ) -> Dict[int, Dict[str, Any]]:
+        """Devuelve el estado de temas indexados para un episodio."""
+        if not self.is_available:
+            return {}
+
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return {}
+
+                records = await conn.fetch(
+                    """
+                    SELECT
+                        topic_index,
+                        topic_embedding IS NOT NULL AS has_embedding,
+                        source_hash
+                    FROM rag_episode_topics
+                    WHERE epname = $1 AND podcast_name IS NOT DISTINCT FROM $2
+                    ORDER BY topic_index
+                    """,
+                    epname,
+                    podcast_name
+                )
+                return {int(record["topic_index"]): dict(record) for record in records}
+
+        except Exception as e:
+            logger.warning(f"⚠️  No se pudo obtener estado de temas para {epname}: {e}")
+            return {}
+
+    async def upsert_missing_episode_topics(
+        self,
+        podcast_name: Optional[str],
+        topics: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Inserta temas nuevos o completa embeddings ausentes.
+        No sobrescribe temas que ya tienen embedding.
+        """
+        if not self.is_available:
+            return 0
+
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return 0
+
+                changed = 0
+                for topic in topics:
+                    embedding = topic.get("topic_embedding")
+                    embedding_value = str(embedding) if embedding else None
+                    result = await conn.fetchrow(
+                        """
+                        INSERT INTO rag_episode_topics (
+                            podcast_name, epname, epdate, topic_index,
+                            topic_text_es, topic_text_en, start_seconds,
+                            topic_embedding, summary_file, source_hash,
+                            updated_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+                        ON CONFLICT (podcast_name, epname, topic_index)
+                        DO UPDATE SET
+                            epdate = EXCLUDED.epdate,
+                            topic_text_es = EXCLUDED.topic_text_es,
+                            topic_text_en = EXCLUDED.topic_text_en,
+                            start_seconds = EXCLUDED.start_seconds,
+                            topic_embedding = EXCLUDED.topic_embedding,
+                            summary_file = EXCLUDED.summary_file,
+                            source_hash = EXCLUDED.source_hash,
+                            updated_at = NOW()
+                        WHERE rag_episode_topics.topic_embedding IS NULL
+                        RETURNING id;
+                        """,
+                        podcast_name,
+                        topic["epname"],
+                        parse_optional_date(topic.get("epdate")),
+                        int(topic["topic_index"]),
+                        topic.get("topic_text_es"),
+                        topic.get("topic_text_en"),
+                        float(topic["start_seconds"]),
+                        embedding_value,
+                        topic.get("summary_file"),
+                        topic.get("source_hash"),
+                    )
+                    if result:
+                        changed += 1
+
+                return changed
+
+        except Exception as e:
+            logger.error(f"❌ Error al insertar temas pendientes: {e}")
+            return 0
+
+    async def search_similar_episode_topics(
+        self,
+        query_embedding: List[float],
+        podcast_name: Optional[str] = None,
+        limit: int = 5,
+        similarity_threshold: float = 0.65,
+        fromdate: Optional[str] = None,
+        todate: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Busca temas de episodios semánticamente cercanos a una pregunta."""
+        if not self.is_available:
+            return []
+
+        try:
+            async with self.get_connection() as conn:
+                if conn is None:
+                    return []
+
+                records = await conn.fetch(
+                    """
+                    SELECT
+                        id,
+                        podcast_name,
+                        epname,
+                        epdate,
+                        topic_index,
+                        topic_text_es,
+                        topic_text_en,
+                        start_seconds,
+                        summary_file,
+                        1 - (topic_embedding <=> $1::vector) AS similarity
+                    FROM rag_episode_topics
+                    WHERE topic_embedding IS NOT NULL
+                      AND ($2::text IS NULL OR podcast_name = $2)
+                      AND (topic_embedding <=> $1::vector) < $3
+                      AND ($5::date IS NULL OR epdate >= $5::date)
+                      AND ($6::date IS NULL OR epdate <= $6::date)
+                    ORDER BY topic_embedding <=> $1::vector
+                    LIMIT $4;
+                    """,
+                    str(query_embedding),
+                    podcast_name,
+                    1 - similarity_threshold,
+                    limit,
+                    parse_optional_date(fromdate),
+                    parse_optional_date(todate),
+                )
+
+                return [dict(record) for record in records]
+
+        except Exception as e:
+            logger.warning(f"⚠️  No se pudieron buscar temas similares: {e}")
+            return []
 
     async def search_similar_queries(
         self,

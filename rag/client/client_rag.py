@@ -74,6 +74,9 @@ RELEVANT_FRAGMENTS = int(os.getenv('STTCAST_RELEVANT_FRAGMENTS', '100'))
 RAG_CLIENT_DISTANCE_THRESHOLD = float(os.getenv('RAG_CLIENT_DISTANCE_THRESHOLD', '0.6'))
 RAG_CLIENT_MAX_CONTEXT_FRAGMENTS = int(os.getenv('RAG_CLIENT_MAX_CONTEXT_FRAGMENTS', '1000'))
 RAG_CLIENT_MAX_RAG_FRAGMENTS = int(os.getenv('RAG_CLIENT_MAX_RAG_FRAGMENTS', '100'))
+RAG_TOPIC_REFERENCES_ENABLED = os.getenv('RAG_TOPIC_REFERENCES_ENABLED', 'true').lower() != 'false'
+RAG_TOPIC_SIMILARITY_THRESHOLD = float(os.getenv('RAG_TOPIC_SIMILARITY_THRESHOLD', '0.65'))
+RAG_TOPIC_REFERENCES_LIMIT = int(os.getenv('RAG_TOPIC_REFERENCES_LIMIT', '5'))
 
 # Autenticación del panel de administración
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
@@ -91,6 +94,11 @@ async def lifespan(app_instance: FastAPI):
         await app_instance.db.initialize()
         # Crear tablas si no existen
         await app_instance.db.create_tables()
+        # Tabla opcional de temas de episodios. Si falla, el cliente sigue sin esta mejora.
+        try:
+            await app_instance.db.create_episode_topics_table()
+        except Exception as e:
+            logging.warning(f"No se pudo verificar rag_episode_topics; se continuará sin referencias por tema: {e}")
     yield
     # Shutdown
     logging.info("Deteniendo client_rag...")
@@ -170,6 +178,9 @@ app.context_filters_url = urljoin(context_server_url, "/contextfilters")
 app.rag_client_distance_threshold = RAG_CLIENT_DISTANCE_THRESHOLD
 app.rag_client_max_context_fragments = RAG_CLIENT_MAX_CONTEXT_FRAGMENTS
 app.rag_client_max_rag_fragments = RAG_CLIENT_MAX_RAG_FRAGMENTS
+app.rag_topic_references_enabled = RAG_TOPIC_REFERENCES_ENABLED
+app.rag_topic_similarity_threshold = RAG_TOPIC_SIMILARITY_THRESHOLD
+app.rag_topic_references_limit = RAG_TOPIC_REFERENCES_LIMIT
 
 # RAG Server URL - puede ser completo (RAG_SERVER_URL) o construido desde HOST:PORT
 rag_server_url = os.getenv('RAG_SERVER_URL')
@@ -261,6 +272,75 @@ def build_time_anchor(seconds) -> str:
     minutes = (total_seconds % 3600) // 60
     secs = total_seconds % 60
     return f"time-{hours:02d}-{minutes:02d}-{secs:02d}"
+
+
+def build_transcript_hyperlinks(file: str, seconds) -> dict:
+    """Construye enlaces ES/EN al punto temporal más cercano de una transcripción."""
+    html_file = {
+        lang: get_transcript_url(os.path.join("/transcripts", f"{file}_whisper_audio_{lang}.html"))
+        for lang in ['es', 'en']
+    }
+
+    nearest_id = None
+    if app.transcripts_local_dir or app.transcripts_url_external:
+        file_to_search = None
+        if app.transcripts_local_dir:
+            real_file = os.path.join(app.transcripts_local_dir, f"{file}_whisper_audio_es.html")
+            if os.path.exists(real_file):
+                file_to_search = real_file
+        if not file_to_search and app.transcripts_url_external:
+            file_to_search = f"{app.transcripts_url_external}/{file}_whisper_audio_es.html"
+
+        if file_to_search:
+            nearest_id = find_nearest_time_id(file_to_search, seconds)
+
+    if not nearest_id:
+        nearest_id = build_time_anchor(seconds)
+
+    return {
+        lang: f"{html_file[lang]}#{nearest_id}" if nearest_id else html_file[lang]
+        for lang in ['es', 'en']
+    }
+
+
+async def build_topic_references(query_embedding, fromdate: Optional[str] = None, todate: Optional[str] = None) -> list:
+    """Devuelve episodios relacionados por tema, si la tabla auxiliar está disponible."""
+    if (
+        not app.rag_topic_references_enabled
+        or not query_embedding
+        or not app.db
+        or not app.db.is_available
+    ):
+        return []
+
+    topics = await app.db.search_similar_episode_topics(
+        query_embedding=query_embedding,
+        podcast_name=app.podcast_name,
+        limit=app.rag_topic_references_limit,
+        similarity_threshold=app.rag_topic_similarity_threshold,
+        fromdate=fromdate,
+        todate=todate,
+    )
+
+    topic_references = []
+    for topic in topics:
+        file = topic.get("epname")
+        if not file:
+            continue
+        seconds = float(topic.get("start_seconds") or 0)
+        text_es = topic.get("topic_text_es") or topic.get("topic_text_en") or ""
+        text_en = topic.get("topic_text_en") or topic.get("topic_text_es") or ""
+        topic_references.append({
+            "label": {"es": text_es, "en": text_en},
+            "file": file,
+            "time": seconds,
+            "formatted_time": format_time(seconds),
+            "similarity": round(float(topic.get("similarity") or 0), 3),
+            "epdate": str(topic.get("epdate")) if topic.get("epdate") else None,
+            "hyperlink": build_transcript_hyperlinks(file, seconds),
+        })
+
+    return topic_references
 
 
 def post_context_server(path: str, payload: dict, timeout: int = 120):
@@ -893,11 +973,15 @@ async def ask_question(payload: AskRequest, request: Request):
                         if query_data and query_data.get('response_data'):
                             import json
                             stored_response = json.loads(query_data['response_data'])
+                            topic_references = stored_response.get('topic_references') or await build_topic_references(
+                                query_embedding,
+                            )
                             
                             return {
                                 "success": True,
                                 "response": stored_response.get('response', query_data.get('response_text', '')),
                                 "references": stored_response.get('references', []),
+                                "topic_references": topic_references,
                                 "timestamp": query_data['created_at'].isoformat(),
                                 "query": query_data['query_text'],
                                 "exact_match_used": True,
@@ -1074,41 +1158,7 @@ async def ask_question(payload: AskRequest, request: Request):
             for ref in reldata["refs"]:
                 if all(k in ref for k in ['label', 'file', 'time']):
                     logging.info(f"Procesando referencia: {ref['label']} - {ref['file']} a {ref['time']} segundos")
-                    html_file = {
-                        l: get_transcript_url(os.path.join("/transcripts", f"{ref['file']}_whisper_audio_{l}.html")) for l in ['es', 'en']
-                    }
-                    logging.info(f"Archivos HTML: {html_file}")
-                    logging.info(f"Buscando ID más cercano para {ref['time']} segundos")
-
-                    nearest_id = None
-                    if app.transcripts_local_dir or app.transcripts_url_external:
-                        # Determinar qué ruta usar: local o URL externa
-                        file_to_search = None
-                        if app.transcripts_local_dir:
-                            real_file = os.path.join(
-                                app.transcripts_local_dir,
-                                f"{ref['file']}_whisper_audio_es.html"
-                            )
-                            if os.path.exists(real_file):
-                                file_to_search = real_file
-                                logging.info(f"Usando archivo local: {file_to_search}")
-                        if not file_to_search and app.transcripts_url_external:
-                            file_to_search = f"{app.transcripts_url_external}/{ref['file']}_whisper_audio_es.html"
-                            logging.info(f"Usando URL externa: {file_to_search}")
-
-                        if file_to_search:
-                            nearest_id = find_nearest_time_id(file_to_search, ref['time'])
-                        else:
-                            logging.warning("No se encontró archivo local ni URL externa configurada")
-
-                    if not nearest_id:
-                        nearest_id = build_time_anchor(ref['time'])
-                    logging.info(f"ID más cercano encontrado: {nearest_id}")
-
-                    ref['hyperlink'] = {
-                        l: f"{html_file[l]}#{nearest_id}" if nearest_id else html_file[l]
-                        for l in ['es', 'en']
-                    }
+                    ref['hyperlink'] = build_transcript_hyperlinks(ref['file'], ref['time'])
                     logging.info(f"Referencia con hipervínculo: {ref['hyperlink']}")
 
                     references.append({
@@ -1121,6 +1171,12 @@ async def ask_question(payload: AskRequest, request: Request):
                         "hyperlink": ref.get("hyperlink", None)
                     })
 
+        topic_references = await build_topic_references(
+            query_embedding,
+            fromdate=payload.fromdate,
+            todate=payload.todate,
+        )
+
         timestamp_iso = datetime.now().isoformat()
         
         # Create response
@@ -1128,6 +1184,7 @@ async def ask_question(payload: AskRequest, request: Request):
             "success": True,
             "response": reldata["search"],
             "references": references,
+            "topic_references": topic_references,
             "timestamp": timestamp_iso
         }
         
@@ -1137,6 +1194,7 @@ async def ask_question(payload: AskRequest, request: Request):
                 "query": question,
                 "response": reldata["search"],
                 "references": references,
+                "topic_references": topic_references,
                 "timestamp": timestamp_iso
             }
             app.query_history.append(history_entry)
@@ -1157,6 +1215,7 @@ async def ask_question(payload: AskRequest, request: Request):
                     response_data_to_save = {
                         "response": reldata["search"],  # Contiene {es: ..., en: ...}
                         "references": references,
+                        "topic_references": topic_references,
                         "timestamp": timestamp_iso,
                         "query": question,
                         "context_filters": {
@@ -1294,6 +1353,7 @@ async def get_saved_query(query_uuid: str, request: Request):
                 "success": True,
                 "response": stored_response.get('response', query_data.get('response_text', '')),
                 "references": stored_response.get('references', []),
+                "topic_references": stored_response.get('topic_references', []),
                 "timestamp": query_data['created_at'].isoformat(),
                 "query": query_data['query_text'],
                 "podcast_name": query_data.get('podcast_name'),
@@ -1308,6 +1368,7 @@ async def get_saved_query(query_uuid: str, request: Request):
                 "success": True,
                 "response": {"es": query_data['response_text'], "en": query_data['response_text']},
                 "references": [],
+                "topic_references": [],
                 "timestamp": query_data['created_at'].isoformat(),
                 "query": query_data['query_text'],
                 "podcast_name": query_data.get('podcast_name'),
@@ -1318,6 +1379,7 @@ async def get_saved_query(query_uuid: str, request: Request):
             }
         
         # Buscar consultas similares usando el embedding de la consulta guardada
+        query_embedding_for_topics = None
         if query_data.get('query_embedding'):
             try:
                 # Convertir el string del embedding de vuelta a lista
@@ -1328,6 +1390,7 @@ async def get_saved_query(query_uuid: str, request: Request):
                     query_embedding = ast.literal_eval(embedding_str)
                 else:
                     query_embedding = embedding_str
+                query_embedding_for_topics = query_embedding
                 
                 similar_queries = await app.db.search_similar_queries(
                     query_embedding=query_embedding,
@@ -1391,6 +1454,11 @@ async def get_saved_query(query_uuid: str, request: Request):
                 'medium': [],
                 'low': []
             }
+
+        if not response_data.get('topic_references') and query_embedding_for_topics:
+            response_data['topic_references'] = await build_topic_references(
+                query_embedding_for_topics,
+            )
         
         logging.info(f"Consulta recuperada: UUID={query_uuid}, Query='{query_data['query_text'][:50]}...'")
         return response_data
@@ -1446,6 +1514,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                 "query": query_data['query_text'],
                 "response": stored_response.get('response', {}),
                 "references": stored_response.get('references', []),
+                "topic_references": stored_response.get('topic_references', []),
                 "timestamp": query_data['created_at'].isoformat(),
                 "uuid": str(query_data['uuid']),
                 "likes": query_data.get('likes', 0),
@@ -1458,6 +1527,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                 "query": query_data['query_text'],
                 "response": {"es": query_data.get('response_text', ''), "en": query_data.get('response_text', '')},
                 "references": [],
+                "topic_references": [],
                 "timestamp": query_data['created_at'].isoformat(),
                 "uuid": str(query_data['uuid']),
                 "likes": query_data.get('likes', 0),
@@ -1466,6 +1536,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
             }
         
         # Buscar consultas similares usando el embedding de la consulta guardada
+        query_embedding_for_topics = None
         if query_data.get('query_embedding'):
             try:
                 # Convertir el string del embedding de vuelta a lista
@@ -1477,6 +1548,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                     query_embedding = ast.literal_eval(embedding_str)
                 else:
                     query_embedding = embedding_str
+                query_embedding_for_topics = query_embedding
                 
                 similar_queries = await app.db.search_similar_queries(
                     query_embedding=query_embedding,
@@ -1520,6 +1592,11 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                     logging.info(f"Consultas similares para {query_uuid}: {len(high_similarity)} altas, {len(medium_similarity)} medias, {len(low_similarity)} bajas")
             except Exception as e:
                 logging.error(f"Error buscando consultas similares para consulta guardada: {e}")
+
+        if not saved_query_data.get('topic_references') and query_embedding_for_topics:
+            saved_query_data['topic_references'] = await build_topic_references(
+                query_embedding_for_topics,
+            )
         
         logging.info(f"Renderizando consulta guardada: UUID={query_uuid}")
         

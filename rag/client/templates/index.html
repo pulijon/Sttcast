@@ -366,6 +366,26 @@
                         </table>
                     </div>
                 </div>
+
+                <div id="topicReferencesSection" class="mt-6 hidden">
+                    <h3 class="text-xl font-semibold mb-2" data-i18n="results.topicrefsheading">Episodios que incluyen temas relacionados</h3>
+                    <div class="overflow-x-auto">
+                        <table class="refs-table min-w-full text-left bg-white rounded-lg border border-gray-200"
+                               role="table"
+                               aria-label="Tabla de episodios relacionados por tema"
+                               data-i18n-aria-label="results.topicrefsarialabel">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.topicrefstopic">Tema relacionado</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.topicrefsepisode">Episodio</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.refsTime">Tiempo (mm:ss)</th>
+                                    <th scope="col" class="px-4 py-2 border-b font-bold" data-i18n="results.topicrefssimilarity">Similitud</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topicRefsTable"></tbody>
+                        </table>
+                    </div>
+                </div>
                 
                 <!-- URL compartible -->
                 <div id="shareUrlSection" class="mt-6 hidden">

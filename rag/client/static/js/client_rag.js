@@ -13,6 +13,8 @@
         const resultsSection = document.getElementById('results');
         const searchResult = document.getElementById('searchResult');
         const refsTable = document.getElementById('refsTable');
+        const topicReferencesSection = document.getElementById('topicReferencesSection');
+        const topicRefsTable = document.getElementById('topicRefsTable');
         const errorMsg = document.getElementById('errorMsg');
         const submitBtn = askForm.querySelector('button[type=submit]');
         const submitText = document.getElementById('submitText');
@@ -592,6 +594,8 @@
             resultsSection.classList.add('hidden');
             searchResult.innerHTML = '';
             refsTable.innerHTML = '';
+            if (topicRefsTable) topicRefsTable.innerHTML = '';
+            if (topicReferencesSection) topicReferencesSection.classList.add('hidden');
 
             // Mostrar estado de carga
             setLoadingState(true);
@@ -1511,7 +1515,35 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             `;
         });
     } else {
-        refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">${t('results.noRefs')}</td></tr>`;
+            refsTable.innerHTML = `<tr><td colspan="4" class="px-4 py-2 text-gray-400">${t('results.noRefs')}</td></tr>`;
+    }
+
+    if (topicReferencesSection && topicRefsTable) {
+        topicRefsTable.innerHTML = '';
+        if (data.topic_references && data.topic_references.length > 0) {
+            data.topic_references.forEach(ref => {
+                const linkText = escapeHtmlFaq(ref.file || '');
+                const linkUrl = (ref.hyperlink && ref.hyperlink[lang]) ? ref.hyperlink[lang] : '';
+                const linkHtml = linkUrl
+                    ? `<a class="text-blue-600 underline" href="${linkUrl}" target="_blank">${linkText}</a>`
+                    : `<span class="text-gray-400">${linkText}</span>`;
+                const label = ref.label && ref.label[lang] ? ref.label[lang] : '';
+                const similarity = typeof ref.similarity === 'number'
+                    ? `${Math.round(ref.similarity * 100)}%`
+                    : '';
+                topicRefsTable.innerHTML += `
+                    <tr>
+                        <td class="px-4 py-2 border-b">${escapeHtmlFaq(label)}</td>
+                        <td class="px-4 py-2 border-b">${linkHtml}</td>
+                        <td class="px-4 py-2 border-b">${formatTime(ref.time)}</td>
+                        <td class="px-4 py-2 border-b">${similarity}</td>
+                    </tr>
+                `;
+            });
+            topicReferencesSection.classList.remove('hidden');
+        } else {
+            topicReferencesSection.classList.add('hidden');
+        }
     }
 
     // Mostrar URL compartible si está disponible

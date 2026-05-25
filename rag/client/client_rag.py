@@ -1670,11 +1670,18 @@ async def list_all_queries(clave: str, request: Request):
         h1 {{
             color: #333;
         }}
+        .table-wrap {{
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
         table {{
             width: 100%;
+            min-width: 1200px;
             border-collapse: collapse;
             background-color: white;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }}
         th {{
             background-color: #4CAF50;
@@ -1709,11 +1716,47 @@ async def list_all_queries(clave: str, request: Request):
             margin: 10px 0;
             color: #666;
         }}
+        @media (max-width: 768px) {{
+            body {{ margin: 10px; }}
+            h1 {{ font-size: 1.15rem; }}
+            .table-wrap {{
+                overflow-x: visible;
+                background: transparent;
+                box-shadow: none;
+            }}
+            table {{ min-width: 0; background: transparent; }}
+            thead {{ display: none; }}
+            tbody, tr, td {{ display: block; width: 100%; }}
+            tr {{
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                margin-bottom: 10px;
+                padding: 8px;
+            }}
+            td {{
+                border-bottom: 1px solid #eee;
+                padding: 8px 6px;
+                font-size: 0.82rem;
+                white-space: normal;
+                word-break: break-word;
+            }}
+            td:last-child {{ border-bottom: none; }}
+            td::before {{
+                content: attr(data-label);
+                display: block;
+                font-weight: bold;
+                color: #444;
+                margin-bottom: 2px;
+            }}
+            .query-text {{ max-width: 100%; }}
+        }}
     </style>
 </head>
 <body>
     <h1>Consultas Guardadas - {app.podcast_name}</h1>
     <div class="total-count">Total de consultas: {len(all_queries)}</div>
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -1753,21 +1796,22 @@ async def list_all_queries(clave: str, request: Request):
             
             html_content += f"""
             <tr>
-                <td>{idx}</td>
-                <td class="timestamp">{formatted_date}</td>
-                <td class="query-text">{escape(str(query_text))}</td>
-                <td>{escape(str(filter_dates))}<br><small>{escape(str(filter_speakers))}</small></td>
-                <td>{escape(str(query_ip))}</td>
-                <td>{escape(str(query_country))}</td>
-                <td>{escape(str(query_region))}</td>
-                <td>{escape(str(query_city))}</td>
-                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+                <td data-label="#">{idx}</td>
+                <td data-label="Fecha" class="timestamp">{formatted_date}</td>
+                <td data-label="Consulta" class="query-text">{escape(str(query_text))}</td>
+                <td data-label="Filtros">{escape(str(filter_dates))}<br><small>{escape(str(filter_speakers))}</small></td>
+                <td data-label="IP">{escape(str(query_ip))}</td>
+                <td data-label="País">{escape(str(query_country))}</td>
+                <td data-label="Región">{escape(str(query_region))}</td>
+                <td data-label="Ciudad">{escape(str(query_city))}</td>
+                <td data-label="URL"><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
 """
         
         html_content += """
         </tbody>
     </table>
+    </div>
 </body>
 </html>
 """
@@ -1812,7 +1856,8 @@ async def list_queries_by_city(city: str, request: Request,
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
         h1 {{ color: #333; }}
-        table {{ width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        table {{ width: 100%; min-width: 960px; border-collapse: collapse; background-color: white; }}
         th {{ background-color: #4CAF50; color: white; padding: 12px; text-align: left; font-weight: bold; }}
         td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
         tr:hover {{ background-color: #f5f5f5; }}
@@ -1821,11 +1866,25 @@ async def list_queries_by_city(city: str, request: Request,
         .query-text {{ max-width: 600px; word-wrap: break-word; }}
         .timestamp {{ white-space: nowrap; color: #666; }}
         .total-count {{ margin: 10px 0; color: #666; }}
+        @media (max-width: 768px) {{
+            body {{ margin: 10px; }}
+            h1 {{ font-size: 1.15rem; }}
+            .table-wrap {{ overflow-x: visible; background: transparent; box-shadow: none; }}
+            table {{ min-width: 0; background: transparent; }}
+            thead {{ display: none; }}
+            tbody, tr, td {{ display: block; width: 100%; }}
+            tr {{ background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); margin-bottom: 10px; padding: 8px; }}
+            td {{ border-bottom: 1px solid #eee; padding: 8px 6px; font-size: 0.82rem; white-space: normal; word-break: break-word; }}
+            td:last-child {{ border-bottom: none; }}
+            td::before {{ content: attr(data-label); display: block; font-weight: bold; color: #444; margin-bottom: 2px; }}
+            .query-text {{ max-width: 100%; }}
+        }}
     </style>
 </head>
 <body>
     <h1>Consultas desde {escape(decoded_city)} - {escape(app.podcast_name)}</h1>
     <div class="total-count">Total de consultas: {len(queries)}</div>
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -1858,19 +1917,20 @@ async def list_queries_by_city(city: str, request: Request,
                 formatted_date = str(created_at)
             html_content += f"""
             <tr>
-                <td>{idx}</td>
-                <td class="timestamp">{formatted_date}</td>
-                <td class="query-text">{query_text}</td>
-                <td>{q_country}</td>
-                <td>{q_region}</td>
-                <td>{q_city}</td>
-                <td>{score}</td>
-                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+                <td data-label="#">{idx}</td>
+                <td data-label="Fecha" class="timestamp">{formatted_date}</td>
+                <td data-label="Consulta" class="query-text">{query_text}</td>
+                <td data-label="País">{q_country}</td>
+                <td data-label="Región">{q_region}</td>
+                <td data-label="Ciudad">{q_city}</td>
+                <td data-label="Likes">{score}</td>
+                <td data-label="URL"><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
 """
         html_content += """
         </tbody>
     </table>
+    </div>
 </body>
 </html>
 """
@@ -1911,7 +1971,8 @@ async def list_queries_by_country(country: str, request: Request,
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }}
         h1 {{ color: #333; }}
-        table {{ width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        table {{ width: 100%; min-width: 960px; border-collapse: collapse; background-color: white; }}
         th {{ background-color: #4CAF50; color: white; padding: 12px; text-align: left; font-weight: bold; }}
         td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
         tr:hover {{ background-color: #f5f5f5; }}
@@ -1920,11 +1981,25 @@ async def list_queries_by_country(country: str, request: Request,
         .query-text {{ max-width: 600px; word-wrap: break-word; }}
         .timestamp {{ white-space: nowrap; color: #666; }}
         .total-count {{ margin: 10px 0; color: #666; }}
+        @media (max-width: 768px) {{
+            body {{ margin: 10px; }}
+            h1 {{ font-size: 1.15rem; }}
+            .table-wrap {{ overflow-x: visible; background: transparent; box-shadow: none; }}
+            table {{ min-width: 0; background: transparent; }}
+            thead {{ display: none; }}
+            tbody, tr, td {{ display: block; width: 100%; }}
+            tr {{ background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); margin-bottom: 10px; padding: 8px; }}
+            td {{ border-bottom: 1px solid #eee; padding: 8px 6px; font-size: 0.82rem; white-space: normal; word-break: break-word; }}
+            td:last-child {{ border-bottom: none; }}
+            td::before {{ content: attr(data-label); display: block; font-weight: bold; color: #444; margin-bottom: 2px; }}
+            .query-text {{ max-width: 100%; }}
+        }}
     </style>
 </head>
 <body>
     <h1>Consultas desde {escape(decoded_country)} - {escape(app.podcast_name)}</h1>
     <div class="total-count">Total de consultas: {len(queries)}</div>
+    <div class="table-wrap">
     <table>
         <thead>
             <tr>
@@ -1957,19 +2032,20 @@ async def list_queries_by_country(country: str, request: Request,
                 formatted_date = str(created_at)
             html_content += f"""
             <tr>
-                <td>{idx}</td>
-                <td class="timestamp">{formatted_date}</td>
-                <td class="query-text">{query_text}</td>
-                <td>{q_country}</td>
-                <td>{q_region}</td>
-                <td>{q_city}</td>
-                <td>{score}</td>
-                <td><a href="{query_url}" target="_blank">Ver consulta</a></td>
+                <td data-label="#">{idx}</td>
+                <td data-label="Fecha" class="timestamp">{formatted_date}</td>
+                <td data-label="Consulta" class="query-text">{query_text}</td>
+                <td data-label="País">{q_country}</td>
+                <td data-label="Región">{q_region}</td>
+                <td data-label="Ciudad">{q_city}</td>
+                <td data-label="Likes">{score}</td>
+                <td data-label="URL"><a href="{query_url}" target="_blank">Ver consulta</a></td>
             </tr>
 """
         html_content += """
         </tbody>
     </table>
+    </div>
 </body>
 </html>
 """

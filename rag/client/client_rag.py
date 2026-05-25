@@ -24,6 +24,7 @@ import requests
 from datetime import datetime
 from html import escape
 from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 from api.apihmac import create_auth_headers, serialize_body
 from findtime import find_nearest_time_id
 from queriesdb import db  # Importar el gestor de BD (después de cargar env vars)
@@ -364,6 +365,155 @@ def normalize_speaker_filter(speakers: Optional[List[str]]) -> List[str]:
         return ["todos"]
     return normalized
 
+
+TRANSCRIPT_MOBILE_STYLE_ID = "sttcast-transcript-mobile-style"
+TRANSCRIPT_MOBILE_CSS = """
+html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    max-width: 980px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.time,
+[id^="time-"] {
+    scroll-margin-top: 1rem;
+}
+
+.time:target,
+[id^="time-"]:target {
+    outline: 3px solid #93c5fd;
+    outline-offset: 4px;
+    border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+    body {
+        margin: 0;
+        padding: 0.85rem;
+        font-size: 18px;
+        line-height: 1.65;
+        background: #f8fafc;
+        color: #1f2937;
+    }
+
+    .title {
+        border-width: 2px;
+        border-radius: 10px;
+        margin: 0 0 1rem;
+        padding: 0.9rem;
+    }
+
+    .title,
+    #epid,
+    #epid div {
+        font-size: 1.25rem !important;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+    }
+
+    body > p {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgb(15 23 42 / 0.08);
+        margin: 0 0 0.85rem;
+        overflow-wrap: anywhere;
+        padding: 0.85rem;
+    }
+
+    body > p > span:not(.time) {
+        display: block;
+        margin-top: 0.35rem;
+    }
+
+    .time {
+        align-items: center;
+        background: #e0f2fe;
+        border-radius: 999px;
+        color: #075985;
+        display: inline-flex;
+        font-weight: 700;
+        margin-bottom: 0.45rem;
+        padding: 0.12rem 0.55rem;
+    }
+
+    audio {
+        display: block;
+        height: 42px;
+        margin: 0.45rem 0 0.55rem;
+        width: 100%;
+    }
+
+    #speaker-summary,
+    #tslist,
+    #tstext {
+        border-radius: 8px;
+        margin: 0 0 0.85rem;
+        padding: 0.85rem;
+    }
+
+    #speaker-summary li,
+    #tslist li {
+        align-items: flex-start;
+        flex-direction: column;
+        font-size: 1rem;
+        gap: 0.2rem;
+        line-height: 1.45;
+    }
+
+    a {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+}
+"""
+
+
+def is_html_response(file_path: str, content_type: str) -> bool:
+    return file_path.lower().endswith(".html") or "text/html" in (content_type or "").lower()
+
+
+def enhance_transcript_html(content: bytes, file_path: str) -> bytes:
+    """Añade mejoras responsive a transcripciones HTML sin depender de su origen."""
+    try:
+        html_text = content.decode("utf-8")
+        soup = BeautifulSoup(html_text, "html.parser")
+
+        if not soup.html:
+            html_tag = soup.new_tag("html")
+            for child in list(soup.contents):
+                html_tag.append(child.extract())
+            soup.append(html_tag)
+
+        if not soup.head:
+            head = soup.new_tag("head")
+            soup.html.insert(0, head)
+
+        if not soup.head.find("meta", attrs={"name": "viewport"}):
+            viewport = soup.new_tag("meta")
+            viewport["name"] = "viewport"
+            viewport["content"] = "width=device-width, initial-scale=1.0"
+            soup.head.insert(0, viewport)
+
+        if not soup.head.find(id=TRANSCRIPT_MOBILE_STYLE_ID):
+            style = soup.new_tag("style", id=TRANSCRIPT_MOBILE_STYLE_ID)
+            style.string = TRANSCRIPT_MOBILE_CSS
+            soup.head.append(style)
+
+        return str(soup).encode("utf-8")
+    except Exception as e:
+        logging.warning(f"No se pudo mejorar el HTML de transcripción {file_path}: {e}")
+        return content
+
 async def get_transcript_file(file_path: str) -> tuple:
     """
     Obtiene archivo de transcripción desde fuente externa o local.
@@ -522,6 +672,10 @@ async def get_transcript(file_path: str, request: Request):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Archivo no encontrado: {file_path}"
         )
+
+    if is_html_response(file_path, content_type) and not range_header:
+        content = enhance_transcript_html(content, file_path)
+        source_headers.pop("content-length", None)
     
     file_size = len(content)
     

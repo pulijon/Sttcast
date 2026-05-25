@@ -319,6 +319,7 @@ h3,
     background: linear-gradient(135deg, #f8f9ff 0%, var(--primary-light) 100%);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
     border-radius: var(--radius-md);
+    overflow-wrap: anywhere;
 }
 
 .refs-table thead {
@@ -335,6 +336,46 @@ h3,
 
 .refs-table td {
     vertical-align: top;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.refs-table a {
+    align-items: center;
+    background: var(--primary-light);
+    border: 1px solid var(--primary-mid);
+    border-radius: var(--radius-sm);
+    color: var(--primary-color) !important;
+    display: inline-flex;
+    font-weight: 700;
+    gap: 0.4rem;
+    line-height: 1.25;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    padding: 0.3rem 0.55rem;
+    text-decoration: none !important;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+    word-break: break-word;
+}
+
+.refs-table a::after {
+    content: "↗";
+    flex: 0 0 auto;
+    font-size: 0.82em;
+    line-height: 1;
+    opacity: 0.72;
+}
+
+.refs-table a:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white !important;
+    box-shadow: var(--shadow-sm);
+}
+
+.refs-table a:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
 }
 
 .share-panel {
@@ -639,6 +680,22 @@ h3,
     text-decoration-color: var(--secondary-color);
 }
 
+.prose a[href*="transcripts/"] {
+    background: #eef2ff;
+    border-radius: 4px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    color: var(--primary-color);
+    padding: 0.05em 0.28em;
+    text-decoration-thickness: 1.5px;
+}
+
+.prose a[href*="transcripts/"]:hover,
+.prose a[href*="transcripts/"]:focus {
+    background: #e0e7ff;
+    color: var(--primary-hover);
+}
+
 /* Grid adaptativo para contenido en columnas */
 .content-grid {
     display: grid;
@@ -783,8 +840,27 @@ h3,
         margin-bottom: 1rem;
     }
     
-    .prose {
-        font-size: 0.95rem;
+    .result-answer.prose {
+        font-size: 1.075rem;
+        line-height: 1.75;
+        padding: 1.125rem !important;
+    }
+
+    .result-answer.prose h1 {
+        font-size: 1.35em;
+    }
+
+    .result-answer.prose h2 {
+        font-size: 1.2em;
+    }
+
+    .result-answer.prose h3 {
+        font-size: 1.08em;
+    }
+
+    .result-answer.prose p,
+    .result-answer.prose li {
+        margin-bottom: 0.85em;
     }
     
     .reference-item {
@@ -810,6 +886,134 @@ h3,
     .share-panel .flex {
         align-items: stretch;
         flex-direction: column;
+    }
+}
+
+@media (max-width: 640px) {
+    .refs-table {
+        border: 0 !important;
+        min-width: 0 !important;
+    }
+
+    .refs-table thead {
+        display: none;
+    }
+
+    .refs-table,
+    .refs-table tbody,
+    .refs-table tr,
+    .refs-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .refs-table tr {
+        background: var(--surface);
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-xs);
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+    }
+
+    .refs-table td {
+        border-bottom: 1px solid var(--gray-100) !important;
+        display: grid;
+        font-size: 1rem;
+        gap: 0.25rem;
+        grid-template-columns: 1fr;
+        line-height: 1.5;
+        padding: 0.75rem 0.875rem !important;
+    }
+
+    .refs-table td:last-child {
+        border-bottom: 0 !important;
+    }
+
+    .refs-table a {
+        display: flex;
+        justify-content: space-between;
+        min-height: 2.75rem;
+        padding: 0.65rem 0.75rem;
+        width: 100%;
+    }
+
+    .refs-table td::before {
+        color: var(--gray-500);
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .refs-table td[colspan]::before {
+        content: "" !important;
+        display: none;
+    }
+
+    #refsTable td:nth-child(1)::before {
+        content: "Contertulio";
+    }
+
+    #refsTable td:nth-child(2)::before {
+        content: "Descripción";
+    }
+
+    #refsTable td:nth-child(3)::before {
+        content: "Audio";
+    }
+
+    #refsTable td:nth-child(4)::before {
+        content: "Tiempo";
+    }
+
+    #topicRefsTable td:nth-child(1)::before {
+        content: "Tema";
+    }
+
+    #topicRefsTable td:nth-child(2)::before {
+        content: "Episodio";
+    }
+
+    #topicRefsTable td:nth-child(3)::before {
+        content: "Tiempo";
+    }
+
+    #topicRefsTable td:nth-child(4)::before {
+        content: "Similitud";
+    }
+
+    html[lang="en"] #refsTable td:nth-child(1)::before {
+        content: "Speaker";
+    }
+
+    html[lang="en"] #refsTable td:nth-child(2)::before {
+        content: "Description";
+    }
+
+    html[lang="en"] #refsTable td:nth-child(3)::before {
+        content: "Audio";
+    }
+
+    html[lang="en"] #refsTable td:nth-child(4)::before {
+        content: "Time";
+    }
+
+    html[lang="en"] #topicRefsTable td:nth-child(1)::before {
+        content: "Topic";
+    }
+
+    html[lang="en"] #topicRefsTable td:nth-child(2)::before {
+        content: "Episode";
+    }
+
+    html[lang="en"] #topicRefsTable td:nth-child(3)::before {
+        content: "Time";
+    }
+
+    html[lang="en"] #topicRefsTable td:nth-child(4)::before {
+        content: "Similarity";
     }
 }
 

@@ -111,6 +111,8 @@ Requisitos:
                         help="Idioma para descripciones del RSS (es, en)")
     parser.add_argument("--edited-dir", default=os.getenv('PODCAST_EDITED_DIR'),
                         help="Directorio con resúmenes editados en markdown (preferencia sobre resúmenes generados)")
+    parser.add_argument("--transcripts-public-path", default=os.getenv('PODCAST_TRANSCRIPTS_PUBLIC_PATH', 'transcripts'),
+                        help="Ruta pública desde la que el cliente web sirve las transcripciones")
     
     args = parser.parse_args()
     
@@ -174,6 +176,7 @@ Requisitos:
     print(f"   Bucket S3:   {bucket_name}")
     print(f"   Prefijo:     {podcast_prefix}")
     print(f"   Idioma RSS:  {args.language}")
+    print(f"   Ruta trans.: {args.transcripts_public_path or '(raíz)'}")
     print(f"   RSS:         {'rewrite completo' if args.rewrite_rss else 'incremental'}")
     if args.dry_run:
         print(f"   Modo:        🔍 DRY-RUN (sin ejecutar)")
@@ -209,6 +212,7 @@ Requisitos:
                     language=args.language,
                     explicit=podcast_explicit,
                     edited_dir=args.edited_dir,
+                    transcripts_public_path=args.transcripts_public_path,
                     dry_run=False,
                     rewrite=args.rewrite_rss
                 )

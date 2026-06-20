@@ -79,6 +79,13 @@ def to_utc(dt: datetime) -> datetime:
     return dt.astimezone(UTC_TZ)
 
 
+def utc_now() -> datetime:
+    """Devuelve la hora actual en UTC, aware si zoneinfo está disponible."""
+    if UTC_TZ is not None:
+        return datetime.now(UTC_TZ)
+    return datetime.utcnow()
+
+
 def get_mp3_duration(filepath: str) -> int:
     """Obtiene duración en segundos de un MP3"""
     if not HAS_MUTAGEN:
@@ -188,6 +195,90 @@ def load_edited_summary(edited_dir: str, prefix: str, episode: str) -> dict:
         }
     except Exception as e:
         print(f"⚠️  Error leyendo resumen editado {edited_file.name}: {e}")
+        return None
+
+
+def load_edited_title(edited_dir: str, prefix: str, episode: str) -> str:
+    """
+    Carga un título editado para un episodio.
+
+    Busca: {edited_dir}/{prefix}{episode}_title.txt
+    Si el archivo no existe o está vacío, retorna None para mantener el título por defecto.
+    """
+    if not edited_dir:
+        return None
+
+    title_file = Path(edited_dir) / f"{prefix}{episode}_title.txt"
+
+    if not title_file.exists():
+        return None
+
+    try:
+        with open(title_file, 'r', encoding='utf-8') as f:
+            title = f.read().strip()
+
+        if not title:
+            return None
+
+        return re.sub(r'\s+', ' ', title)
+    except Exception as e:
+        print(f"⚠️  Error leyendo título editado {title_file.name}: {e}")
+        return None
+
+
+def parse_publication_date(date_text: str) -> datetime:
+    """
+    Parsea una fecha de publicación editable.
+
+    Formatos soportados:
+    - YYYY-MM-DD (usa 20:00 hora local Madrid, como el calendario)
+    - YYYY-MM-DD HH:MM[:SS]
+    - YYYY-MM-DDTHH:MM[:SS][+HH:MM] / Z
+    - Fecha RSS/RFC 2822
+    """
+    text = date_text.strip()
+    if not text:
+        raise ValueError("fecha vacía")
+
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        dt = datetime.strptime(text, "%Y-%m-%d")
+        dt = dt.replace(hour=20, minute=0, second=0)
+        return to_utc(dt)
+
+    iso_text = text.replace("Z", "+00:00")
+    try:
+        return to_utc(datetime.fromisoformat(iso_text))
+    except ValueError:
+        pass
+
+    return to_utc(parsedate_to_datetime(text))
+
+
+def load_edited_pub_date(edited_dir: str, prefix: str, episode: str) -> datetime:
+    """
+    Carga una fecha de publicación editada para un episodio.
+
+    Busca: {edited_dir}/{prefix}{episode}_date.txt
+    Si el archivo no existe o está vacío, retorna None para mantener la fecha por defecto.
+    """
+    if not edited_dir:
+        return None
+
+    date_file = Path(edited_dir) / f"{prefix}{episode}_date.txt"
+
+    if not date_file.exists():
+        return None
+
+    try:
+        with open(date_file, 'r', encoding='utf-8') as f:
+            date_text = f.read().strip()
+
+        if not date_text:
+            return None
+
+        return parse_publication_date(date_text)
+    except Exception as e:
+        print(f"⚠️  Error leyendo fecha editada {date_file.name}: {e}")
         return None
 
 
@@ -328,9 +419,24 @@ def find_episode_image(site_path: Path, prefix: str, episode: str, base_url: str
     return default_image
 
 
-def find_transcript(site_path: Path, prefix: str, episode: str, language: str, base_url: str) -> str:
+def build_public_url(base_url: str, public_path: str, filename: str) -> str:
+    """Construye una URL pública bajo base_url y un subdirectorio opcional."""
+    clean_path = (public_path or "").strip("/")
+    if clean_path:
+        return f"{base_url}/{clean_path}/{filename}"
+    return f"{base_url}/{filename}"
+
+
+def find_transcript(
+    site_path: Path,
+    prefix: str,
+    episode: str,
+    language: str,
+    base_url: str,
+    public_path: str = "transcripts",
+) -> str:
     """
-    Busca transcripción HTML asociada al episodio.
+    Busca transcripción HTML asociada al episodio y devuelve su URL pública.
 
     Patrones de búsqueda (en orden):
     1. {prefix}{episode}_whisper_audio_{language}.html
@@ -346,9 +452,79 @@ def find_transcript(site_path: Path, prefix: str, episode: str, language: str, b
     for pattern in patterns:
         transcript_path = site_path / pattern
         if transcript_path.exists():
-            return f"{base_url}/{pattern}"
+            return build_public_url(base_url, public_path, pattern)
 
     return None
+
+
+def find_transcript_srt_files(
+    site_path: Path,
+    prefix: str,
+    episode: str,
+    base_url: str,
+    public_path: str = "transcripts",
+    languages: tuple = ("es", "en"),
+) -> list:
+    """
+    Busca transcripciones SRT asociadas al episodio.
+
+    Patrones de búsqueda por idioma (en orden):
+    1. {prefix}{episode}_whisper_{language}.srt
+    2. {prefix}{episode}_{language}.srt
+    """
+    transcripts = []
+    for transcript_language in languages:
+        patterns = [
+            f"{prefix}{episode}_whisper_{transcript_language}.srt",
+            f"{prefix}{episode}_{transcript_language}.srt",
+        ]
+
+        for pattern in patterns:
+            transcript_path = site_path / pattern
+            if transcript_path.exists():
+                transcripts.append({
+                    "url": build_public_url(base_url, public_path, pattern),
+                    "type": "application/x-subrip",
+                    "language": transcript_language,
+                })
+                break
+
+    return transcripts
+
+
+def find_transcript_vtt_files(
+    site_path: Path,
+    prefix: str,
+    episode: str,
+    base_url: str,
+    public_path: str = "transcripts",
+    languages: tuple = ("es", "en"),
+) -> list:
+    """
+    Busca transcripciones WebVTT asociadas al episodio.
+
+    Patrones de búsqueda por idioma (en orden):
+    1. {prefix}{episode}_whisper_{language}.vtt
+    2. {prefix}{episode}_{language}.vtt
+    """
+    transcripts = []
+    for transcript_language in languages:
+        patterns = [
+            f"{prefix}{episode}_whisper_{transcript_language}.vtt",
+            f"{prefix}{episode}_{transcript_language}.vtt",
+        ]
+
+        for pattern in patterns:
+            transcript_path = site_path / pattern
+            if transcript_path.exists():
+                transcripts.append({
+                    "url": build_public_url(base_url, public_path, pattern),
+                    "type": "text/vtt",
+                    "language": transcript_language,
+                })
+                break
+
+    return transcripts
 
 
 def add_itunes_categories(channel, itunes_ns: str, category: str, category2: str = None):
@@ -415,12 +591,16 @@ def append_episode_item(
     explicit: str,
     itunes_ns: str,
     content_ns: str,
+    podcast_ns: str,
+    language: str,
 ):
     """Añade al canal un <item> generado con la lógica actual."""
     mp3_path = ep['path']
     rel_path = mp3_path.relative_to(site_path)
 
-    if ep['part']:
+    if ep.get('title'):
+        title = ep['title']
+    elif ep['part']:
         title = f"{podcast_title} - {ep['episode_num']} (Parte {ep['part']})"
     else:
         title = f"{podcast_title} - {ep['episode_num']}"
@@ -442,6 +622,12 @@ def append_episode_item(
         )
     else:
         encoded_desc = summary_html
+
+    for transcript_data in ep.get('transcript_files', []):
+        transcript = ET.SubElement(item, f"{{{podcast_ns}}}transcript")
+        transcript.set("url", transcript_data["url"])
+        transcript.set("type", transcript_data["type"])
+        transcript.set("language", transcript_data["language"])
 
     content_el = ET.SubElement(item, f"{{{content_ns}}}encoded")
     content_el.text = ET.CDATA(encoded_desc)
@@ -474,7 +660,21 @@ def append_episode_item(
 
     ep_image_elem = ET.SubElement(item, f"{{{itunes_ns}}}image")
     ep_image_elem.set("href", ep['image'])
+
+    format_item_for_editing(item)
     return item
+
+
+def format_item_for_editing(item):
+    """Fija saltos e indentación en items nuevos para que sean editables a mano."""
+    children = list(item)
+    if not children:
+        return
+
+    item.text = "\n      "
+    for child in children[:-1]:
+        child.tail = "\n      "
+    children[-1].tail = "\n    "
 
 
 def create_feed_skeleton(
@@ -491,12 +691,14 @@ def create_feed_skeleton(
     itunes_ns: str,
     atom_ns: str,
     content_ns: str,
+    podcast_ns: str,
 ):
     """Crea el feed completo desde cero, usado por --rewrite y por feeds nuevos."""
     nsmap = {
         "itunes": itunes_ns,
         "atom": atom_ns,
         "content": content_ns,
+        "podcast": podcast_ns,
     }
 
     rss = ET.Element("rss", nsmap=nsmap)
@@ -509,7 +711,7 @@ def create_feed_skeleton(
     ET.SubElement(channel, "link").text = base_url
     ET.SubElement(channel, "language").text = language
     ET.SubElement(channel, "copyright").text = f"© {datetime.now().year} {author}"
-    ET.SubElement(channel, "lastBuildDate").text = format_rss_date(datetime.utcnow())
+    ET.SubElement(channel, "lastBuildDate").text = format_rss_date(utc_now())
 
     atom_link = ET.SubElement(channel, f"{{{atom_ns}}}link")
     atom_link.set("href", f"{base_url}/feed.xml")
@@ -553,6 +755,7 @@ def generate_rss(
     language: str = "es",
     explicit: str = "no",
     edited_dir: str = None,
+    transcripts_public_path: str = "transcripts",
     dry_run: bool = False,
     rewrite: bool = False
 ) -> str:
@@ -569,6 +772,12 @@ def generate_rss(
     ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
     ATOM_NS = "http://www.w3.org/2005/Atom"
     CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
+    PODCAST_NS = "https://podcastindex.org/namespace/1.0"
+
+    ET.register_namespace("itunes", ITUNES_NS)
+    ET.register_namespace("atom", ATOM_NS)
+    ET.register_namespace("content", CONTENT_NS)
+    ET.register_namespace("podcast", PODCAST_NS)
 
     existing_items = []
     existing_mp3_urls = set()
@@ -584,7 +793,7 @@ def generate_rss(
         last_build = channel.find("lastBuildDate")
         if last_build is None:
             last_build = ET.SubElement(channel, "lastBuildDate")
-        last_build.text = format_rss_date(datetime.utcnow())
+        last_build.text = format_rss_date(utc_now())
 
         existing_items = channel.findall("item")
         existing_mp3_urls = {
@@ -608,6 +817,7 @@ def generate_rss(
             itunes_ns=ITUNES_NS,
             atom_ns=ATOM_NS,
             content_ns=CONTENT_NS,
+            podcast_ns=PODCAST_NS,
         )
 
     # === Buscar episodios ===
@@ -628,15 +838,19 @@ def generate_rss(
         if incremental and mp3_url in existing_mp3_urls:
             continue
 
-        # Buscar en calendario: primero número exacto, luego normalizado (sin ceros)
-        pub_date = calendar.get(episode_num)
-        if not pub_date:
-            # Intentar con número normalizado ("001" -> "1")
-            normalized_num = episode_num.lstrip('0') or '0'
-            pub_date = calendar.get(normalized_num)
-        if not pub_date:
-            episodes_without_date.append(episode_num)
-            pub_date = to_utc(datetime.fromtimestamp(mp3_path.stat().st_mtime))
+        edited_pub_date = load_edited_pub_date(edited_dir, prefix, episode_num) if edited_dir else None
+        if edited_pub_date:
+            pub_date = edited_pub_date
+        else:
+            # Buscar en calendario: primero número exacto, luego normalizado (sin ceros)
+            pub_date = calendar.get(episode_num)
+            if not pub_date:
+                # Intentar con número normalizado ("001" -> "1")
+                normalized_num = episode_num.lstrip('0') or '0'
+                pub_date = calendar.get(normalized_num)
+            if not pub_date:
+                episodes_without_date.append(episode_num)
+                pub_date = to_utc(datetime.fromtimestamp(mp3_path.stat().st_mtime))
 
         summary_data = None
         # Intentar primero cargar resumen editado, si no existe usar generado
@@ -646,17 +860,41 @@ def generate_rss(
             summary_data = load_summary(summaries_dir, prefix, episode_num, language)
 
         ep_image = find_episode_image(site_path, prefix, episode_num, base_url, image_url)
-        transcript_url = find_transcript(site_path, prefix, episode_num, language, base_url)
+        transcript_url = find_transcript(
+            site_path,
+            prefix,
+            episode_num,
+            language,
+            base_url,
+            transcripts_public_path,
+        )
+        transcript_files = find_transcript_srt_files(
+            site_path,
+            prefix,
+            episode_num,
+            base_url,
+            transcripts_public_path,
+        )
+        transcript_files.extend(find_transcript_vtt_files(
+            site_path,
+            prefix,
+            episode_num,
+            base_url,
+            transcripts_public_path,
+        ))
+        episode_title = load_edited_title(edited_dir, prefix, episode_num) if edited_dir else None
 
         episodes.append({
             'path': mp3_path,
             'episode_num': episode_num,
             'part': part,
+            'title': episode_title,
             'pub_date': pub_date,
             'summary_text': summary_data['text'] if summary_data else None,
             'summary_html': summary_data['html'] if summary_data else None,
             'image': ep_image,
             'transcript_url': transcript_url,
+            'transcript_files': transcript_files,
             'duration': get_mp3_duration(str(mp3_path)),
             'size': mp3_path.stat().st_size,
         })
@@ -681,6 +919,8 @@ def generate_rss(
             explicit=explicit,
             itunes_ns=ITUNES_NS,
             content_ns=CONTENT_NS,
+            podcast_ns=PODCAST_NS,
+            language=language,
         )
         for ep in episodes
     ]
@@ -726,6 +966,7 @@ def main():
     default_cal_file = os.getenv('PODCAST_CAL_FILE')
     default_summaries_dir = os.getenv('PODCAST_SUMMARIES_DIR')
     default_edited_dir = os.getenv('PODCAST_EDITED_DIR')
+    default_transcripts_public_path = os.getenv('PODCAST_TRANSCRIPTS_PUBLIC_PATH', 'transcripts')
 
     # Imagen del podcast
     image_path = os.getenv('PODCAST_IMAGE_PATH')
@@ -773,6 +1014,8 @@ def main():
                         help="Directorio con resúmenes JSON")
     parser.add_argument("--edited-dir", default=default_edited_dir,
                         help="Directorio con resúmenes editados en markdown (preferencia sobre resúmenes generados)")
+    parser.add_argument("--transcripts-public-path", default=default_transcripts_public_path,
+                        help="Ruta pública desde la que el cliente web sirve las transcripciones")
     parser.add_argument("--dry-run", action="store_true",
                         help="Mostrar qué haría sin escribir archivos")
     parser.add_argument("--rewrite", action="store_true",
@@ -819,6 +1062,7 @@ def main():
     print(f"   Categoría2:  {args.category2 or '(ninguna)'}")
     print(f"   Resúmenes:   {args.summaries_dir or 'No configurado'}")
     print(f"   Resúmenes Ed: {args.edited_dir or 'No configurado'}")
+    print(f"   Ruta trans.: {args.transcripts_public_path or '(raíz)'}")
     print(f"   Calendario:  {len(calendar)} fechas cargadas")
     if args.dry_run:
         print(f"   Modo:        DRY-RUN (sin escribir)")
@@ -842,6 +1086,7 @@ def main():
         language=args.language,
         explicit=args.explicit,
         edited_dir=args.edited_dir,
+        transcripts_public_path=args.transcripts_public_path,
         dry_run=args.dry_run,
         rewrite=args.rewrite
     )

@@ -12,7 +12,7 @@ CACHE_ASSET_LONG = "public, max-age=31536000, immutable"  # 1 año
 
 ALWAYS_UPLOAD_NAMES = {"index.html", "listing.json"}
 ALWAYS_UPLOAD_EXTS = {".xml"}  # rss.xml, feed.xml, etc.
-ALLOWED_EXTS = {".html", ".mp3", ".json", ".xml", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".pdf"}
+ALLOWED_EXTS = {".html", ".mp3", ".json", ".xml", ".jpg", ".jpeg", ".png", ".webp", ".css", ".js", ".pdf", ".srt", ".vtt"}
 
 def list_s3_keys(bucket):
     s3 = boto3.client("s3")
@@ -47,6 +47,10 @@ def guess_content_type(path):
         return "application/json"
     if p.endswith(".html"):
         return "text/html; charset=utf-8"
+    if p.endswith(".srt"):
+        return "application/x-subrip; charset=utf-8"
+    if p.endswith(".vtt"):
+        return "text/vtt; charset=utf-8"
     if p.endswith(".pdf"):
         return "application/pdf"
 
@@ -103,7 +107,7 @@ def upload_file(s3, bucket, full_path, rel_path):
         ExtraArgs=extra
     )
 
-def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
+def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False, upload_feed=True):
 
     import datetime
     s3 = boto3.client("s3")
@@ -114,9 +118,12 @@ def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
 
     # Generar listing.json (siempre)
     listing_path = generate_listing_json(local_dir)
+    rel_listing = os.path.relpath(listing_path, local_dir).replace("\\", "/")
 
     local_dir_path = Path(local_dir)
     local_files = set()
+    feed_path = local_dir_path / "feed.xml"
+    rel_feed = "feed.xml"
 
     for p in local_dir_path.rglob("*"):
         if not p.is_file():
@@ -136,6 +143,16 @@ def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
 
         local_files.add(rel_path)
 
+        # listing.json se sube de forma explícita después del recorrido.
+        if rel_path == rel_listing:
+            continue
+
+        # feed.xml se trata al final si existe en la raíz del directorio.
+        # Publicarlo al final evita que una plataforma vea episodios
+        # en el feed antes de que sus MP3 estén disponibles en S3.
+        if rel_path == rel_feed:
+            continue
+
         if not should_upload(rel_path, existing_keys, force):
             continue
 
@@ -146,12 +163,20 @@ def upload_new_files(bucket_name, local_dir, delete_missing=False, force=False):
             print(f"⬆️  Subido/Actualizado: {rel_path}")
 
     # Asegura subir listing.json (siempre)
-    rel_listing = os.path.relpath(listing_path, local_dir).replace("\\", "/")
     if DRY_RUN:
         print(f"[DRY-RUN] Se subiría: {rel_listing}")
     else:
         upload_file(s3, bucket_name, listing_path, rel_listing)
         print(f"⬆️  Subido/Actualizado: {rel_listing}")
+
+    if upload_feed and feed_path.is_file() and should_upload(rel_feed, existing_keys, force):
+        if DRY_RUN:
+            print(f"[DRY-RUN] Se subiría: {rel_feed}")
+        else:
+            upload_file(s3, bucket_name, str(feed_path), rel_feed)
+            print(f"⬆️  Subido/Actualizado: {rel_feed}")
+    elif not upload_feed and feed_path.is_file():
+        print(f"⏭️  Omitido por --no-feed: {rel_feed}")
 
     if delete_missing:
         # No borres index.html por defecto si no quieres “romper” mientras subes
@@ -168,6 +193,7 @@ if __name__ == "__main__":
     parser.add_argument("directory", help="Directorio local con archivos a subir")
     parser.add_argument("--delete-missing", action="store_true", help="Eliminar en S3 lo que no exista localmente (excepto index.html)")
     parser.add_argument("--force", action="store_true", help="Fuerza re-subida de todos los ficheros (cuidado con MP3 grandes)")
+    parser.add_argument("--no-feed", action="store_true", help="No subir feed.xml aunque exista en la raíz del directorio")
     parser.add_argument("--from", dest="from_date", type=str, default=None, help="Sube solo archivos modificados desde esta fecha (YYYY-MM-DD)")
     parser.add_argument("--dry-run", action="store_true", help="Muestra los archivos que se subirían pero no los sube")
 
@@ -183,4 +209,10 @@ if __name__ == "__main__":
             print(f"Error en formato de fecha --from: {e}")
             exit(1)
 
-    upload_new_files(args.bucket, args.directory, delete_missing=args.delete_missing, force=args.force)
+    upload_new_files(
+        args.bucket,
+        args.directory,
+        delete_missing=args.delete_missing,
+        force=args.force,
+        upload_feed=not args.no_feed,
+    )

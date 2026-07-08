@@ -35,7 +35,11 @@ from tools.envvars import load_env_vars_from_directory
 
 # Cargar configuración del servicio
 conf_dir = os.path.join(os.path.dirname(__file__), '.env')
-if os.path.exists(conf_dir):
+if (
+    os.path.exists(conf_dir)
+    or os.getenv("STTCAST_COMMON_CONFDIR")
+    or os.getenv("STTCAST_COLLECTION_CONFDIR")
+):
     load_env_vars_from_directory(conf_dir)
 
 # Configuración del servidor desde variables de entorno

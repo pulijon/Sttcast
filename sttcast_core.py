@@ -762,6 +762,8 @@ def whisper_task_work(cfg):
         # html.write("<!-- New segment -->\n")
         sh.append(sh.new_tag("comment", "New segment"))
         last_ti = None
+        strange_speakers = {}
+        normal_speakers = set()
         speakers_dict = {}
         nspeakers = 0
         ntraining = len(cfg['speaker_mapping'].keys())
@@ -837,9 +839,6 @@ def whisper_task_work(cfg):
         if last_ti is not None:
             # Poner entre comentarios los tiempos de cada hablante
             nsusp = 0
-            strange_speakers = {}
-            # Los hablantes que han hablado más del tiempo mínimo entrarán en normal_speakers
-            normal_speakers = set()
             logging.debug(f'Justo antes de poner comentarios finales, speakers_dict: {speakers_dict}')
             if training_warning:
                 transcription += f"\n<!-- WARNING: El número de hablantes real del conjunto de entrenamiento es distinto del teórico (ver logs) -->"
@@ -856,6 +855,8 @@ def whisper_task_work(cfg):
 
             bs4_write_transcription(sh, transcription, last_ti,
                                     cfg['audio_tags'], cfg['mp3file'])
+        else:
+            logging.warning("Whisper no produjo segmentos transcribibles tras el periodo de entrenamiento")
     bs4_substitute_speakers(sh, strange_speakers, normal_speakers)
     logging.info(f"Terminado fragmento con whisper {hname}")
     with open(hname, "w", encoding="utf-8") as f:

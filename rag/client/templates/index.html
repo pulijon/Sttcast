@@ -15,6 +15,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <style id="sttcast-critical-mobile-css">
+        {{ critical_mobile_css|safe }}
+    </style>
     <script>
         // Suprimir advertencia de Tailwind CDN en desarrollo
         tailwind.config = {
@@ -41,6 +44,32 @@
 
 </head>
 <body class="min-h-screen flex flex-col items-center" style="background: #f1f5f9;">
+
+    <div id="mobileDiagnostics" style="position: sticky; top: 0; z-index: 2000; width: 100%; box-sizing: border-box; padding: 8px 10px; background: #111827; color: #ffffff; font: 12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow-wrap: anywhere;">
+        Diagnóstico móvil: cargando...
+    </div>
+    <script>
+        (function () {
+            function updateMobileDiagnostics() {
+                var el = document.getElementById('mobileDiagnostics');
+                if (!el) return;
+                var viewport = document.querySelector('meta[name="viewport"]');
+                var data = [
+                    'w=' + window.innerWidth,
+                    'h=' + window.innerHeight,
+                    'dpr=' + window.devicePixelRatio,
+                    'm768=' + window.matchMedia('(max-width: 768px)').matches,
+                    'm640=' + window.matchMedia('(max-width: 640px)').matches,
+                    'vw=' + (viewport ? viewport.getAttribute('content') : 'none'),
+                    navigator.userAgent
+                ];
+                el.textContent = 'Diagnóstico móvil: ' + data.join(' | ');
+            }
+            updateMobileDiagnostics();
+            window.addEventListener('resize', updateMobileDiagnostics);
+            window.addEventListener('orientationchange', updateMobileDiagnostics);
+        })();
+    </script>
 
         <!-- Skip link para accesibilidad -->
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded z-50" data-i18n="nav.skipLink">

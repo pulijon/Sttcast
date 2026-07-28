@@ -114,7 +114,7 @@ h3,
 }
 
 /* Tablets */
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     .container {
         max-width: 98%; /* Aumentado desde 95% */
     }
@@ -186,7 +186,7 @@ h3,
     grid-template-columns: 1fr;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     .quick-action-grid {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -724,7 +724,7 @@ h3,
     gap: 1.5rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     .three-column-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -775,7 +775,7 @@ h3,
     gap: 1rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     .references-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -887,9 +887,46 @@ h3,
         align-items: stretch;
         flex-direction: column;
     }
+
+    .md\:flex-row {
+        flex-direction: column !important;
+    }
+
+    .md\:items-center {
+        align-items: stretch !important;
+    }
+
+    .md\:justify-between {
+        justify-content: flex-start !important;
+    }
+
+    .md\:grid-cols-2 {
+        grid-template-columns: 1fr !important;
+    }
 }
 
-@media (max-width: 640px) {
+@media (pointer: coarse) and (min-width: 641px) and (max-width: 820px) {
+    html {
+        font-size: 24px;
+    }
+
+    .app-identity img {
+        height: 112px;
+        width: 112px;
+    }
+
+    .app-title {
+        font-size: 1.45rem !important;
+        line-height: 1.2;
+    }
+
+    .app-subtitle {
+        font-size: 0.95rem;
+    }
+
+}
+
+@media (max-width: 768px) {
     .refs-table {
         border: 0 !important;
         min-width: 0 !important;
@@ -1228,7 +1265,7 @@ button:focus {
     grid-template-columns: 1fr;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     #speakersAnalysisForm .grid {
         grid-template-columns: 1fr 1fr;
         gap: 0.75rem; /* Menos espacio entre columnas */
@@ -1313,7 +1350,7 @@ button:focus {
     gap: 1rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     #generalStats .grid {
         grid-template-columns: repeat(3, 1fr) !important;
         gap: 1rem;
@@ -1344,7 +1381,7 @@ button:focus {
     gap: 1rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 769px) {
     .stats-grid {
         grid-template-columns: repeat(3, 1fr) !important;
         gap: 1.5rem;
@@ -1710,7 +1747,7 @@ button:focus {
 }
 
 /* Responsive FAQ */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
     .faq-category-header {
         padding: 0.75rem 1rem;
     }

@@ -109,6 +109,17 @@ async def lifespan(app_instance: FastAPI):
 # Inicialización de FastAPI y Jinja2
 app = FastAPI(lifespan=lifespan)
 
+
+@app.middleware("http")
+async def no_store_html_middleware(request: Request, call_next):
+    response = await call_next(request)
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 from middleware_audio_fallback import AudioFallbackMiddleware
 app.add_middleware(AudioFallbackMiddleware)
 
@@ -218,6 +229,75 @@ templates_dir = os.path.join(current_dir, "templates")
 static_dir = os.path.join(current_dir, "static")
 
 templates = Jinja2Templates(directory=templates_dir)
+
+CRITICAL_MOBILE_CSS = """
+html {
+    -webkit-text-size-adjust: 100%;
+}
+body {
+    margin: 0;
+    min-height: 100vh;
+}
+body.min-h-screen.flex.flex-col.items-center {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+}
+.app-shell {
+    background: #fff;
+    box-sizing: border-box;
+    width: min(100%, calc(100vw - 2rem));
+}
+.app-title,
+.app-subtitle {
+    overflow-wrap: anywhere;
+    text-align: center;
+}
+@media (max-width: 768px) {
+    .app-shell {
+        border-left: 0;
+        border-right: 0;
+        border-radius: 0 !important;
+        margin-top: 0 !important;
+        padding: 1.25rem !important;
+        width: 100%;
+    }
+    .app-title {
+        line-height: 1.25;
+    }
+    .app-subtitle {
+        line-height: 1.45;
+    }
+    .md\\:flex-row {
+        flex-direction: column !important;
+    }
+    .md\\:items-center {
+        align-items: stretch !important;
+    }
+    .md\\:justify-between {
+        justify-content: flex-start !important;
+    }
+    .md\\:grid-cols-2 {
+        grid-template-columns: 1fr !important;
+    }
+}
+@media (pointer: coarse) and (min-width: 641px) and (max-width: 820px) {
+    html {
+        font-size: 24px;
+    }
+    .app-identity img {
+        height: 112px;
+        width: 112px;
+    }
+    .app-title {
+        font-size: 1.45rem !important;
+        line-height: 1.2;
+    }
+    .app-subtitle {
+        font-size: 0.95rem;
+    }
+}
+"""
 
 app.mount("/static",
           StaticFiles(directory=static_dir), name="static")
@@ -627,6 +707,7 @@ async def index(request: Request):
                                      "request": request,
                                      "podcast_name": app.podcast_name,
                                      "base_path": BASE_PATH,
+                                     "critical_mobile_css": CRITICAL_MOBILE_CSS,
                                      "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                      "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH)
                                     })
@@ -1640,6 +1721,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                                          "request": request,
                                          "podcast_name": app.podcast_name,
                                          "base_path": BASE_PATH,
+                                         "critical_mobile_css": CRITICAL_MOBILE_CSS,
                                          "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                          "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
                                          "error": "Base de datos no disponible"
@@ -1655,6 +1737,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                                              "request": request,
                                              "podcast_name": app.podcast_name,
                                              "base_path": BASE_PATH,
+                                             "critical_mobile_css": CRITICAL_MOBILE_CSS,
                                              "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                              "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
                                              "error": f"No se encontró ninguna consulta con UUID: {query_uuid}"
@@ -1762,6 +1845,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                                          "request": request,
                                          "podcast_name": app.podcast_name,
                                          "base_path": BASE_PATH,
+                                         "critical_mobile_css": CRITICAL_MOBILE_CSS,
                                          "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                          "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
                                          "saved_query": saved_query_json
@@ -1774,6 +1858,7 @@ async def get_saved_query_html(query_uuid: str, request: Request):
                                          "request": request,
                                          "podcast_name": app.podcast_name,
                                          "base_path": BASE_PATH,
+                                         "critical_mobile_css": CRITICAL_MOBILE_CSS,
                                          "css_url": get_static_url("css/client_rag.css", base_path=BASE_PATH),
                                          "js_url": get_static_url("js/client_rag.js", base_path=BASE_PATH),
                                          "error": f"Error al cargar la consulta: {str(e)}"

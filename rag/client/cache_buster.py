@@ -5,6 +5,7 @@ Generates versioned URLs based on file content hash to ensure browsers reload up
 
 import os
 import hashlib
+import shutil
 from functools import lru_cache
 
 
@@ -43,8 +44,20 @@ def get_static_url(static_path: str, base_dir: str = "static", base_path: str = 
     Returns:
         URL with version parameter (e.g., "/sttcast/static/css/client_rag.css?v=a1b2c3d4")
     """
-    full_path = os.path.join(base_dir, static_path)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.join(current_dir, base_dir, static_path)
     file_hash = get_file_hash(full_path)
+
+    if file_hash:
+        path_root, path_ext = os.path.splitext(static_path)
+        fingerprinted_static_path = f"{path_root}.{file_hash}{path_ext}"
+        fingerprinted_full_path = os.path.join(current_dir, base_dir, fingerprinted_static_path)
+        try:
+            if not os.path.exists(fingerprinted_full_path):
+                shutil.copy2(full_path, fingerprinted_full_path)
+            static_path = fingerprinted_static_path
+        except Exception:
+            pass
     
     # Construir URL con base_path - asegurar que empiece con /
     if base_path:
@@ -56,8 +69,4 @@ def get_static_url(static_path: str, base_dir: str = "static", base_path: str = 
         # Si no hay base_path, asegurar que empiece con /
         url = f"/{base_dir}/{static_path}"
     
-    if file_hash:
-        return f"{url}?v={file_hash}"
-    else:
-        # Fallback if file doesn't exist or can't be hashed
-        return url
+    return url

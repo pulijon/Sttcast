@@ -69,6 +69,7 @@ QUERIES_LOW_SIMILARITY = float(os.getenv('QUERIES_LOW_SIMILARITY', '0.60'))
 
 # Umbral por defecto para mostrar consultas en el mapa público
 QUERY_MAP_LIKES_THRESHOLD = int(os.getenv('QUERY_MAP_LIKES_THRESHOLD', '1'))
+CARTO_BASEMAP_API_KEY = os.getenv('CARTO_BASEMAP_API_KEY')
 
 # Número de fragmentos de contexto solicitados al servidor FAISS.
 RELEVANT_FRAGMENTS = int(os.getenv('STTCAST_RELEVANT_FRAGMENTS', '100'))
@@ -2412,8 +2413,22 @@ async def public_queries_map(request: Request, likes_threshold: int = QUERY_MAP_
         total = sum(int(p.get("query_count", 0)) for p in points)
         avg_lat = sum(float(p["latitude"]) * int(p.get("query_count", 0)) for p in points) / total
         avg_lon = sum(float(p["longitude"]) * int(p.get("query_count", 0)) for p in points) / total
+        if not CARTO_BASEMAP_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="CARTO_BASEMAP_API_KEY no está configurada"
+            )
+
         m = folium.Map(location=[avg_lat, avg_lon], zoom_start=3,
-                       tiles="CartoDB positron", control_scale=True)
+                       tiles=None, control_scale=True)
+        folium.TileLayer(
+            tiles=f"https://{{s}}.basemaps.cartocdn.com/rastertiles/light_all/{{z}}/{{x}}/{{y}}.png?key={CARTO_BASEMAP_API_KEY}",
+            attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, '
+                 '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+            name="CartoDB Positron",
+            subdomains="abcd",
+            max_zoom=20,
+        ).add_to(m)
 
         max_count = max(int(p.get("query_count", 0)) for p in points) or 1
         bounds = []
